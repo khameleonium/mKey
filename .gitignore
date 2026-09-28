@@ -1,0 +1,21 @@
+# Сборка
+/mkey
+/dist/
+*.test
+*.out
+coverage.*
+
+# Фронтенд
+node_modules/
+web/dist/*
+!web/dist/.gitkeep
+!web/dist/index.html
+
+# Редакторы и ОС
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
