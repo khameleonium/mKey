@@ -210,13 +210,15 @@ events:
 func TestPolicies(t *testing.T) {
 	t.Parallel()
 	r := newEventRig(t)
+	// Паузы с запасом: все срабатывания должны прийти, пока идёт первое выполнение, даже на
+	// медленной машине с проверкой гонок (CI) — иначе итоговые суммы получаются другими.
 	r.load(t, "p", `
 variables: { n: { type: int, value: 0 } }
 events:
-  - { id: ignore, trigger: { type: test }, actions: [ { pause: 80 }, { set_var: { name: n, add: 1 } } ] }
+  - { id: ignore, trigger: { type: test }, actions: [ { pause: 400 }, { set_var: { name: n, add: 1 } } ] }
   - { id: queue, policy: queue, trigger: { type: test }, actions: [ { pause: 30 }, { set_var: { name: n, add: 10 } } ] }
-  - { id: parallel, policy: parallel, max_parallel: 2, trigger: { type: test }, actions: [ { pause: 80 }, { set_var: { name: n, add: 100 } } ] }
-  - { id: restart, policy: restart, trigger: { type: test }, actions: [ { pause: 80 }, { set_var: { name: n, add: 1000 } } ] }
+  - { id: parallel, policy: parallel, max_parallel: 2, trigger: { type: test }, actions: [ { pause: 400 }, { set_var: { name: n, add: 100 } } ] }
+  - { id: restart, policy: restart, trigger: { type: test }, actions: [ { pause: 400 }, { set_var: { name: n, add: 1000 } } ] }
 `)
 	get := func() int64 { v, _ := r.m.Vars("p").Get("n"); return v.(int64) }
 
@@ -240,7 +242,7 @@ events:
 
 	// restart: второе срабатывание прерывает первое — одно завершённое выполнение.
 	r.trig.fire(t, "restart", contracts.Fire{})
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	r.trig.fire(t, "restart", contracts.Fire{})
 	eventually(t, "restart", func() bool { return r.running("restart") == 0 && get() == 1231 })
 }
