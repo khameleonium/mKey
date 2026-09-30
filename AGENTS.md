@@ -47,6 +47,7 @@ make gencodes           # перегенерировать коды клавиш
 ./mkey doctor           # диагностика окружения (только чтение)
 ./mkey send --dry-run '{A}'  # проверить запись макроса без нажатий (сам запустит демон)
 ./mkey daemon stop      # остановить фоновую часть
+./mkey project list     # проекты; включение проекта с consume-хоткеями ЗАХВАТЫВАЕТ клавиатуру — не делай этого на машине разработчика без разрешения
 ./mkey debug devices    # список устройств ввода (временная команда фазы 1)
 ./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e)
 ```
@@ -181,6 +182,13 @@ internal/bus         шина событий
 internal/platform/*  init-системы, повышение прав, доступ к устройствам, пакетные менеджеры → docs/platforms.md
 internal/pluginhost  внешние плагины                      → docs/plugins.md
 internal/inspector   инспектор устройств, авто-ID UnKey, метки
+internal/store       проекты *.mkey.yaml: загрузка, горячая перезагрузка, включение → docs/projects.md
+internal/hotkeys     горячие клавиши, последовательности, hotstrings, переназначения, состояние клавиш
+internal/script/lua  действие lua                          → docs/lua-api.md
+internal/script/shell действие shell (bash)
+internal/lib/project модель проекта (открытая: виды — в реестрах)
+internal/lib/config  config.yaml (язык, модули, их настройки)
+internal/lib/layout  раскладки us/ru для набора текста
 internal/lib/dsl     язык последовательностей (библиотека) → docs/dsl.md
 internal/engine      события, триггеры, действия
 internal/hotkeys     матчинг хоткеев

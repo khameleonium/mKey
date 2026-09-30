@@ -664,7 +664,7 @@ version: 1
 name: "Игры"
 enabled: true
 active_when:
-  window: { title: "(?i)minecraft" }
+  - { type: window, title: "(?i)minecraft" }   # условия окна — фаза 8
 variables:
   clicks: { type: int, value: 0, persist: true }
 events:
@@ -943,16 +943,26 @@ _Статус (2026-09-30, Mint 22.3 KDE Wayland): владелец подтве
 _Статус (2026-09-30, Mint 22.3 KDE Wayland): **приёмка этапа 2 пройдена** — владелец подтвердил все 5 ручных проверок (текст с Shift, смешанные раскладки, ошибка в макросе, удержание кнопки мыши, status/stop)._
 
 ### Фаза 3. Движок событий, хоткеи, скрипты
-- [ ] T3.1 `internal/store`: модели проекта/конфига, YAML, валидация, JSON Schema, hot-reload (FR-EV-8), миграции.
-- [ ] T3.2 `internal/engine`: регистрация событий, условия, действия (FR-EV-4, кроме оконных/пиксельных), раннеры, политики (FR-EV-5), переменные (FR-EV-6).
-- [ ] T3.3 `internal/hotkeys`: аккорды, `press/release/hold/double/toggle`, последовательности, hotstrings.
-- [ ] T3.4 Grab + passthrough (FR-HK-2), `release_modifiers` (FR-HK-3), remap (FR-HK-4), бенчмарк NFR-1.
-- [ ] T3.5 Экстренная остановка SEC-1, watchdog SEC-3, лимит скорости SEC-4.
-- [ ] T3.6 `script/lua`: API §5.3, отмена, тесты. `docs/lua-api.md`.
-- [ ] T3.7 `script/shell`: окружение, таймауты, группы процессов; CLI `wait`, `var`, `run`.
-- [ ] T3.8 Триггеры `timer`, `startup`, `manual`, `device`.
-- [ ] T3.9 CLI `project`, `event`, `var`.
-**Приёмка:** YAML-пример из §8 (без пиксельного события) работает: F8 включает/выключает автокликер, Ctrl+Alt+H удерживает ЛКМ, `Esc+Backspace+Enter` всё останавливает; правка файла применяется на лету.
+- [x] T3.1 `internal/store`: модели проекта/конфига, YAML, валидация, JSON Schema, hot-reload (FR-EV-8), миграции.  
+  _Готово: `internal/lib/config` (config.yaml: язык, включение модулей, секции), `internal/lib/project` (открытая модель, строгий разбор), модуль `store` (загрузка, горячая перезагрузка с сохранением прежней версии при ошибке, включение/выключение с сохранением комментариев, импорт выключенным, проект-пример). JSON Schema перенесена на этап 5 (ADR-0020)._
+- [x] T3.2 `internal/engine`: регистрация событий, условия, действия (FR-EV-4, кроме оконных/пиксельных), раннеры, политики (FR-EV-5), переменные (FR-EV-6).  
+  _Готово: модуль `engine` — события, политики ignore/restart/queue/parallel, условия variable/key_state/toggle/time/any/all/not, действия send/tap/key_down/key_up/hold/pause/type_text/mouse_move/mouse_click/wheel/repeat/if/set_var/run_event/notify/enable/disable/stop, переменные с persist, общий раннер на выполнение события. Условия window/pixel — фаза 8._
+- [x] T3.3 `internal/hotkeys`: аккорды, `press/release/hold/double/toggle`, последовательности, hotstrings.  
+  _Готово: модуль `hotkeys` — сочетания (правило лишних модификаторов), press/release/hold/double/toggle, consume, device-фильтр, sequence, hotstring с заменой, состояние клавиш, `WaitKey`._
+- [x] T3.4 Grab + passthrough (FR-HK-2), `release_modifiers` (FR-HK-3), remap (FR-HK-4), бенчмарк NFR-1.  
+  _Готово: захват и passthrough в модуле `input` (захват только при отпущенных клавишах), release_modifiers через копию устройства, remap из проектов; бенчмарк — ~1,3 мкс на событие. Ограничение: LED CapsLock на захваченной клавиатуре может не обновляться._
+- [x] T3.5 Экстренная остановка SEC-1, watchdog SEC-3, лимит скорости SEC-4.  
+  _Готово: Esc+Backspace+Enter до любых обработчиков — снимает перехват и приостанавливает все триггеры до `mkey resume` (исправлено после проверки владельцем); watchdog 500 мс; ограничитель 2000 событий/с (замедляет, не отбрасывает); уведомления об экстренной остановке._
+- [x] T3.6 `script/lua`: API §5.3, отмена, тесты. `docs/lua-api.md`.  
+  _Готово: модуль `script/lua` (gopher-lua), API mkey.* по `docs/lua-api.md`, отмена через контекст (включая бесконечные циклы), on_stop. window/cursor/pixel — nil до фазы 8._
+- [x] T3.7 `script/shell`: окружение, таймауты, группы процессов; CLI `wait`, `var`, `run`.  
+  _Готово: модуль `script/shell` — окружение MKEY_*, таймаут, SIGTERM→SIGKILL группе процессов; CLI `wait key`, `var`, `run проект/событие`. Запуск файлов .lua/.sh без события отложен (ADR-0020)._
+- [x] T3.8 Триггеры `timer`, `startup`, `manual`, `device`.  
+  _Готово: триггеры manual, startup, timer (every_ms/after_ms), device (connected/disconnected). cron — не реализован (при необходимости — позже)._
+- [x] T3.9 CLI `project`, `event`, `var`.  
+  _Готово: `mkey project list|enable|disable|import`, `mkey event list|run|enable|disable`, `mkey var get|set|list`, `mkey resume`; API /projects, /events, /vars, /wait/key, /resume, /registry._
+**Приёмка:** YAML-пример из §8 (без пиксельного события) работает: F8 включает/выключает автокликер, Ctrl+Alt+H удерживает ЛКМ, `Esc+Backspace+Enter` всё останавливает; правка файла применяется на лету.  
+_Статус (2026-09-30, Mint 22.3 KDE Wayland): **приёмка этапа 3 пройдена** на проекте-примере `example`: автокликер F8, Ctrl+Alt+H, hotstring, экстренная остановка с приостановкой до `mkey resume` (исправлено после первой проверки), правка файла на лету._
 
 ### Фаза 4. Установка, автозапуск, удаление
 - [ ] T4.1 Самоустановка при первом запуске (FR-INST-1.1): копирование в `~/.local/bin`, `.desktop`, иконка.

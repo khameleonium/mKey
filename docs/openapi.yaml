@@ -158,6 +158,57 @@ paths:
                   available: { type: array, items: { type: string }, example: [ru, us] }
                   can_switch: { type: boolean }
                   source: { type: string, enum: [kde, gnome, config] }
+  /api/v1/projects:
+    get:
+      summary: Проекты (id, name, enabled, events, remaps, path, error) и каталог проектов
+      responses: { "200": { description: Список проектов } }
+  /api/v1/projects/import:
+    post:
+      summary: Импортировать проект ({name, content}); новый проект выключен (SEC-7)
+      responses: { "200": { description: "{id}" }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/projects/{id}/{action}:
+    post:
+      summary: Включить или выключить проект (action = enable | disable)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: action, in: path, required: true, schema: { enum: [enable, disable] } }
+      responses: { "200": { description: Выполнено }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/events:
+    get:
+      summary: Состояние всех событий (EventStatus)
+      responses: { "200": { description: "{events: [...]}" } }
+  /api/v1/events/{project}/{event}/{action}:
+    post:
+      summary: Запустить (run, ждёт завершения), включить (enable) или выключить (disable) событие
+      parameters:
+        - { name: project, in: path, required: true, schema: { type: string } }
+        - { name: event, in: path, required: true, schema: { type: string } }
+        - { name: action, in: path, required: true, schema: { enum: [run, enable, disable] } }
+      responses: { "200": { description: Выполнено }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/vars/{project}:
+    get:
+      summary: Переменные активного проекта
+      parameters: [ { name: project, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: "{vars: {...}}" }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/vars/{project}/{name}:
+    put:
+      summary: Задать переменную ({value})
+      parameters:
+        - { name: project, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Выполнено } }
+  /api/v1/wait/key:
+    post:
+      summary: Ждать нажатия клавиши ({key, timeout_ms}); 408 — время вышло
+      responses: { "200": { description: Нажата }, "408": { $ref: "#/components/responses/Error" } }
+  /api/v1/resume:
+    post:
+      summary: Снова разрешить перехват клавиатуры после экстренной остановки
+      responses: { "200": { description: Выполнено } }
+  /api/v1/registry:
+    get:
+      summary: Зарегистрированные виды (trigger, condition, action, …) с метаданными и JSON Schema параметров
+      responses: { "200": { description: "{точка: [ExtensionMeta]}" } }
   /api/v1/shutdown:
     post:
       summary: Корректно завершить демон
@@ -220,6 +271,7 @@ components:
               state: { type: string }
               error: { type: string }
         input: { $ref: "#/components/schemas/InputStatus" }
+        grab_suspended: { type: boolean }
         output:
           type: object
           properties:
