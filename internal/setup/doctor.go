@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"mkey/internal/contracts"
 	ev "mkey/internal/lib/evdev"
@@ -42,10 +45,24 @@ type Module struct {
 	// session и platform — сервисы других модулей (nil, если модуль отключён).
 	session  contracts.Session
 	platform contracts.Platform
+	// notifier и tr — для уведомления о проблемах при запуске (nil, если модуль desktop отключён).
+	notifier contracts.Notifier
+	tr       contracts.Translator
+	log      *slog.Logger
+	// cfg — настройки; stop прерывает проверку при запуске; wg ждёт её.
+	cfg  Config
+	stop context.CancelFunc
+	wg   sync.WaitGroup
+}
+
+// Config — настройки модуля из секции modules.setup.
+type Config struct {
+	// StartupCheckMS — через сколько миллисекунд после запуска проверить систему (0 — не проверять).
+	StartupCheckMS int `json:"startup_check_ms"`
 }
 
 // New создаёт модуль для настоящей системы.
-func New() *Module { return &Module{probe: osProbe{}} }
+func New() *Module { return &Module{probe: osProbe{}, cfg: Config{StartupCheckMS: 5000}} }
 
 // ID возвращает идентификатор модуля.
 func (m *Module) ID() string { return ModuleID }
@@ -59,14 +76,64 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if p, err := contracts.LookupService[contracts.Platform](host.Services()); err == nil {
 		m.platform = p
 	}
+	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	m.tr = host.I18n()
+	m.log = host.Logger()
+	if err := host.Config().Decode(&m.cfg); err != nil {
+		return fmt.Errorf("%s: %w", ModuleID, err)
+	}
 	return contracts.ProvideService[contracts.Doctor](host.Services(), m)
 }
 
-// Start ничего не делает: проверки выполняются по запросу.
-func (m *Module) Start(context.Context) error { return nil }
+// Start запускает проверку системы вскоре после старта демона (FR-INST-3).
+func (m *Module) Start(context.Context) error {
+	if m.cfg.StartupCheckMS <= 0 {
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.stop = cancel
+	m.wg.Add(1)
+	go m.startupCheck(ctx)
+	return nil
+}
 
-// Stop ничего не делает: модуль не держит ресурсов.
-func (m *Module) Stop(context.Context) error { return nil }
+// Stop прерывает проверку при запуске.
+func (m *Module) Stop(context.Context) error {
+	if m.stop != nil {
+		m.stop()
+	}
+	m.wg.Wait()
+	return nil
+}
+
+// startupCheck проверяет систему и, если есть проблемы, сообщает пользователю уведомлением
+// (например, после обновления системы пропало правило доступа к устройствам).
+func (m *Module) startupCheck(ctx context.Context) {
+	defer m.wg.Done()
+
+	// Пауза: устройства и права к этому времени уже на месте.
+	select {
+	case <-time.After(time.Duration(m.cfg.StartupCheckMS) * time.Millisecond):
+	case <-ctx.Done():
+		return
+	}
+
+	// Проверки; проблемы — в журнал и уведомлением.
+	checks := m.Run(ctx)
+	if Healthy(checks) {
+		return
+	}
+	for _, c := range checks {
+		if c.Status == contracts.CheckFail {
+			m.log.Warn("startup check failed", "check", c.ID, "message_key", c.MessageKey)
+		}
+	}
+	if m.notifier != nil {
+		if err := m.notifier.Notify(ctx, m.tr.T("notify.setup_needed.title"), m.tr.T("notify.setup_needed.body")); err != nil {
+			m.log.Debug("notification not shown", "err", err)
+		}
+	}
+}
 
 // Run выполняет все проверки в порядке, удобном для чтения пользователем.
 func (m *Module) Run(context.Context) []contracts.Check {
