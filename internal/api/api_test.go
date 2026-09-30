@@ -248,3 +248,11 @@ func TestStartStopUnixSocket(t *testing.T) {
 
 // Проверка на этапе компиляции, что фейк реализует контракт.
 var _ contracts.SequenceRunner = (*fakeRunner)(nil)
+
+// TestNoGUINoPort проверяет, что без веб-интерфейса TCP-порт по умолчанию не открывается.
+func TestNoGUINoPort(t *testing.T) {
+	t.Parallel()
+	if New(nil).cfg.Port != 0 || New(fstest.MapFS{}).cfg.Port != DefaultPort {
+		t.Fatal("unexpected default port")
+	}
+}

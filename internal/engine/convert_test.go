@@ -21,7 +21,7 @@ func TestDSLRoundTrip(t *testing.T) {
 		{`{Move +10 -5}{Click right}{Wheel down 3}`, `[{"type":"mouse_move","value":{"dx":10,"dy":-5}},{"type":"mouse_click","value":"Right"},{"type":"wheel","value":{"count":3,"direction":"Down"}}]`, `{Move +10 -5}{Click Right}{Wheel Down 3}`},
 		// Повтор и группы остаются макросом; соседние фрагменты склеиваются.
 		{`{A*3}({B}[10])*2{C}`, `[{"type":"send","value":"{A*3}({B}[10])*2"},{"type":"tap","value":"C"}]`, `{A*3}({B}[10])*2{C}`},
-		{`{Ctrl+C}`, `[{"type":"tap","value":"Ctrl+C"}]`, `{Ctrl+C}`},
+		{`^{Ctrl}{C}~{Ctrl}`, `[{"type":"key_down","value":"Ctrl"},{"type":"tap","value":"C"},{"type":"key_up","value":"Ctrl"}]`, `^{Ctrl}{C}~{Ctrl}`},
 	}
 	for _, c := range cases {
 		// Макрос → действия.

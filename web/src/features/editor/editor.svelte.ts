@@ -55,6 +55,7 @@ export class Editor {
   /** projects и devices — списки для выбора в полях «Проект» и «Устройство». */
   projects = $state<ProjectInfo[]>([]);
   devices = $state<string[]>([]);
+  recordings = $state<string[]>([]);
   /** savedAt — время последнего своего сохранения (чтобы не считать его чужой правкой файла). */
   savedAt = 0;
 

@@ -42,6 +42,10 @@ func (f *fakeInput) ResumeGrab() {}
 
 // EmergencyStop не нужен тестам горячих клавиш.
 func (f *fakeInput) EmergencyStop(string) {}
+
+// EmergencyCombo и SetEmergencyCombo не нужны тестам горячих клавиш.
+func (f *fakeInput) EmergencyCombo() string         { return "" }
+func (f *fakeInput) SetEmergencyCombo(string) error { return nil }
 func (f *fakeInput) SetGrabPolicy(p func(contracts.InputDevice) bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -126,7 +130,7 @@ func key(m *Module, code uint16, value int32) bool {
 func TestChordConsume(t *testing.T) {
 	t.Parallel()
 	m, in := newTestModule()
-	rec := arm(t, hotkeyType{m}, map[string]any{"keys": "{Ctrl+Alt+H}", "consume": true})
+	rec := arm(t, hotkeyType{m}, map[string]any{"keys": "^{Ctrl}^{Alt}{H}", "consume": true})
 
 	// Захват включён для устройства с клавишей H.
 	if !in.grabs() {
@@ -229,7 +233,7 @@ func TestNoGrabWithoutConsume(t *testing.T) {
 func TestModifiersReleaseRestore(t *testing.T) {
 	t.Parallel()
 	m, in := newTestModule()
-	rec := arm(t, hotkeyType{m}, map[string]any{"keys": "{Ctrl+H}", "consume": true})
+	rec := arm(t, hotkeyType{m}, map[string]any{"keys": "^{Ctrl}{H}", "consume": true})
 	key(m, ev.KeyLeftctrl, 1)
 	key(m, ev.KeyH, 1)
 

@@ -194,6 +194,11 @@ func (p *parser) action() (Node, error) {
 	switch r := p.peek(); {
 	case p.eof():
 		return Node{}, newError(start, ErrUnclosedBrace)
+	case r == '{' || (r == '}' && p.peekNext() == '}'):
+		// Считаются только крайние скобки: {{} и {}} — «клавиша» с именем «{» или «}».
+		// Такой клавиши нет (это Shift и [ или ]) — объясняем, как быть.
+		p.next()
+		return Node{}, newError(start, ErrBraceKey, "char", string(r))
 	case r == '}':
 		return Node{}, newError(start, ErrEmptyBraces)
 	case r == '"':
@@ -242,7 +247,9 @@ func (p *parser) releaseAll(start Pos, pre prefix) (Node, error) {
 	return Node{Kind: KindUpAll, Pos: start}, nil
 }
 
-// keyOrCommand разбирает команду ({Move +10 -5}) или запись с клавишами ({Ctrl+C}, {A*3}, {Space 500}).
+// keyOrCommand разбирает команду ({Move +10 -5}) или запись с одной клавишей ({A}, {A*3}, {Space 500}).
+// В скобках — всегда одна клавиша (решение владельца): {Ctrl+C} — ошибка с подсказкой, как записать
+// сочетание зажатием: ^{Ctrl}{C}~{Ctrl}.
 func (p *parser) keyOrCommand(start Pos, pre prefix) (Node, error) {
 	// Первая ссылка на клавишу; если это имя команды без префикса устройства — разбираем команду.
 	refPos := p.pos()
@@ -259,27 +266,14 @@ func (p *parser) keyOrCommand(start Pos, pre prefix) (Node, error) {
 		}
 	}
 
-	// Проверяем имя и собираем сочетание через "+".
+	// Проверяем имя; «+» после клавиши — попытка записать сочетание в одних скобках.
 	if err := p.checkKey(&ref, refPos); err != nil {
 		return Node{}, err
 	}
 	n := Node{Kind: KindTap, Pos: start, Keys: []KeyRef{ref}}
-	for {
-		p.skipSpace()
-		if p.peek() != '+' {
-			break
-		}
-		p.next()
-		p.skipSpace()
-		refPos = p.pos()
-		ref, err := p.keyRef()
-		if err != nil {
-			return Node{}, err
-		}
-		if err := p.checkKey(&ref, refPos); err != nil {
-			return Node{}, err
-		}
-		n.Keys = append(n.Keys, ref)
+	p.skipSpace()
+	if p.peek() == '+' {
+		return Node{}, p.chordError(start, ref)
 	}
 
 	// Необязательный повтор "*N". Повтор 1 хранится как 0 («без повтора»), чтобы дерево было каноническим.
@@ -332,6 +326,38 @@ func (p *parser) keyOrCommand(start Pos, pre prefix) (Node, error) {
 		}
 	}
 	return n, nil
+}
+
+// chordError дочитывает запись вида {Ctrl+Alt+C} и возвращает ошибку с подсказкой, как записать
+// её по правилам: зажатием (^{Ctrl}^{Alt}{C}~{Alt}~{Ctrl} в макросе, ^{Ctrl}^{Alt}{C} в горячей клавише).
+func (p *parser) chordError(start Pos, first KeyRef) error {
+	names := []string{formatKeyRef(first)}
+	for p.peek() == '+' {
+		p.next()
+		p.skipSpace()
+		ref, err := p.keyRef()
+		if err != nil {
+			break
+		}
+		_ = p.checkKey(&ref, p.pos())
+		names = append(names, formatKeyRef(ref))
+		p.skipSpace()
+	}
+
+	// Подсказки: зажать все, кроме последней, нажать последнюю, отпустить в обратном порядке.
+	var macro, hotkey, release strings.Builder
+	for i, n := range names {
+		if i == len(names)-1 {
+			macro.WriteString("{" + n + "}")
+			hotkey.WriteString("{" + n + "}")
+			continue
+		}
+		macro.WriteString("^{" + n + "}")
+		hotkey.WriteString("^{" + n + "}")
+		release.WriteString("~{" + names[len(names)-2-i] + "}")
+	}
+	macro.WriteString(release.String())
+	return newError(start, ErrChord, "keys", strings.Join(names, "+"), "macro", macro.String(), "hotkey", hotkey.String())
 }
 
 // keyRef разбирает ссылку на клавишу: "Name", "device.Name", "device.001" или "#30" / "#0x110".

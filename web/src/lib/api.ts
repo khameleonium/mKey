@@ -6,6 +6,7 @@ import type {
   Action,
   ApiErrorBody,
   CapturedKey,
+  RecordingInfo,
   DoctorCheck,
   EventStatus,
   InputDevice,
@@ -34,8 +35,16 @@ export class ApiError extends Error {
   }
 }
 
-/** request выполняет запрос и возвращает разобранный JSON; ошибки превращает в ApiError. */
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * request выполняет запрос и возвращает разобранный JSON; ошибки превращает в ApiError.
+ * signal прерывает запрос; для долгих операций (воспроизведение) это останавливает их в демоне.
+ */
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   // Отправляем запрос; сетевой сбой означает, что демон не запущен.
   let resp: Response;
   try {
@@ -47,8 +56,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: "same-origin",
+      signal,
     });
   } catch {
+    // Прерванный запрос — остановка по просьбе пользователя.
+    if (signal?.aborted) throw new ApiError(0, { code: "api.stopped", message: "stopped" });
     throw new ApiError(0, { code: "net", message: "mKey is not running" });
   }
 
@@ -102,6 +114,20 @@ export const api = {
     request<{ text: string }>("POST", "/actions/to_dsl", { actions }),
   captureKey: (combo: boolean, timeoutMs = 15000) =>
     request<CapturedKey>("POST", "/capture/key", { combo, timeout_ms: timeoutMs }),
+
+  // Запись и воспроизведение.
+  recordings: () =>
+    request<{ recordings: RecordingInfo[]; current?: RecordingInfo }>("GET", "/recordings"),
+  startRecording: (name: string) => request<RecordingInfo>("POST", "/recordings/start", { name }),
+  stopRecording: () => request<RecordingInfo>("POST", "/recordings/stop", {}),
+  deleteRecording: (name: string) => request<{ ok: boolean }>("DELETE", `/recordings/${enc(name)}`),
+  play: (name: string, speed: number, repeat: number, signal?: AbortSignal) =>
+    request<{ ok: boolean }>("POST", "/play", { name, speed, repeat }, signal),
+
+  // Системные сочетания mKey.
+  hotkeys: () => request<{ record?: string; emergency?: string }>("GET", "/settings/hotkeys"),
+  setHotkeys: (h: { record?: string; emergency?: string }) =>
+    request<{ record?: string; emergency?: string }>("PUT", "/settings/hotkeys", h),
 
   // Управление программой.
   stopAll: () => request<{ ok: boolean }>("POST", "/stop", {}),

@@ -34,6 +34,11 @@ const (
 	ErrUnknownDevice    = "dsl.unknown_device"     // {device}
 	ErrNotSupported     = "dsl.not_supported"      // {what}: возможность появится позже
 	ErrUntypeable       = "dsl.untypeable_char"    // {char}, {layouts}: символа нет в раскладках
+	ErrChord            = "dsl.chord_in_braces"    // {keys}, {macro}, {hotkey}: {Ctrl+C} — в скобках одна клавиша
+	ErrBraceKey         = "dsl.brace_key"          // {char}: {{} или {}} — такой клавиши нет
+	ErrAlreadyHeld      = "dsl.already_held"       // {key}: ^{A} или {A}, когда A уже зажата
+	ErrNotHeld          = "dsl.not_held"           // {key}: ~{A} без ^{A}
+	ErrBadHotkey        = "dsl.bad_hotkey"         // сочетание горячей клавиши записано не так
 )
 
 // AllErrorCodes — все коды ошибок языка (тест i18n проверяет, что у каждого есть перевод).
@@ -43,6 +48,7 @@ var AllErrorCodes = []string{
 	ErrUnknownKey, ErrUnknownKeyHint, ErrBadNumber, ErrBadDuration, ErrTooLong, ErrBadRepeat,
 	ErrPrefixNotAllowed, ErrStarOnlyRelease, ErrRepeatAndHold, ErrPauseRange, ErrAxisChord,
 	ErrBadCommandArgs, ErrUnknownDevice, ErrNotSupported, ErrUntypeable,
+	ErrChord, ErrBraceKey, ErrAlreadyHeld, ErrNotHeld, ErrBadHotkey,
 }
 
 // Error — ошибка в макросе с позицией и параметрами для понятного сообщения.

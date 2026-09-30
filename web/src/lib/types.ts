@@ -180,6 +180,17 @@ export interface InputDevice {
   kinds: string[];
 }
 
+/** Запись ввода (GET /recordings). */
+export interface RecordingInfo {
+  name: string;
+  path: string;
+  created: string;
+  duration_ms: number;
+  events: number;
+  devices?: string[];
+  stop_hotkey?: string;
+}
+
 /** Результат «Нажмите клавишу…». */
 export interface CapturedKey {
   name: string;

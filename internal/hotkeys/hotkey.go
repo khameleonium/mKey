@@ -25,7 +25,7 @@ const (
 
 // hotkeyParams — параметры триггера hotkey.
 type hotkeyParams struct {
-	// Keys — сочетание в записи DSL, например "{Ctrl+Alt+H}" или "{F8}".
+	// Keys — сочетание записью зажатием, например "^{Ctrl}^{Alt}{H}" или "{F8}".
 	Keys string `json:"keys"`
 	// On — когда срабатывать: press (по умолчанию), release, hold, double, toggle.
 	On string `json:"on"`
@@ -324,21 +324,14 @@ func (c *modControl) Restore() {
 	clear(c.released)
 }
 
-// parseChord разбирает сочетание "{Ctrl+Alt+H}" (фигурные скобки можно опустить).
+// parseChord разбирает сочетание записью зажатием: "^{Ctrl}^{Alt}{H}" (зажатые клавиши и последняя
+// нажатая) или "{F8}" (одна клавиша).
 func parseChord(s string) ([]keys.Key, error) {
-	// Разбор записью языка макросов: ровно одно нажатие без повтора и удержания.
-	s = strings.TrimSpace(s)
-	if !strings.HasPrefix(s, "{") {
-		s = "{" + s + "}"
-	}
-	nodes, err := dsl.Parse(s)
+	refs, err := dsl.ParseHotkey(strings.TrimSpace(s))
 	if err != nil {
 		return nil, err
 	}
-	if len(nodes) != 1 || nodes[0].Kind != dsl.KindTap || nodes[0].Repeat > 0 || nodes[0].HoldMS > 0 {
-		return nil, fmt.Errorf("keys must be a single key or chord, e.g. {Ctrl+Alt+H}")
-	}
-	return refsToKeys(nodes[0].Keys)
+	return refsToKeys(refs)
 }
 
 // parseSequence разбирает последовательность "{G}{G}": несколько одиночных клавиш.

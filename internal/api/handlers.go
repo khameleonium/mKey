@@ -49,6 +49,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 
 	// Веб-интерфейс (этап 5).
 	m.registerGUIRoutes(mux)
+	m.registerRecRoutes(mux)
 
 	// Управление демоном.
 	mux.HandleFunc("POST /api/v1/shutdown", m.handleShutdown)
@@ -73,6 +74,9 @@ type statusResponse struct {
 	Output    *contracts.OutputStatus  `json:"output,omitempty"`
 	// GrabSuspended — перехват отключён после экстренной остановки (включить: mkey resume).
 	GrabSuspended bool `json:"grab_suspended"`
+	// Playing — сколько идёт воспроизведений записей; Recording — идущая запись (если есть).
+	Playing   int                      `json:"playing"`
+	Recording *contracts.RecordingInfo `json:"recording,omitempty"`
 }
 
 // handleStatus возвращает состояние демона и модулей.
@@ -100,6 +104,14 @@ func (m *Module) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	}
 	if m.svc.keyState != nil {
 		resp.GrabSuspended = m.svc.keyState.Suspended()
+	}
+	if m.svc.player != nil {
+		resp.Playing = m.svc.player.Playing()
+	}
+	if m.svc.recorder != nil {
+		if info, ok := m.svc.recorder.Recording(); ok {
+			resp.Recording = &info
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -164,17 +176,24 @@ func (m *Module) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Сухой прогон: разбор и компиляция без выполнения.
-	if req.DryRun {
-		nodes, err := dsl.Parse(req.Sequence)
-		if err == nil {
-			var steps []dsl.Step
-			if steps, err = dsl.Compile(nodes, dsl.DefaultResolver{}); err == nil {
-				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "steps": steps})
-				return
-			}
-		}
+	// Разбор и проверка зажатий (^ дважды, ~ без ^) — до выполнения.
+	nodes, err := dsl.Parse(req.Sequence)
+	if err == nil {
+		err = dsl.CheckHolds(nodes)
+	}
+	if err != nil {
 		m.writeRunError(w, r, err)
+		return
+	}
+
+	// Сухой прогон: компиляция без выполнения.
+	if req.DryRun {
+		steps, err := dsl.Compile(nodes, dsl.DefaultResolver{})
+		if err != nil {
+			m.writeRunError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "steps": steps})
 		return
 	}
 
@@ -203,6 +222,9 @@ func (m *Module) handleParse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nodes, err := dsl.Parse(req.Text)
+	if err == nil {
+		err = dsl.CheckHolds(nodes)
+	}
 	if err != nil {
 		m.writeRunError(w, r, err)
 		return
@@ -235,6 +257,9 @@ func (m *Module) handleStop(w http.ResponseWriter, r *http.Request) {
 	}
 	n := m.svc.runner.Running()
 	m.svc.runner.StopAll()
+	if m.svc.player != nil {
+		n += m.svc.player.StopPlayback()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"stopped": n})
 }
 
@@ -242,6 +267,9 @@ func (m *Module) handleStop(w http.ResponseWriter, r *http.Request) {
 func (m *Module) handlePanic(w http.ResponseWriter, r *http.Request) {
 	if m.svc.runner != nil {
 		m.svc.runner.StopAll()
+	}
+	if m.svc.player != nil {
+		m.svc.player.StopPlayback()
 	}
 	if m.svc.devices != nil {
 		if err := m.svc.devices.ReleaseAll(); err != nil {

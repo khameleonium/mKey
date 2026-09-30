@@ -243,7 +243,8 @@ paths:
         События: `store.projects_changed` ([id]), `store.project_error`, `engine.project_error`,
         `engine.event_started` (EventRef), `engine.event_finished` (EventRef + error),
         `input.emergency`, `input.resumed`, `input.device_added` / `input.device_removed` ({path, name}),
-        `input.access_changed`. Раз в 15 с — комментарий `: ping`.
+        `input.access_changed`, `recorder.started` / `recorder.stopped` (RecordingInfo).
+        Раз в 15 с — комментарий `: ping`.
       responses: { "200": { description: "text/event-stream" } }
   /api/v1/capture/key:
     post:
@@ -275,6 +276,47 @@ paths:
     get:
       summary: Последние строки журнала (?lines=N, по умолчанию 200, не больше 2000)
       responses: { "200": { description: "{lines: [...]}" } }
+  /api/v1/recordings:
+    get:
+      summary: "Записи ввода ({recordings: [RecordingInfo], current?: RecordingInfo})"
+      responses: { "200": { description: Записи } }
+  /api/v1/recordings/{name}:
+    delete:
+      summary: Удалить запись
+      parameters: [ { name: name, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: Удалено }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/recordings/status:
+    get:
+      summary: "Идущая запись: {recording, info}"
+      responses: { "200": { description: Состояние } }
+  /api/v1/recordings/start:
+    post:
+      summary: "Начать запись ({name, kinds}); 409 — запись уже идёт"
+      responses: { "200": { description: RecordingInfo (с stop_hotkey) }, "409": { $ref: "#/components/responses/Error" } }
+  /api/v1/recordings/stop:
+    post:
+      summary: "Закончить запись ({cut}: сочетание остановки для вырезания, например Ctrl+C); 409 — запись не идёт"
+      responses: { "200": { description: RecordingInfo }, "409": { $ref: "#/components/responses/Error" } }
+  /api/v1/recordings/wait:
+    post:
+      summary: Ждать окончания идущей записи (сочетанием, из окна или другой командой)
+      responses: { "200": { description: RecordingInfo }, "409": { $ref: "#/components/responses/Error" } }
+  /api/v1/play:
+    post:
+      summary: "Воспроизвести запись и ждать окончания ({name, speed, repeat, skip_moves}); разрыв соединения останавливает"
+      responses:
+        "200": { description: Готово }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/settings/hotkeys:
+    get:
+      summary: "Системные сочетания mKey: {record, emergency} (запись зажатием, например ^{Ctrl}^{Alt}{R})"
+      responses: { "200": { description: Сочетания } }
+    put:
+      summary: "Изменить сочетания ({record?, emergency?}): проверяются, применяются сразу, сохраняются в config.yaml"
+      responses:
+        "200": { description: "{record, emergency}" }
+        "400": { $ref: "#/components/responses/Error" }
   /api/v1/shutdown:
     post:
       summary: Корректно завершить демон

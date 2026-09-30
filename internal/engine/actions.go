@@ -60,8 +60,15 @@ func dslAction(id, category, schema string, toDSL func(any) (string, error)) bui
 			if err != nil {
 				return err
 			}
-			_, err = compileSource(src)
-			return err
+			if _, err = compileSource(src); err != nil || id != "send" {
+				return err
+			}
+			// Макрос целиком (блок «Макрос»): зажатия и отпускания должны сходиться (^ дважды, ~ без ^ — ошибки).
+			nodes, err := dsl.Parse(src)
+			if err != nil {
+				return err
+			}
+			return dsl.CheckHolds(nodes)
 		},
 		run: func(ctx context.Context, rc contracts.RunContext, a project.Action) error {
 			src, err := toDSL(a.Value)
@@ -82,7 +89,8 @@ func sendDSL(v any) (string, error) {
 	return s, nil
 }
 
-// keyDSL — действия tap/key_down/key_up: имя клавиши или сочетания ("Shift", "Ctrl+C", "{F8}").
+// keyDSL — действия tap/key_down/key_up: имя одной клавиши ("Shift", "{F8}"); сочетание в одних
+// скобках ("Ctrl+C") разбор макроса отвергнет с подсказкой, как записать его зажатием.
 func keyDSL(prefix string) func(any) (string, error) {
 	return func(v any) (string, error) {
 		s, ok := v.(string)

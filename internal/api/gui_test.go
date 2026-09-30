@@ -262,7 +262,7 @@ func TestCaptureKey(t *testing.T) {
 		body, want string
 	}{
 		{`{"timeout_ms":1000}`, "LCtrl"},
-		{`{"timeout_ms":1000,"combo":true}`, "Ctrl+H"},
+		{`{"timeout_ms":1000,"combo":true}`, "^{Ctrl}{H}"},
 	} {
 		m, _ := newTestModule(t)
 		m.svc.input = &captureInput{events: press}

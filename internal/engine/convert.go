@@ -51,6 +51,9 @@ func (m *Module) DSLToActions(text string) ([]project.Action, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := dsl.CheckHolds(nodes); err != nil {
+		return nil, err
+	}
 	out := []project.Action{}
 	for _, n := range nodes {
 		a, ok := nodeAction(n)
@@ -130,7 +133,7 @@ func commandAction(n dsl.Node) (project.Action, bool) {
 	return project.Action{}, false
 }
 
-// keysName возвращает клавишу или сочетание узла без скобок: "Ctrl+C", "pad2.South".
+// keysName возвращает клавишу узла без скобок: "C", "pad2.South".
 func keysName(n dsl.Node) string {
 	s := dsl.Format([]dsl.Node{{Kind: dsl.KindTap, Keys: n.Keys}})
 	return strings.TrimSuffix(strings.TrimPrefix(s, "{"), "}")

@@ -8,14 +8,13 @@ import (
 	"mkey/internal/input"
 	"mkey/internal/output"
 	"mkey/internal/platform"
+	"mkey/internal/recorder"
 	"mkey/internal/registry"
 	"mkey/internal/script/lua"
 	"mkey/internal/script/shell"
 	"mkey/internal/session"
 	"mkey/internal/setup"
 	"mkey/internal/store"
-	"mkey/internal/tray"
-	"mkey/web"
 	// mkey:imports — генератор `make new-module` добавляет импорты модулей над этой строкой.
 )
 
@@ -26,8 +25,9 @@ import (
 // Core: true — обязательный модуль (его сбой останавливает запуск),
 // иначе — необязательный (его можно отключить в config.yaml, его сбой не влияет на остальных).
 // Порядок важен: модули, от сервисов которых зависят другие, идут раньше.
+// Модули окна программы (значок в трее) добавляются в конце только в полной сборке (gui.go / nogui.go).
 func Modules() []registry.Entry {
-	return []registry.Entry{
+	list := []registry.Entry{
 		// Сведения о сессии и системе нужны почти всем — первыми.
 		{Module: session.New(), Core: true},
 		{Module: platform.New(), Core: true},
@@ -45,11 +45,13 @@ func Modules() []registry.Entry {
 		// Скрипты: регистрируют действия lua и shell.
 		{Module: lua.New(), Core: false},
 		{Module: shell.New(), Core: false},
+		// Запись и воспроизведение ввода (нужны input и output; регистрирует действие play).
+		{Module: recorder.New(), Core: false},
 		// Диагностика и настройка.
 		{Module: setup.New(), Core: false},
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.
-		{Module: api.New(web.FS()), Core: true},
-		{Module: tray.New(), Core: false},
+		{Module: api.New(webFS()), Core: true},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой.
 	}
+	return append(list, guiModules()...)
 }

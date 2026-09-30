@@ -36,7 +36,8 @@ ADR и правка `SPEC.md` — в одном коммите/PR. Если ре
 Go-модуль называется `mkey` (репозиторий пока локальный, без remote; не добавляй remote и не пушь). Go 1.27 установлен в `/usr/local/go` (в `PATH` может не быть — тогда вызывай `/usr/local/go/bin/go` или добавь `export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin`). `staticcheck` лежит в `~/go/bin`. В `go.mod` — `go 1.27`.
 
 ```bash
-make build              # web + go build (CGO_ENABLED=0) → ./mkey
+make build              # web + go build (CGO_ENABLED=0) → ./mkey и консольная ./mkey-cli
+make build-cli          # только консольная версия ./mkey-cli (-tags nogui: без окна и трея, Node не нужен)
 make web                # только фронтенд → web/dist
 make test               # go test ./... + фронтенд-тесты (без прав и устройств)
 make test-integration   # go test -tags integration ./test/integration/... (нужен /dev/uinput)
@@ -86,6 +87,7 @@ make gencodes           # перегенерировать коды клавиш
 ## 4a. Язык макросов (DSL) — решения владельца, не менять без согласования
 
 - Клавиши — **только явные имена**, регистронезависимо: `{Ctrl}`, `{Shift}`, `{Enter}`, `{Mouse0}`. Никаких AHK-сокращений (`^` = Ctrl, `+` = Shift, `!` = Alt).
+- В фигурных скобках — **всегда одна клавиша**, везде (макросы, горячие клавиши, системные сочетания): `{Ctrl+C}` — ошибка; сочетание пишется зажатием `^{Ctrl}{C}~{Ctrl}`, горячая клавиша — `^{Ctrl}^{Alt}{H}`. `^` дважды без `~` и `~` без `^` — ошибки (ADR-0025).
 - Символы обозначают действия: `{Key}` — нажать, `^{Key}` — зажать, `~{Key}` — отпустить, `{Key 500}` — удерживать 500 мс, `[250]` — пауза, `{"текст"}` — набор текста с JSON-экранированиями (`\n` → Enter).
 - Зажатые через `^{...}` модификаторы **действуют на набираемый текст**, как при ручном наборе: `^{Shift}{"Привет, Вера!"}~{Shift}` → `ПРИВЕТ, ВЕРА!`.
 - Кнопки неизвестных устройств — авто-ID `{UnKey001}` (устройство `UnKey`, кнопка `001`), переименовываются в `{Sega.Start}`; авто-ID навсегда остаются рабочими алиасами (SPEC §5.6).
@@ -199,7 +201,9 @@ internal/archtest    архитектурный тест границ модул
 tools/newmodule      генератор каркаса модуля (make new-module)
 internal/desktop/*   адаптеры X11/GNOME/KDE/Sway/Hyprland/wlroots/portal/fake → docs/adapters.md
 internal/script/*    Lua (gopher-lua) и bash            → docs/lua-api.md
-internal/recorder    запись/воспроизведение
+internal/recorder    запись/воспроизведение (mkey rec / mkey play) → docs/recording.md
+internal/lib/mkrec   формат записей .mkrec (библиотека)
+internal/tray        значок в трее; internal/lib/sni — протокол StatusNotifierItem
 internal/setup       doctor, privileged, install/uninstall, manifest
 internal/store       YAML-модели, схемы, миграции
 internal/api         HTTP/WS                             → docs/openapi.yaml

@@ -57,4 +57,8 @@ type VirtualDevices interface {
 	Status() OutputStatus
 	// ReleaseAll отпускает все зажатые клавиши на всех виртуальных устройствах (SEC-2).
 	ReleaseAll() error
+	// CenterPointer ставит указатель мыши в центр рабочего стола — калибровка перед записью
+	// и воспроизведением (FR-REC-5). Работает в любом окружении (X11 и Wayland): через
+	// виртуальное устройство с абсолютными координатами, как у графического планшета.
+	CenterPointer(ctx context.Context) error
 }

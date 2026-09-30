@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/buildinfo"
 	"mkey/internal/lib/paths"
 	"mkey/internal/setup/manifest"
 )
@@ -111,7 +112,10 @@ func Files(e Env, w contracts.FileWriter) error {
 		}
 	}
 
-	// Иконка и ярлык в меню приложений: открывают интерфейс mKey.
+	// Иконка и ярлык в меню приложений: открывают интерфейс mKey (в консольной сборке окна нет).
+	if !buildinfo.GUI {
+		return nil
+	}
 	if err := w.WriteFile(e.IconPath(), icon, 0o644); err != nil {
 		return fmt.Errorf("install icon: %w", err)
 	}

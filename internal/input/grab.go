@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 )
@@ -304,7 +305,8 @@ func (m *Module) forward(d *openDevice, events []ev.Event) {
 // когда зажаты все клавиши комбинации. Вызывается из горутины чтения до любых обработчиков.
 func (m *Module) checkEmergency(path string, d *openDevice, e ev.Event) {
 	// Интересуют только клавиши.
-	if e.Type != ev.EvKey || len(m.emergency) == 0 {
+	combo := m.emergency.Load()
+	if e.Type != ev.EvKey || combo == nil {
 		return
 	}
 	if e.Value == ev.ValueUp {
@@ -315,8 +317,12 @@ func (m *Module) checkEmergency(path string, d *openDevice, e ev.Event) {
 
 	// Все клавиши комбинации зажаты — срабатываем один раз, до отпускания.
 	all := true
-	for _, c := range m.emergency {
-		all = all && d.down[c]
+	for _, k := range combo.keys {
+		found := false
+		for c := range d.down {
+			found = found || k.Matches(c)
+		}
+		all = all && found
 	}
 	switch {
 	case all && !d.emergencyFired:
@@ -386,18 +392,41 @@ func (m *Module) checkWatchdog() {
 	}
 }
 
-// emergencyCodes переводит имена клавиш экстренной остановки в коды.
-func emergencyCodes(names []string) ([]uint16, error) {
-	if len(names) < 2 {
+// emergencyKeys разбирает сочетание экстренной остановки («^{Esc}^{Backspace}{Enter}») в клавиши.
+// Нужно не меньше двух клавиш: одна клавиша срабатывала бы при обычной работе.
+func emergencyKeys(combo string) ([]keys.Key, error) {
+	refs, err := dsl.ParseHotkey(combo)
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) < 2 {
 		return nil, errors.New("at least two keys are required")
 	}
-	codes := make([]uint16, 0, len(names))
-	for _, n := range names {
-		k, ok := keys.Lookup(n)
-		if !ok {
-			return nil, fmt.Errorf("unknown key %q", n)
+	out := make([]keys.Key, 0, len(refs))
+	for _, r := range refs {
+		k, ok := keys.Lookup(r.Name)
+		if r.Device != "" || r.Code != nil || !ok {
+			return nil, fmt.Errorf("unsupported key %q", r.Name)
 		}
-		codes = append(codes, k.Code)
+		out = append(out, k)
 	}
-	return codes, nil
+	return out, nil
+}
+
+// EmergencyCombo возвращает сочетание экстренной остановки записью зажатием (contracts.InputSource).
+func (m *Module) EmergencyCombo() string {
+	if c := m.emergency.Load(); c != nil {
+		return c.text
+	}
+	return ""
+}
+
+// SetEmergencyCombo меняет сочетание экстренной остановки сразу, без перезапуска (contracts.InputSource).
+func (m *Module) SetEmergencyCombo(combo string) error {
+	ks, err := emergencyKeys(combo)
+	if err != nil {
+		return err
+	}
+	m.emergency.Store(&emergencyCombo{text: combo, keys: ks})
+	return nil
 }

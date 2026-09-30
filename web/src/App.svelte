@@ -15,6 +15,7 @@
   import EditorPage from "./features/editor/EditorPage.svelte";
   import HomePage from "./features/home/HomePage.svelte";
   import ProjectsPage from "./features/projects/ProjectsPage.svelte";
+  import RecorderPage from "./features/recorder/RecorderPage.svelte";
   import SettingsPage from "./features/settings/SettingsPage.svelte";
   import SetupWizard from "./features/setup/SetupWizard.svelte";
 
@@ -22,6 +23,7 @@
   const NAV = [
     { name: "home", icon: "⌂" },
     { name: "projects", icon: "▦" },
+    { name: "recordings", icon: "⏺" },
     { name: "devices", icon: "⌨" },
     { name: "diagnostics", icon: "✚" },
     { name: "settings", icon: "⚙" },
@@ -95,6 +97,8 @@
       {#key route().param}
         <EditorPage id={route().param} />
       {/key}
+    {:else if route().name === "recordings"}
+      <RecorderPage />
     {:else if route().name === "devices"}
       <DevicesPage />
     {:else if route().name === "diagnostics"}

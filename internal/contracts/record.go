@@ -1,0 +1,94 @@
+package contracts
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+// Запись и воспроизведение ввода (модуль recorder, этап 6, FR-REC-1…4).
+
+// Темы шины записи и воспроизведения.
+const (
+	// TopicRecordingStarted — запись началась; Payload: RecordingInfo.
+	TopicRecordingStarted = "recorder.started"
+	// TopicRecordingStopped — запись закончилась и сохранена; Payload: RecordingInfo.
+	TopicRecordingStopped = "recorder.stopped"
+)
+
+// ErrNotRecording — запись сейчас не идёт.
+var ErrNotRecording = errors.New("not recording")
+
+// ErrAlreadyRecording — запись уже идёт.
+var ErrAlreadyRecording = errors.New("already recording")
+
+// ErrRecordingNotFound — записи с таким именем нет.
+var ErrRecordingNotFound = errors.New("recording not found")
+
+// RecordOptions — параметры новой записи.
+type RecordOptions struct {
+	// Name — имя записи (файл <имя>.mkrec в каталоге записей); пусто — по дате и времени.
+	Name string `json:"name"`
+	// Kinds — классы записываемых устройств ("keyboard", "mouse", "gamepad"…); пусто — клавиатуры и мыши.
+	Kinds []string `json:"kinds,omitempty"`
+}
+
+// RecordingInfo — сведения о записи.
+type RecordingInfo struct {
+	// Name — имя записи; Path — путь к файлу.
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// Created — когда начата запись.
+	Created time.Time `json:"created"`
+	// DurationMS — длительность в миллисекундах (для идущей записи — сколько записано).
+	DurationMS int64 `json:"duration_ms"`
+	// Events — число записанных событий (без служебных).
+	Events int `json:"events"`
+	// Devices — имена записанных устройств.
+	Devices []string `json:"devices,omitempty"`
+	// StopHotkey — сочетание, которым можно закончить идущую запись из любой программы ("" — нет).
+	StopHotkey string `json:"stop_hotkey,omitempty"`
+}
+
+// Recorder — запись ввода с физических устройств (модуль recorder).
+type Recorder interface {
+	// StartRecording начинает запись. ErrAlreadyRecording — запись уже идёт.
+	StartRecording(opts RecordOptions) (RecordingInfo, error)
+	// StopRecording заканчивает запись и сохраняет файл. cutChord — сочетание, которым её
+	// остановили ("^{Ctrl}{C}" в терминале): если оно только что было нажато, оно вырезается из записи.
+	// ErrNotRecording — запись не идёт.
+	StopRecording(cutChord string) (RecordingInfo, error)
+	// Recording возвращает сведения об идущей записи; false — запись не идёт.
+	Recording() (RecordingInfo, bool)
+	// WaitRecording ждёт окончания идущей записи (кнопкой, сочетанием или командой) и возвращает её.
+	WaitRecording(ctx context.Context) (RecordingInfo, error)
+	// Recordings возвращает сохранённые записи (новые — первыми).
+	Recordings() ([]RecordingInfo, error)
+	// DeleteRecording удаляет запись. ErrRecordingNotFound — такой нет.
+	DeleteRecording(name string) error
+	// RecordHotkey возвращает сочетание «начать/закончить запись» ("" — выключено).
+	RecordHotkey() string
+	// SetRecordHotkey меняет сочетание записи сразу ("" — выключить).
+	SetRecordHotkey(combo string) error
+}
+
+// PlayOptions — параметры воспроизведения.
+type PlayOptions struct {
+	// Speed — скорость (1 — как записано, 2 — вдвое быстрее); допустимо 0.1–10, 0 — 1.
+	Speed float64 `json:"speed"`
+	// Repeat — сколько раз повторить (0 — 1 раз; -1 — пока не остановят).
+	Repeat int `json:"repeat"`
+	// SkipMoves — не повторять перемещения мыши (только кнопки и клавиши).
+	SkipMoves bool `json:"skip_moves"`
+}
+
+// Player — воспроизведение записей через виртуальные устройства mKey (модуль recorder).
+type Player interface {
+	// Play воспроизводит запись name и ждёт окончания; отмена ctx останавливает воспроизведение
+	// и отпускает все нажатые им клавиши. ErrRecordingNotFound — такой записи нет.
+	Play(ctx context.Context, name string, opts PlayOptions) error
+	// StopPlayback останавливает все воспроизведения и возвращает, сколько их было.
+	StopPlayback() int
+	// Playing возвращает, сколько воспроизведений идёт сейчас.
+	Playing() int
+}

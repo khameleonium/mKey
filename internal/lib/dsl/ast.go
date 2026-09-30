@@ -5,7 +5,7 @@ type Kind string
 
 // Виды узлов.
 const (
-	// KindTap — нажать и отпустить клавишу или сочетание ({A}, {Ctrl+C}, {A*3}, {Space 500}).
+	// KindTap — нажать и отпустить клавишу ({A}, {A*3}, {Space 500}). В скобках — одна клавиша.
 	KindTap Kind = "tap"
 	// KindDown — зажать (^{Shift}).
 	KindDown Kind = "down"

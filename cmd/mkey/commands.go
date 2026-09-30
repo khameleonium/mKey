@@ -91,6 +91,9 @@ type statusInfo struct {
 	Output    *contracts.OutputStatus `json:"output"`
 	// GrabSuspended — перехват отключён после экстренной остановки.
 	GrabSuspended bool `json:"grab_suspended"`
+	// Playing — идущие воспроизведения; Recording — идущая запись.
+	Playing   int                      `json:"playing"`
+	Recording *contracts.RecordingInfo `json:"recording"`
 }
 
 // newStatusCmd создаёт команду `mkey status`.
@@ -137,6 +140,13 @@ func newStatusCmd(tr *i18n.Translator) *cobra.Command {
 				printf(out, "  %s\n", tr.T("cli.status.input", i18n.A("open", st.Input.Open), i18n.A("denied", len(st.Input.Denied))))
 			}
 			printf(out, "  %s\n", tr.T("cli.status.macros", i18n.A("count", st.Running)))
+			if st.Playing > 0 {
+				printf(out, "  %s\n", tr.T("cli.status.playing", i18n.A("count", st.Playing)))
+			}
+			if st.Recording != nil {
+				printf(out, "  %s\n", tr.T("cli.status.recording", i18n.A("name", st.Recording.Name),
+					i18n.A("seconds", st.Recording.DurationMS/1000)))
+			}
 			if st.GrabSuspended {
 				printf(out, "  %s\n", tr.T("cli.status.grab_suspended"))
 			}

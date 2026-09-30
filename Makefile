@@ -17,18 +17,23 @@ LDFLAGS := -s -w \
 # Каталоги.
 WEB := web
 BIN := mkey
+BIN_CLI := mkey-cli
 
-.PHONY: all build go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module gencodes clean help
+.PHONY: all build build-cli go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module gencodes clean help
 
 ## all: то же, что build
 all: build
 
-## build: собрать фронтенд и бинарник ./mkey
-build: web go-build
+## build: собрать фронтенд, полную версию ./mkey и консольную ./mkey-cli
+build: web go-build build-cli
 
 ## go-build: собрать только бинарник (фронтенд берётся как есть или заглушка)
 go-build:
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/mkey
+
+## build-cli: собрать консольную версию ./mkey-cli — без окна и значка в трее (ADR-0023, Node не нужен)
+build-cli:
+	go build -tags nogui -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_CLI) ./cmd/mkey
 
 ## web: собрать фронтенд в web/dist
 web: web-deps
@@ -45,6 +50,7 @@ test: go-test web-test
 
 go-test:
 	go test ./...
+	go test -tags nogui ./cmd/... ./internal/app/... ./internal/api/... ./internal/setup/...
 
 web-test: web-deps
 	cd $(WEB) && npm test
@@ -59,6 +65,7 @@ lint: go-lint web-lint
 
 go-lint:
 	go vet ./...
+	go vet -tags nogui ./...
 	golangci-lint run ./...
 	go test ./internal/archtest/
 

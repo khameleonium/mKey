@@ -42,6 +42,8 @@ const TOPICS = [
   "input.device_added",
   "input.device_removed",
   "input.access_changed",
+  "recorder.started",
+  "recorder.stopped",
 ];
 
 /** connect открывает поток и переподключается при обрыве (демон перезапущен). */

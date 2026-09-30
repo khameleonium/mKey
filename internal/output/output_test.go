@@ -246,3 +246,38 @@ func TestRateLimit(t *testing.T) {
 		t.Fatalf("packets = %d", len(w.packets))
 	}
 }
+
+// TestCenterPointer проверяет виртуальный указатель: создаётся при первом использовании
+// и получает середину обеих осей.
+func TestCenterPointer(t *testing.T) {
+	t.Parallel()
+	var setups []ev.Setup
+	var writers []*fakeWriter
+	mgr, mod := startModule(t, func(s ev.Setup) (eventWriter, error) {
+		w := &fakeWriter{}
+		setups, writers = append(setups, s), append(writers, w)
+		return w, nil
+	})
+	defer func() { _ = mgr.Stop(context.Background()) }()
+	mod.cfg.SettleMS = 0
+	if err := mod.CenterPointer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(setups) != 3 || setups[2].Name != "mKey Pointer" || len(setups[2].Abs) != 2 {
+		t.Fatalf("setups = %+v", setups)
+	}
+	// Два пакета: соседнее значение (ядро отбрасывает повтор прежних значений), затем середина;
+	// повторная постановка отправляет то же самое — и снова доходит до композитора.
+	if err := mod.CenterPointer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pk := writers[2].packets
+	if len(pk) != 4 {
+		t.Fatalf("packets = %v", pk)
+	}
+	for i, want := range []int32{16383, 16384, 16383, 16384} {
+		if pk[i][0].Code != ev.AbsX || pk[i][0].Value != want || pk[i][1].Code != ev.AbsY || pk[i][1].Value != want || !pk[i][2].IsSync() {
+			t.Fatalf("packet %d = %v", i, pk[i])
+		}
+	}
+}

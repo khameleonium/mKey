@@ -1,0 +1,477 @@
+// Package mkrec — формат записи ввода mKey (.mkrec, FR-REC-3): чтение и запись.
+//
+// Файл — обычный текст, его удобно читать и править в любом редакторе: одна строка — одно
+// действие (пакет событий одного устройства). Лишние действия можно просто удалить.
+//
+//	# Запись mKey. Строки, начинающиеся с #, — комментарии.
+//	mkrec 1
+//	created 2026-09-30T12:00:00Z
+//	device 0 keyboard "AT Translated Set 2 keyboard"
+//	device 1 mouse "Logitech USB Optical Mouse"
+//	pointer center                      ← перед записью указатель поставлен в центр экрана
+//	0.000 0 ^{A}                        ← время в секундах, номер устройства, действия
+//	0.120 0 ~{A}
+//	0.350 1 move +12 -3                 ← сдвиг мыши вправо на 12 и вверх на 3 точки
+//	0.500 1 ^{Mouse0}                   ← нажата левая кнопка мыши
+//	0.620 1 ~{Mouse0}
+//	1.200 1 wheel -1                    ← колесо на щелчок вниз
+//	5.000 end                           ← конец записи
+//
+// Действия: ^{Клавиша} — нажать, ~{Клавиша} — отпустить (имена — как в макросах, docs/dsl.md;
+// {#30} — клавиша по коду), move +dx +dy, wheel ±n, hwheel ±n, wheel-hr ±n, hwheel-hr ±n
+// (колесо высокого разрешения), ev тип код значение — любое другое событие evdev.
+// Автоповторы клавиш (значение 2) и служебные события EV_MSC не записываются.
+package mkrec
+
+import (
+	"bufio"
+	"errors"
+	"fmt"
+	"io"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	ev "mkey/internal/lib/evdev"
+	"mkey/internal/lib/keys"
+)
+
+// Version — версия формата.
+const Version = 1
+
+// FileExt — расширение файлов записей.
+const FileExt = ".mkrec"
+
+// Device — записанное устройство.
+type Device struct {
+	// ID — номер устройства в записи (на него ссылаются строки действий).
+	ID int
+	// Kinds — классы устройства (keyboard, mouse, gamepad…).
+	Kinds []string
+	// Name — имя устройства.
+	Name string
+}
+
+// Header — сведения в начале файла.
+type Header struct {
+	Version int
+	Created time.Time
+	Devices []Device
+	// Centered — перед записью указатель мыши поставлен в центр рабочего стола (калибровка,
+	// FR-REC-5): перед воспроизведением его тоже нужно поставить туда.
+	Centered bool
+}
+
+// Frame — одно действие: пакет событий одного устройства, отправляемый разом.
+type Frame struct {
+	// T — время от начала записи.
+	T time.Duration
+	// Device — номер устройства в записи.
+	Device int
+	// Events — события пакета без SYN_REPORT.
+	Events []ev.Event
+}
+
+// Recording — запись целиком.
+type Recording struct {
+	Header   Header
+	Frames   []Frame
+	Duration time.Duration
+}
+
+// Keep сообщает, записывается ли событие: без автоповторов, служебных EV_MSC и SYN.
+func Keep(e ev.Event) bool {
+	switch {
+	case e.Type == ev.EvMsc, e.Type == ev.EvSyn:
+		return false
+	case e.Type == ev.EvKey && e.Value == ev.ValueRepeat:
+		return false
+	}
+	return true
+}
+
+// IsMove сообщает, что действие — только перемещение мыши (REL_X/REL_Y).
+func (f Frame) IsMove() bool {
+	if len(f.Events) == 0 {
+		return false
+	}
+	for _, e := range f.Events {
+		if e.Type != ev.EvRel || (e.Code != ev.RelX && e.Code != ev.RelY) {
+			return false
+		}
+	}
+	return true
+}
+
+// HasPress сообщает, что в действии нажата кнопка или клавиша.
+func (f Frame) HasPress() bool {
+	for _, e := range f.Events {
+		if e.Type == ev.EvKey && e.Value == ev.ValueDown {
+			return true
+		}
+	}
+	return false
+}
+
+// ---- Запись ----
+
+// fileComment — пояснение в начале каждого файла записи.
+const fileComment = `# Запись mKey (mkey rec). Одна строка — одно действие: время в секундах от начала,
+# номер устройства, действия. Строки можно удалять и править; # в начале строки — комментарий.
+# ^{A} — нажать, ~{A} — отпустить, move +x +y — сдвинуть мышь, wheel ±n — колесо.
+# Подробно: docs/recording.md
+`
+
+// Writer пишет запись в поток.
+type Writer struct {
+	w   *bufio.Writer
+	err error
+}
+
+// NewWriter возвращает писателя записи в w.
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{w: bufio.NewWriterSize(w, 64*1024)}
+}
+
+// printf пишет строку и запоминает первую ошибку.
+func (w *Writer) printf(format string, args ...any) {
+	if w.err == nil {
+		_, w.err = fmt.Fprintf(w.w, format, args...)
+	}
+}
+
+// WriteHeader пишет пояснение и сведения о записи.
+func (w *Writer) WriteHeader(h Header) error {
+	w.printf("%s", fileComment)
+	w.printf("mkrec %d\n", Version)
+	if !h.Created.IsZero() {
+		w.printf("created %s\n", h.Created.UTC().Format(time.RFC3339))
+	}
+	for _, d := range h.Devices {
+		kinds := strings.Join(d.Kinds, ",")
+		if kinds == "" {
+			kinds = "other"
+		}
+		w.printf("device %d %s %s\n", d.ID, kinds, strconv.Quote(d.Name))
+	}
+	if h.Centered {
+		w.printf("pointer center\n")
+	}
+	return w.err
+}
+
+// WriteFrame пишет одно действие строкой.
+func (w *Writer) WriteFrame(f Frame) error {
+	w.printf("%s %d %s\n", seconds(f.T), f.Device, FormatEvents(f.Events))
+	return w.err
+}
+
+// Append дописывает строки действий из r (черновика идущей записи).
+func (w *Writer) Append(r io.Reader) error {
+	if w.err == nil {
+		_, w.err = io.Copy(w.w, r)
+	}
+	return w.err
+}
+
+// Close пишет длительность записи и сбрасывает буфер.
+func (w *Writer) Close(duration time.Duration) error {
+	w.printf("%s end\n", seconds(duration))
+	return w.Flush()
+}
+
+// Flush сбрасывает буфер в поток.
+func (w *Writer) Flush() error {
+	if w.err != nil {
+		return w.err
+	}
+	return w.w.Flush()
+}
+
+// seconds записывает время секундами с точностью до миллисекунды: «1.250».
+func seconds(d time.Duration) string {
+	return strconv.FormatFloat(float64(d.Milliseconds())/1000, 'f', 3, 64)
+}
+
+// FormatEvents записывает события действия словами: «^{A} move +3 -1».
+func FormatEvents(events []ev.Event) string {
+	var parts []string
+	var dx, dy int32
+	hasMove := false
+	for _, e := range events {
+		switch {
+		case e.Type == ev.EvKey && e.Value == ev.ValueDown:
+			parts = append(parts, "^{"+keyName(e.Code)+"}")
+		case e.Type == ev.EvKey && e.Value == ev.ValueUp:
+			parts = append(parts, "~{"+keyName(e.Code)+"}")
+		case e.Type == ev.EvRel && e.Code == ev.RelX:
+			dx, hasMove = dx+e.Value, true
+		case e.Type == ev.EvRel && e.Code == ev.RelY:
+			dy, hasMove = dy+e.Value, true
+		case e.Type == ev.EvRel && relWords[e.Code] != "":
+			parts = append(parts, fmt.Sprintf("%s %+d", relWords[e.Code], e.Value))
+		default:
+			parts = append(parts, fmt.Sprintf("ev %d %d %d", e.Type, e.Code, e.Value))
+		}
+	}
+	if hasMove {
+		parts = append([]string{fmt.Sprintf("move %+d %+d", dx, dy)}, parts...)
+	}
+	return strings.Join(parts, " ")
+}
+
+// relWords — слова для осей колеса.
+var relWords = map[uint16]string{
+	ev.RelWheel: "wheel", ev.RelHwheel: "hwheel", ev.RelWheelHiRes: "wheel-hr", ev.RelHwheelHiRes: "hwheel-hr",
+}
+
+// keyName возвращает имя клавиши mKey или «#код», если имени нет.
+func keyName(code uint16) string {
+	if n, ok := keys.NameOf(code); ok {
+		return n
+	}
+	return "#" + strconv.Itoa(int(code))
+}
+
+// ---- Чтение ----
+
+// ErrFormat — файл не является записью mKey или в нём ошибка (с номером строки).
+var ErrFormat = errors.New("not a valid mKey recording")
+
+// Read читает запись. Действия упорядочиваются по времени (время можно править вручную).
+func Read(r io.Reader) (*Recording, error) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	rec := &Recording{}
+	started := false
+	for n := 1; sc.Scan(); n++ {
+		// Пустые строки и комментарии.
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		bad := func(what string) error { return fmt.Errorf("%w: line %d: %s", ErrFormat, n, what) }
+
+		// Первая значимая строка — «mkrec <версия>».
+		fields := strings.Fields(line)
+		if !started {
+			if len(fields) != 2 || fields[0] != "mkrec" {
+				return nil, bad(`expected "mkrec 1"`)
+			}
+			v, err := strconv.Atoi(fields[1])
+			if err != nil || v < 1 || v > Version {
+				return nil, bad("unsupported version " + fields[1])
+			}
+			rec.Header.Version, started = v, true
+			continue
+		}
+
+		// Сведения заголовка или действие.
+		if err := readLine(rec, line, fields); err != nil {
+			return nil, bad(err.Error())
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if !started {
+		return nil, fmt.Errorf("%w: empty file", ErrFormat)
+	}
+
+	// Порядок по времени; длительность — не меньше времени последнего действия.
+	slices.SortStableFunc(rec.Frames, func(a, b Frame) int { return int(a.T - b.T) })
+	if n := len(rec.Frames); n > 0 && rec.Frames[n-1].T > rec.Duration {
+		rec.Duration = rec.Frames[n-1].T
+	}
+	return rec, nil
+}
+
+// readLine разбирает строку заголовка или действия.
+func readLine(rec *Recording, line string, f []string) error {
+	switch f[0] {
+	case "created":
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(strings.TrimPrefix(line, "created")))
+		rec.Header.Created = t
+		return err
+	case "device":
+		// device <номер> <классы> "<имя>"
+		parts := strings.SplitN(line, " ", 4)
+		if len(parts) < 4 {
+			return errors.New("device: expected: device <id> <kinds> \"<name>\"")
+		}
+		id, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return fmt.Errorf("device id: %w", err)
+		}
+		name, err := strconv.Unquote(strings.TrimSpace(parts[3]))
+		if err != nil {
+			name = strings.TrimSpace(parts[3])
+		}
+		rec.Header.Devices = append(rec.Header.Devices, Device{ID: id, Kinds: strings.Split(parts[2], ","), Name: name})
+		return nil
+	case "pointer":
+		if len(f) != 2 || f[1] != "center" {
+			return errors.New(`expected "pointer center"`)
+		}
+		rec.Header.Centered = true
+		return nil
+	}
+
+	// Действие: <время> <устройство> <действия…> или <время> end.
+	t, err := strconv.ParseFloat(f[0], 64)
+	if err != nil || t < 0 {
+		return fmt.Errorf("unknown line %q", f[0])
+	}
+	at := time.Duration(t*1000+0.5) * time.Millisecond
+	if len(f) == 2 && f[1] == "end" {
+		rec.Duration = at
+		return nil
+	}
+	if len(f) < 3 {
+		return errors.New("expected: <time> <device> <actions>")
+	}
+	dev, err := strconv.Atoi(f[1])
+	if err != nil {
+		return fmt.Errorf("device number %q", f[1])
+	}
+	frame := Frame{T: at, Device: dev}
+	if frame.Events, err = ParseEvents(f[2:]); err != nil {
+		return err
+	}
+	rec.Frames = append(rec.Frames, frame)
+	return nil
+}
+
+// ParseEvents разбирает действия строки («^{A} move +3 -1») в события.
+func ParseEvents(tokens []string) ([]ev.Event, error) {
+	var out []ev.Event
+	for i := 0; i < len(tokens); i++ {
+		tok := tokens[i]
+		// need возвращает n целых чисел после слова.
+		need := func(n int) ([]int64, error) {
+			if i+n >= len(tokens) {
+				return nil, fmt.Errorf("%s: expected %d numbers", tok, n)
+			}
+			vals := make([]int64, n)
+			for j := range n {
+				v, err := strconv.ParseInt(tokens[i+1+j], 10, 32)
+				if err != nil {
+					return nil, fmt.Errorf("%s: bad number %q", tok, tokens[i+1+j])
+				}
+				vals[j] = v
+			}
+			i += n
+			return vals, nil
+		}
+		switch {
+		case strings.HasPrefix(tok, "^{") || strings.HasPrefix(tok, "~{"):
+			code, err := keyCode(tok[2:])
+			if err != nil {
+				return nil, err
+			}
+			v := int32(ev.ValueDown)
+			if tok[0] == '~' {
+				v = ev.ValueUp
+			}
+			out = append(out, ev.Event{Type: ev.EvKey, Code: code, Value: v})
+		case tok == "move":
+			v, err := need(2)
+			if err != nil {
+				return nil, err
+			}
+			if v[0] != 0 {
+				out = append(out, ev.Event{Type: ev.EvRel, Code: ev.RelX, Value: int32(v[0])})
+			}
+			if v[1] != 0 {
+				out = append(out, ev.Event{Type: ev.EvRel, Code: ev.RelY, Value: int32(v[1])})
+			}
+		case tok == "ev":
+			v, err := need(3)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, ev.Event{Type: uint16(v[0]), Code: uint16(v[1]), Value: int32(v[2])})
+		default:
+			code, ok := wordRel(tok)
+			if !ok {
+				return nil, fmt.Errorf("unknown action %q", tok)
+			}
+			v, err := need(1)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, ev.Event{Type: ev.EvRel, Code: code, Value: int32(v[0])})
+		}
+	}
+	return out, nil
+}
+
+// wordRel находит ось колеса по слову.
+func wordRel(word string) (uint16, bool) {
+	for code, w := range relWords {
+		if w == word {
+			return code, true
+		}
+	}
+	return 0, false
+}
+
+// keyCode разбирает «A}» или «#30}» (без открывающей части) в код клавиши.
+func keyCode(s string) (uint16, error) {
+	name, ok := strings.CutSuffix(s, "}")
+	if !ok || name == "" {
+		return 0, fmt.Errorf("bad key %q", s)
+	}
+	if n, ok := strings.CutPrefix(name, "#"); ok {
+		v, err := strconv.ParseUint(n, 10, 16)
+		return uint16(v), err
+	}
+	if k, ok := keys.Lookup(name); ok && k.Type == ev.EvKey {
+		return k.Code, nil
+	}
+	if k, ok := keys.LookupGamepad(name); ok {
+		return k.Code, nil
+	}
+	return 0, fmt.Errorf("unknown key %q", name)
+}
+
+// CoalesceMoves склеивает идущие подряд перемещения одного устройства, попавшие в окно window:
+// смещения суммируются, итоговая траектория та же. Файл получается короче, а мышь с частотой
+// 1000 Гц при повторе не упирается в ограничитель скорости виртуальных устройств (SEC-4).
+func CoalesceMoves(frames []Frame, window time.Duration) []Frame {
+	out := make([]Frame, 0, len(frames))
+	lastOf := map[int]int{} // устройство → индекс его последнего действия в out
+	for _, f := range frames {
+		// Перемещение склеивается с последним действием той же мыши, если это тоже перемещение
+		// и оно было недавно (действия других устройств между ними не мешают: сдвиг во времени < window).
+		if i, ok := lastOf[f.Device]; ok && f.IsMove() {
+			last := &out[i]
+			if last.IsMove() && f.T-last.T < window {
+				last.Events = AddMoves(last.Events, f.Events)
+				continue
+			}
+		}
+		lastOf[f.Device] = len(out)
+		f.Events = append([]ev.Event(nil), f.Events...)
+		out = append(out, f)
+	}
+	return out
+}
+
+// AddMoves прибавляет смещения b к смещениям a (по осям X и Y) и возвращает результат.
+func AddMoves(a, b []ev.Event) []ev.Event {
+	for _, eb := range b {
+		found := false
+		for i := range a {
+			if a[i].Type == eb.Type && a[i].Code == eb.Code {
+				a[i].Value += eb.Value
+				found = true
+			}
+		}
+		if !found {
+			a = append(a, eb)
+		}
+	}
+	return a
+}

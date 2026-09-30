@@ -23,7 +23,7 @@ name: "Удержание кнопки мыши"
 events:
   - id: hold
     name: "Ctrl+Alt+H — держать левую кнопку 1,5 с"
-    trigger: { type: hotkey, keys: "{Ctrl+Alt+H}", consume: true }
+    trigger: { type: hotkey, keys: "^{Ctrl}^{Alt}{H}", consume: true }
     actions:
       - key_down: Mouse0
       - pause: 1500

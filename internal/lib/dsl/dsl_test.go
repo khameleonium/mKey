@@ -18,24 +18,23 @@ func TestParseFormat(t *testing.T) {
 		`{a}`:                     `{A}`,
 		`^{mouse0}[500]~{MOUSE0}`: `^{Mouse0}[500]~{Mouse0}`,
 		`^{SHIFT}{"Привет, Вера!"}~{SHIFT}{ENTER}`: `^{Shift}{"Привет, Вера!"}~{Shift}{Enter}`,
-		`{ "ABCabc\nAAA" }`:            `{"ABCabc\nAAA"}`,
-		`{Space 500}`:                  `{Space 500}`,
-		`{Space 1.5s}`:                 `{Space 1.5s}`,
-		`{Space 250ms}`:                `{Space 250}`,
-		`{A*3}`:                        `{A*3}`,
-		`{A * 1}`:                      `{A}`,
-		`{ctrl + shift + t}`:           `{Ctrl+Shift+T}`,
-		`^{Ctrl+Shift}~{Ctrl+Shift}`:   `^{Ctrl+Shift}~{Ctrl+Shift}`,
-		`~{*}`:                         `~{*}`,
-		`[250] [1.5s] [2s] [100..300]`: `[250][1.5s][2s][100..300]`,
-		"( {A} [50] {B} ) * 10":        `({A}[50]{B})*10`,
-		"({A})":                        `({A})`,
-		"{A} // комментарий\n{B}":      `{A}{B}`,
-		`{Move +10 -5}`:                `{Move +10 -5}`,
-		`{move 100 200}`:               `{Move 100 200}`,
-		`{Wheel up 3}`:                 `{Wheel up 3}`,
-		`{Click}`:                      `{Click}`,
-		`{#30}{#0x110}`:                `{#30}{#272}`,
+		`{ "ABCabc\nAAA" }`:                     `{"ABCabc\nAAA"}`,
+		`{Space 500}`:                           `{Space 500}`,
+		`{Space 1.5s}`:                          `{Space 1.5s}`,
+		`{Space 250ms}`:                         `{Space 250}`,
+		`{A*3}`:                                 `{A*3}`,
+		`{A * 1}`:                               `{A}`,
+		`^{ctrl} ^{shift} {t} ~{shift} ~{ctrl}`: `^{Ctrl}^{Shift}{T}~{Shift}~{Ctrl}`,
+		`~{*}`:                                  `~{*}`,
+		`[250] [1.5s] [2s] [100..300]`:          `[250][1.5s][2s][100..300]`,
+		"( {A} [50] {B} ) * 10":                 `({A}[50]{B})*10`,
+		"({A})":                                 `({A})`,
+		"{A} // комментарий\n{B}":               `{A}{B}`,
+		`{Move +10 -5}`:                         `{Move +10 -5}`,
+		`{move 100 200}`:                        `{Move 100 200}`,
+		`{Wheel up 3}`:                          `{Wheel up 3}`,
+		`{Click}`:                               `{Click}`,
+		`{#30}{#0x110}`:                         `{#30}{#272}`,
 		`{pad2.South}{Педаль.Левая}{UnKey.001}`: `{pad2.South}{Педаль.Левая}{UnKey.001}`,
 		`{pad2.LX=0.5}{pad2.LY = -1}`:           `{pad2.LX=0.5}{pad2.LY=-1}`,
 		`{"a\"b\\c\/d\teA😀"}`:                   `{"a\"b\\c/d\teA😀"}`,
@@ -91,7 +90,10 @@ func TestParseErrors(t *testing.T) {
 		{`[2h]`, ErrBadDuration, 1, 2},
 		{`[3601s]`, ErrTooLong, 1, 2},
 		{`[300..100]`, ErrPauseRange, 1, 1},
-		{`{Ctrl+C=1}`, ErrAxisChord, 1, 1},
+		{`{A*3=1}`, ErrAxisChord, 1, 1},
+		{`{A} {Ctrl+C}`, ErrChord, 1, 5},
+		{`{{}`, ErrBraceKey, 1, 1},
+		{`^{}}`, ErrBraceKey, 1, 1},
 		{`{#zz}`, ErrBadNumber, 1, 2},
 		{"{A}\n  {Mous0}", ErrUnknownKeyHint, 2, 4},
 		{"{A}\n{\"Привет\"}\n{B", ErrUnclosedBrace, 3, 1},
@@ -133,7 +135,7 @@ func stripPos(nodes []Node) []Node {
 // TestRoundTrip проверяет, что Parse(Format(Parse(x))) совпадает с Parse(x) (FR-DSL-4).
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
-	src := "^{Shift}{\"Привет, Вера!\"}~{Shift}{Enter}\n({A}[50..80]{Ctrl+C 200})*3 {Move +1 -1}{pad2.LX=-0.25}~{*}"
+	src := "^{Shift}{\"Привет, Вера!\"}~{Shift}{Enter}\n({A}[50..80]^{Ctrl}{C 200}~{Ctrl})*3 {Move +1 -1}{pad2.LX=-0.25}~{*}"
 	first, err := Parse(src)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +188,7 @@ func compile(t *testing.T, src string) ([]Step, error) {
 // TestCompile проверяет план выполнения: устройства, коды, повторы, команды.
 func TestCompile(t *testing.T) {
 	t.Parallel()
-	steps, err := compile(t, `^{Mouse0}[500]~{Mouse0}{Ctrl+C*2}({A}[10..20])*3{Move +10 -5}{Wheel Down 3}{Click Right}{"hi"}~{*}{#30}`)
+	steps, err := compile(t, `^{Mouse0}[500]~{Mouse0}{C*2}({A}[10..20])*3{Move +10 -5}{Wheel Down 3}{Click Right}{"hi"}~{*}{#30}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,12 +204,12 @@ func TestCompile(t *testing.T) {
 		}
 	}
 
-	// Кнопка мыши — на мышь, сочетание — на клавиатуру с повтором 2.
+	// Кнопка мыши — на мышь, клавиша — на клавиатуру с повтором 2.
 	if tg := steps[0].Targets[0]; tg.Device != DeviceMouse || tg.Code != ev.BtnLeft {
 		t.Errorf("Mouse0 target = %+v", tg)
 	}
-	if s := steps[3]; s.Count != 2 || s.Targets[0].Code != ev.KeyLeftctrl || s.Targets[1].Code != ev.KeyC || s.Targets[0].Device != DeviceKeyboard {
-		t.Errorf("Ctrl+C*2 = %+v", s)
+	if s := steps[3]; s.Count != 2 || s.Targets[0].Code != ev.KeyC || s.Targets[0].Device != DeviceKeyboard {
+		t.Errorf("C*2 = %+v", s)
 	}
 
 	// Группа с повтором 3, пауза 10..20 внутри; перемещение и прокрутка.
@@ -248,6 +250,77 @@ func TestCompileErrors(t *testing.T) {
 		var de *Error
 		if !errors.As(err, &de) || de.Code != code {
 			t.Errorf("Compile(%q) = %v, want %s", in, err, code)
+		}
+	}
+}
+
+// TestChordHint проверяет подсказку для {Ctrl+Alt+Del}: как записать сочетание зажатием.
+func TestChordHint(t *testing.T) {
+	t.Parallel()
+	_, err := Parse(`{ctrl+alt+del}`)
+	var de *Error
+	if !errors.As(err, &de) || de.Args["macro"] != "^{Ctrl}^{Alt}{Delete}~{Alt}~{Ctrl}" || de.Args["hotkey"] != "^{Ctrl}^{Alt}{Delete}" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// TestCheckHolds проверяет правила зажатия: дважды не зажать, зажатую не нажать, отпустить только зажатую.
+func TestCheckHolds(t *testing.T) {
+	t.Parallel()
+	ok := []string{
+		`^{Ctrl}{A}~{Ctrl}`,
+		`^{Shift}{"Привет"}~{Shift}`,
+		`^{Ctrl}{A}`,         // не отпущена — mKey отпустит сам
+		`^{Ctrl}{C}~{LCtrl}`, // Ctrl и LCtrl — одна клавиша
+		`(^{A}[10]~{A})*5`,
+		`^{A}^{B}~{*}^{A}`,
+	}
+	for _, src := range ok {
+		nodes, err := Parse(src)
+		if err == nil {
+			err = CheckHolds(nodes)
+		}
+		if err != nil {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	bad := []struct {
+		src  string
+		code string
+		col  int
+	}{
+		{`^{Ctrl}^{Ctrl}`, ErrAlreadyHeld, 8},
+		{`^{Ctrl}^{LCtrl}`, ErrAlreadyHeld, 8},
+		{`^{A}{A}`, ErrAlreadyHeld, 5},
+		{`~{Ctrl}`, ErrNotHeld, 1},
+		{`^{A}~{A}~{A}`, ErrNotHeld, 9},
+		{`(^{A})*2`, ErrAlreadyHeld, 2},
+	}
+	for _, c := range bad {
+		nodes, err := Parse(c.src)
+		if err != nil {
+			t.Fatalf("%s: %v", c.src, err)
+		}
+		var de *Error
+		if err := CheckHolds(nodes); !errors.As(err, &de) || de.Code != c.code || de.Pos.Col != c.col {
+			t.Errorf("%s: err = %v, want %s at col %d", c.src, err, c.code, c.col)
+		}
+	}
+}
+
+// TestParseHotkey проверяет запись горячих клавиш зажатием.
+func TestParseHotkey(t *testing.T) {
+	t.Parallel()
+	refs, err := ParseHotkey(`^{Ctrl}^{Alt}{H}`)
+	if err != nil || len(refs) != 3 || refs[0].Name != "Ctrl" || refs[2].Name != "H" {
+		t.Fatalf("refs = %+v, %v", refs, err)
+	}
+	if refs, err := ParseHotkey(`{F8}`); err != nil || len(refs) != 1 {
+		t.Fatalf("F8: %+v %v", refs, err)
+	}
+	for _, src := range []string{``, `{A}{B}`, `^{Ctrl}`, `^{Ctrl}{H}~{Ctrl}`, `{A*2}`, `^{Ctrl}^{Ctrl}{H}`, `{Ctrl+H}`, `{"x"}`} {
+		if _, err := ParseHotkey(src); err == nil {
+			t.Errorf("%q accepted", src)
 		}
 	}
 }

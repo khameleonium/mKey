@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"mkey/internal/lib/buildinfo"
+
 	"mkey/internal/setup/manifest"
 )
 
@@ -37,9 +39,10 @@ func TestInstallAndUndo(t *testing.T) {
 	if !e.Installed() {
 		t.Fatal("must be installed")
 	}
+	// Ярлык в меню открывает окно — он есть только в полной сборке.
 	data, _ := os.ReadFile(e.DesktopPath())
-	if !strings.Contains(string(data), "Exec=\""+e.BinPath()+"\" gui") {
-		t.Fatalf("desktop entry = %q", data)
+	if got := strings.Contains(string(data), "Exec=\""+e.BinPath()+"\" gui"); got != buildinfo.GUI {
+		t.Fatalf("desktop entry = %q (GUI build = %v)", data, buildinfo.GUI)
 	}
 	if fi, _ := os.Stat(e.BinPath()); fi.Mode().Perm() != 0o755 {
 		t.Fatalf("binary perm = %o", fi.Mode().Perm())

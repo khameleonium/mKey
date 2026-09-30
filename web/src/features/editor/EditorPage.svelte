@@ -41,6 +41,7 @@
       target.projects = (await api.projects()).projects;
       // Названия устройств без повторов: у одного USB-приёмника бывает несколько устройств с одним именем.
       target.devices = [...new Set((await api.devices()).devices.map((d) => d.info.name))];
+      target.recordings = (await api.recordings()).recordings.map((r) => r.name);
     } catch {
       // Без списков поля остаются обычными полями ввода.
     }

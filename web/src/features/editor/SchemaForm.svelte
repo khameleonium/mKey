@@ -152,12 +152,8 @@
     </span>
   {/if}
 {:else if widget === "key" || widget === "keys"}
-  <KeyCapture
-    value={String(value ?? "")}
-    combo
-    braces={widget === "keys"}
-    onchange={(v) => onchange(v)}
-  />
+  <!-- key — одна клавиша; keys — сочетание горячей клавиши записью зажатием -->
+  <KeyCapture value={String(value ?? "")} combo={widget === "keys"} onchange={(v) => onchange(v)} />
 {:else if widget === "macro"}
   <MacroInput value={String(value ?? "")} onchange={(v) => onchange(v)} />
 {:else if widget === "multiline"}
@@ -199,6 +195,15 @@
   <datalist id="mkey-devices">
     {#each ed.devices as n, i (i)}<option value={n}></option>{/each}
   </datalist>
+{:else if widget === "recording"}
+  <!-- Запись: выбор из сохранённых (mkey rec) -->
+  <select value={String(value ?? "")} onchange={(e) => onchange(e.currentTarget.value)}>
+    <option value="">—</option>
+    {#each ed.recordings as n, i (i)}<option value={n}>{n}</option>{/each}
+    {#if value && !ed.recordings.includes(String(value))}<option value={String(value)}
+        >{String(value)}</option
+      >{/if}
+  </select>
 {:else if widget === "time"}
   <input
     type="time"

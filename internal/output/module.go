@@ -44,6 +44,8 @@ type Module struct {
 	mu sync.Mutex
 	// keyboard и mouse — созданные устройства (nil, пока не созданы).
 	keyboard, mouse *device
+	// pointer — указатель с абсолютными координатами (создаётся при первом MovePointer).
+	pointer *device
 	// lastErr — последняя ошибка создания устройств.
 	lastErr error
 }
@@ -93,12 +95,12 @@ func (m *Module) Stop(context.Context) error {
 
 	// Закрываем устройства, собирая ошибки.
 	var errs []error
-	for _, d := range []*device{m.keyboard, m.mouse} {
+	for _, d := range []*device{m.keyboard, m.mouse, m.pointer} {
 		if d != nil {
 			errs = append(errs, d.close())
 		}
 	}
-	m.keyboard, m.mouse = nil, nil
+	m.keyboard, m.mouse, m.pointer = nil, nil, nil
 	return errors.Join(errs...)
 }
 
@@ -141,12 +143,46 @@ func (m *Module) ReleaseAll() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var errs []error
-	for _, d := range []*device{m.keyboard, m.mouse} {
+	for _, d := range []*device{m.keyboard, m.mouse, m.pointer} {
 		if d != nil {
 			errs = append(errs, d.ReleaseAll())
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// CenterPointer ставит указатель в центр рабочего стола через «mKey Pointer» (создаётся при
+// первом использовании: обычным макросам он не нужен).
+func (m *Module) CenterPointer(ctx context.Context) error {
+	// Устройство создаётся один раз.
+	m.mu.Lock()
+	if m.pointer == nil {
+		setup := pointerSetup()
+		w, err := m.create(setup)
+		if err != nil {
+			m.mu.Unlock()
+			return fmt.Errorf("%w: %s: %w", contracts.ErrOutputUnavailable, setup.Name, err)
+		}
+		m.pointer = newDevice(setup.Name, w, m.clk, time.Duration(m.cfg.SettleMS)*time.Millisecond, m.cfg.MaxEventsPerSecond)
+		m.log.Info("virtual device created", "name", setup.Name)
+	}
+	p := m.pointer
+	m.mu.Unlock()
+
+	// Ядро отбрасывает абсолютные значения, равные прошлым значениям того же устройства
+	// (drivers/input/input.c, input_handle_abs_event), — повторная постановка в центр
+	// не дошла бы до композитора, если курсор с тех пор сдвинули обычной мышью. Поэтому сначала
+	// соседнее значение (та же точка экрана: одна единица оси — доли пикселя), затем середина.
+	if err := p.Emit(ctx,
+		ev.Event{Type: ev.EvAbs, Code: ev.AbsX, Value: pointerCenter - 1},
+		ev.Event{Type: ev.EvAbs, Code: ev.AbsY, Value: pointerCenter - 1},
+	); err != nil {
+		return err
+	}
+	return p.Emit(ctx,
+		ev.Event{Type: ev.EvAbs, Code: ev.AbsX, Value: pointerCenter},
+		ev.Event{Type: ev.EvAbs, Code: ev.AbsY, Value: pointerCenter},
+	)
 }
 
 // ensure создаёт недостающие устройства. Возвращает ошибку, обёрнутую в ErrOutputUnavailable.

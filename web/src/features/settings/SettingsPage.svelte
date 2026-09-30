@@ -1,15 +1,45 @@
 <!--
-  SettingsPage — настройки (FR-UI-1.8): язык, тема оформления и удаление программы
-  (с сохранением настроек или полностью, FR-INST-5).
+  SettingsPage — настройки (FR-UI-1.8): язык, тема оформления, системные сочетания mKey
+  (запись, экстренная остановка) и удаление программы (с сохранением настроек или полностью, FR-INST-5).
   Props: нет.
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
+  import KeyCapture from "../../lib/components/KeyCapture.svelte";
   import Modal from "../../lib/components/Modal.svelte";
   import { lang, setLang, t } from "../../lib/i18n/index.svelte";
   import { LANGS, type Lang } from "../../lib/i18n/translate";
   import { setTheme, theme, type Theme } from "../../lib/theme.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
+
+  /** Системные сочетания: record — запись (пусто — выключено), emergency — экстренная остановка. */
+  let record = $state("");
+  let emergency = $state("");
+  let hkError = $state("");
+
+  // Загружаем сочетания при открытии.
+  $effect(() => {
+    api
+      .hotkeys()
+      .then((h) => {
+        record = h.record ?? "";
+        emergency = h.emergency ?? "";
+      })
+      .catch((e: unknown) => (hkError = errorText(e)));
+  });
+
+  /** saveHotkeys проверяет и сохраняет сочетания (действуют сразу). */
+  async function saveHotkeys(): Promise<void> {
+    hkError = "";
+    try {
+      const h = await api.setHotkeys({ record, emergency });
+      record = h.record ?? "";
+      emergency = h.emergency ?? "";
+      toast(t("settings.hotkeys_saved"));
+    } catch (e) {
+      hkError = errorText(e);
+    }
+  }
 
   /** Окно удаления: открыто, что сохранить, идёт удаление, удаление запущено. */
   let removing = $state(false);
@@ -47,6 +77,28 @@
     <option value="light">{t("settings.theme.light")}</option>
     <option value="dark">{t("settings.theme.dark")}</option>
   </select>
+</div>
+
+<!-- Системные сочетания mKey -->
+<div class="card hotkeys">
+  <h2>{t("settings.hotkeys")}</h2>
+  <p class="muted">{t("settings.hotkeys_hint")}</p>
+  <div class="grid">
+    <span>{t("settings.hotkey_record")}</span>
+    <span class="row">
+      <KeyCapture value={record} combo onchange={(v) => (record = v)} />
+      {#if record}
+        <button class="small ghost" onclick={() => (record = "")}>{t("settings.hotkey_off")}</button
+        >
+      {:else}
+        <span class="muted">{t("settings.hotkey_is_off")}</span>
+      {/if}
+    </span>
+    <span>{t("settings.hotkey_emergency")}</span>
+    <KeyCapture value={emergency} combo onchange={(v) => (emergency = v)} />
+  </div>
+  {#if hkError}<div class="note error">{hkError}</div>{/if}
+  <button class="primary" onclick={saveHotkeys}>{t("common.save")}</button>
 </div>
 
 <!-- Удаление программы -->
@@ -105,6 +157,21 @@
     gap: 12px 16px;
     align-items: center;
     margin-bottom: 16px;
+  }
+  .hotkeys {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .hotkeys h2,
+  .hotkeys p {
+    margin: 0;
+  }
+  .hotkeys .grid {
+    margin: 0;
+    grid-template-columns: max-content minmax(0, 1fr);
   }
   .danger-zone {
     border-left: 6px solid var(--danger);

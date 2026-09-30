@@ -18,6 +18,7 @@ import (
 	"mkey/internal/contracts"
 	"mkey/internal/lib/clock"
 	ev "mkey/internal/lib/evdev"
+	"mkey/internal/lib/keys"
 )
 
 // ModuleID — идентификатор модуля.
@@ -45,8 +46,9 @@ type Config struct {
 	SettleMS int `json:"settle_ms"`
 	// WatchdogMS — если обработка событий захваченного устройства зависла дольше, захват снимается (SEC-3).
 	WatchdogMS int `json:"watchdog_ms"`
-	// EmergencyStop — клавиши экстренной остановки, нажатые одновременно (SEC-1).
-	EmergencyStop []string `json:"emergency_stop"`
+	// EmergencyStop — сочетание экстренной остановки записью зажатием (SEC-1), например
+	// "^{Esc}^{Backspace}{Enter}": срабатывает, когда все клавиши нажаты одновременно.
+	EmergencyStop string `json:"emergency_stop"`
 }
 
 // deviceReader — открытое устройство: настоящее (*evdev.Device) или фейк в тестах.
@@ -107,8 +109,14 @@ type Module struct {
 	grabPolicy func(contracts.InputDevice) bool
 	// suspended — перехват отключён после экстренной остановки до ResumeGrab.
 	suspended atomic.Bool
-	// emergency — коды клавиш экстренной остановки.
-	emergency []uint16
+	// emergency — клавиши экстренной остановки; меняется на лету (SetEmergencyCombo), поэтому атомарно.
+	emergency atomic.Pointer[emergencyCombo]
+}
+
+// emergencyCombo — сочетание экстренной остановки: запись зажатием и клавиши.
+type emergencyCombo struct {
+	text string
+	keys []keys.Key
 }
 
 // openDevice — открытое устройство, его описание и состояние захвата.
@@ -153,7 +161,7 @@ func newModule(dir string, open func(string) (deviceReader, error), clk clock.Cl
 		cfg: Config{
 			Dir: dir, RetryAttempts: 10, RetryDelayMS: 100,
 			UInputPath: ev.DefaultUInputPath, SettleMS: 300, WatchdogMS: 500,
-			EmergencyStop: []string{"Esc", "Backspace", "Enter"},
+			EmergencyStop: "^{Esc}^{Backspace}{Enter}",
 		},
 		devices: map[string]*openDevice{},
 		denied:  map[string]bool{},
@@ -175,11 +183,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 
 	// Клавиши экстренной остановки: без неё захват клавиатуры небезопасен, поэтому ошибка здесь фатальна.
-	codes, err := emergencyCodes(m.cfg.EmergencyStop)
-	if err != nil {
+	if err := m.SetEmergencyCombo(m.cfg.EmergencyStop); err != nil {
 		return fmt.Errorf("%s: emergency_stop: %w", ModuleID, err)
 	}
-	m.emergency = codes
 
 	// Публикуем сервис.
 	return contracts.ProvideService[contracts.InputSource](host.Services(), m)
@@ -499,9 +505,12 @@ func (m *Module) process(path string, d *openDevice, events []ev.Event) {
 			out = append(out, e)
 		}
 
-		// Подписчикам (запись, инспектор) — исходное событие, без блокировки.
+		// Подписчикам (запись, инспектор) — исходное событие и то, что получили программы, без блокировки.
 		m.mu.RLock()
-		ie := contracts.InputEvent{Device: path, Event: orig}
+		ie := contracts.InputEvent{Device: path, Event: orig, Delivered: orig}
+		if grabbed {
+			ie.Delivered, ie.Consumed = e, drop
+		}
 		for s := range m.subs {
 			select {
 			case s.ch <- ie:

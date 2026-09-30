@@ -31,7 +31,7 @@ events:
   # Ctrl+Alt+H — зажать левую кнопку мыши на 1,5 секунды.
   - id: long_hold
     name: "Удержание ЛКМ"
-    trigger: { type: hotkey, keys: "{Ctrl+Alt+H}", consume: true }
+    trigger: { type: hotkey, keys: "^{Ctrl}^{Alt}{H}", consume: true }
     actions:
       - send: "^{Mouse0}[1500]~{Mouse0}"
 

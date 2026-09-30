@@ -45,6 +45,8 @@ type Config struct {
 	RuntimeDir string `json:"runtime_dir"`
 	// LogFile — журнал демона для /logs (по умолчанию ~/.local/state/mkey/mkey.log).
 	LogFile string `json:"log_file"`
+	// ConfigFile — файл настроек, куда сохраняются системные сочетания (по умолчанию ~/.config/mkey/config.yaml).
+	ConfigFile string `json:"config_file"`
 }
 
 // Info — содержимое api.json: как подключиться к запущенному демону.
@@ -91,12 +93,20 @@ type services struct {
 	events   contracts.Events
 	keyState contracts.KeyState
 	convert  contracts.ActionConverter
+	recorder contracts.Recorder
+	player   contracts.Player
 	ext      contracts.ExtensionRegistry
 }
 
 // New создаёт модуль. static — файлы веб-интерфейса (например, web.FS()) или nil.
+// Без веб-интерфейса (консольная сборка) TCP-порт по умолчанию не открывается: командам
+// терминала хватает Unix-сокета.
 func New(static fs.FS) *Module {
-	return &Module{static: static, cfg: Config{Port: DefaultPort}}
+	port := DefaultPort
+	if static == nil {
+		port = 0
+	}
+	return &Module{static: static, cfg: Config{Port: port}}
 }
 
 // ID возвращает идентификатор модуля.
@@ -127,6 +137,8 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		events:   lookup[contracts.Events](s),
 		keyState: lookup[contracts.KeyState](s),
 		convert:  lookup[contracts.ActionConverter](s),
+		recorder: lookup[contracts.Recorder](s),
+		player:   lookup[contracts.Player](s),
 		ext:      host.Extensions(),
 	}
 

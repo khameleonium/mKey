@@ -31,8 +31,14 @@ type InputDevice struct {
 type InputEvent struct {
 	// Device — путь устройства-источника, например "/dev/input/event3".
 	Device string
-	// Event — само событие.
+	// Event — само событие, как его прислало устройство.
 	Event evdev.Event
+	// Delivered — событие, которое получили программы: для захваченного устройства — после
+	// переназначения клавиш (CapsLock → Esc), иначе — то же, что Event.
+	Delivered evdev.Event
+	// Consumed — событие «съел» mKey (горячая клавиша с consume): программы его не получили.
+	// Запись ввода такие события не сохраняет.
+	Consumed bool
 }
 
 // InputStatus — доступность физических устройств для mKey.
@@ -71,6 +77,10 @@ type InputSource interface {
 	// снимает перехват, останавливает макросы, отпускает клавиши и приостанавливает mKey.
 	// reason — источник для журнала ("tray", "api").
 	EmergencyStop(reason string)
+	// EmergencyCombo возвращает сочетание экстренной остановки записью зажатием ("^{Esc}^{Backspace}{Enter}").
+	EmergencyCombo() string
+	// SetEmergencyCombo меняет сочетание экстренной остановки сразу (не меньше двух клавиш).
+	SetEmergencyCombo(combo string) error
 }
 
 // InputHandler — синхронный обработчик событий физических устройств.

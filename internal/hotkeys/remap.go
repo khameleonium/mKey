@@ -1,6 +1,8 @@
 package hotkeys
 
 import (
+	"strings"
+
 	ev "mkey/internal/lib/evdev"
 )
 
@@ -25,8 +27,8 @@ func (m *Module) reloadRemaps() {
 			continue
 		}
 		for _, r := range st.Project.Remaps {
-			from, err1 := parseChord(r.From)
-			to, err2 := parseChord(r.To)
+			from, err1 := parseChord(braced(r.From))
+			to, err2 := parseChord(braced(r.To))
 			if err1 != nil || err2 != nil || len(from) != 1 || len(to) != 1 {
 				m.log.Warn("invalid remap skipped", "project", st.Project.ID, "from", r.From, "to", r.To)
 				continue
@@ -43,6 +45,16 @@ func (m *Module) reloadRemaps() {
 	if len(rules) > 0 {
 		m.log.Info("remaps loaded", "count", len(rules))
 	}
+}
+
+// braced заключает имя одной клавиши в скобки, если их нет: в переназначении можно писать
+// и "{Esc}", и "Esc" (как в поле одной клавиши блока «Нажать клавишу»).
+func braced(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "{") {
+		return s
+	}
+	return "{" + s + "}"
 }
 
 // applyRemap заменяет код клавиши по правилам переназначения (под блокировкой).

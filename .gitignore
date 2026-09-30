@@ -1,5 +1,6 @@
 # Сборка
 /mkey
+/mkey-cli
 /dist/
 *.test
 *.out

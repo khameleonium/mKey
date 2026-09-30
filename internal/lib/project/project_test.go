@@ -29,7 +29,7 @@ events:
             - set_var: { name: clicks, add: 1 }
   - id: long_hold
     name: "Удержание ЛКМ"
-    trigger: { type: hotkey, keys: "{Ctrl+Alt+H}", consume: true }
+    trigger: { type: hotkey, keys: "^{Ctrl}^{Alt}{H}", consume: true }
     conditions:
       - type: any
         of:

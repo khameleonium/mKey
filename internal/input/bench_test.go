@@ -19,8 +19,7 @@ func (nopClone) Close() error            { return nil }
 func BenchmarkPassthrough(b *testing.B) {
 	// Модуль с одним захваченным устройством и обработчиком, как у горячих клавиш.
 	m := newModule(b.TempDir(), nil, clock.Real{})
-	codes, _ := emergencyCodes(m.cfg.EmergencyStop)
-	m.emergency = codes
+	_ = m.SetEmergencyCombo(m.cfg.EmergencyStop)
 	m.SetHandler(dropF8{})
 	d := &openDevice{down: map[uint16]bool{}, clone: &passthrough{w: nopClone{}, held: map[uint16]bool{}}}
 	d.grabbed.Store(true)

@@ -75,7 +75,7 @@ describe("used keys", () => {
 
     // Каждый полный ключ есть в каталоге; для префикса ("nav.") есть хотя бы один ключ с ним.
     const re =
-      /"((?:app|common|devices|diag|editor|home|key|nav|projects|settings|setup|trigger)\.[a-z_.0-9]*)"/g;
+      /"((?:app|common|devices|diag|editor|home|key|nav|projects|rec|settings|setup|trigger)\.[a-z_.0-9]*)"/g;
     for (const f of files) {
       for (const m of readFileSync(f, "utf8").matchAll(re)) {
         const key = m[1]!;

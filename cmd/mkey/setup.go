@@ -20,6 +20,7 @@ import (
 	"mkey/internal/app"
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/buildinfo"
 	"mkey/internal/platform"
 	"mkey/internal/platform/detect"
 	"mkey/internal/platform/devaccess"
@@ -86,6 +87,10 @@ func newGUICmd(tr *i18n.Translator) *cobra.Command {
 func runDefault(cmd *cobra.Command, tr *i18n.Translator) error {
 	ienv := newInstallEnv()
 	if ienv.Installed() {
+		// Консольная сборка: окна нет — показываем список команд.
+		if !buildinfo.GUI {
+			return cmd.Help()
+		}
 		return runGUI(cmd, tr)
 	}
 
@@ -101,6 +106,15 @@ func runDefault(cmd *cobra.Command, tr *i18n.Translator) error {
 	}
 	args := append(append([]string{}, prefix...), ienv.Exe, "setup")
 	return exec.Command(term, args...).Start()
+}
+
+// guiKey возвращает ключ перевода для текущей сборки: в консольной сборке — вариант
+// "<key>.cli" без упоминания окна и значка в меню.
+func guiKey(key string) string {
+	if buildinfo.GUI {
+		return key
+	}
+	return key + ".cli"
 }
 
 // newInstallEnv возвращает пути установки для текущего пользователя.
@@ -195,7 +209,7 @@ func runSetup(cmd *cobra.Command, tr *i18n.Translator, yes bool) error {
 	d.say("cli.setup.welcome")
 
 	// Шаг 1: программа и ярлык в меню.
-	d.say("cli.setup.step.files", i18n.A("bin", ienv.BinPath()))
+	d.say(guiKey("cli.setup.step.files"), i18n.A("bin", ienv.BinPath()))
 	if !d.ask("cli.setup.ask.files", true) {
 		d.say("cli.setup.cancelled")
 		return nil
@@ -203,7 +217,7 @@ func runSetup(cmd *cobra.Command, tr *i18n.Translator, yes bool) error {
 	if err := install.Files(ienv, manifest.Writer{M: m, Owner: "program"}); err != nil {
 		return err
 	}
-	d.say("cli.setup.done.files")
+	d.say(guiKey("cli.setup.done.files"))
 
 	// Шаг 2: права на устройства ввода (как `mkey doctor --fix`).
 	d.say("cli.setup.step.access")
@@ -258,7 +272,7 @@ func runSetup(cmd *cobra.Command, tr *i18n.Translator, yes bool) error {
 	}
 
 	// Готово.
-	d.say("cli.setup.finished", i18n.A("bin", ienv.BinPath()))
+	d.say(guiKey("cli.setup.finished"), i18n.A("bin", ienv.BinPath()))
 	return nil
 }
 

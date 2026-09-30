@@ -36,6 +36,8 @@ var streamTopics = map[string]bool{
 	contracts.TopicInputDeviceAdded:   true,
 	contracts.TopicInputDeviceRemoved: true,
 	contracts.TopicInputAccessChanged: true,
+	contracts.TopicRecordingStarted:   true,
+	contracts.TopicRecordingStopped:   true,
 }
 
 // registerGUIRoutes добавляет маршруты веб-интерфейса.
@@ -313,7 +315,7 @@ func streamPayload(p any) any {
 
 // capturedKey — нажатая клавиша для «Нажмите клавишу…» (FR-UI-3, FR-DEV-2).
 type capturedKey struct {
-	// Name — имя клавиши mKey ("Mouse0", "F8"), для сочетания — "Ctrl+Alt+H";
+	// Name — имя клавиши mKey ("Mouse0", "F8"), для сочетания — запись зажатием "^{Ctrl}^{Alt}{H}";
 	// у клавиши без имени — сырой код ("#30"), который тоже понимает DSL.
 	Name string `json:"name"`
 	// Code — код evdev (первой клавиши сочетания); Kernel — имя кода в ядре ("BTN_TRIGGER_HAPPY3").
@@ -325,7 +327,7 @@ type capturedKey struct {
 }
 
 // handleCaptureKey ждёт нажатия клавиши или кнопки: {timeout_ms, combo} → capturedKey; 408 — время вышло.
-// combo = true — сочетание: собираются все клавиши, зажатые до первого отпускания ("Ctrl+Alt+H").
+// combo = true — сочетание: собираются все клавиши, зажатые до первого отпускания ("^{Ctrl}^{Alt}{H}").
 func (m *Module) handleCaptureKey(w http.ResponseWriter, r *http.Request) {
 	if m.svc.input == nil {
 		m.unavailable(w, r)
@@ -367,7 +369,7 @@ func (m *Module) handleCaptureKey(w http.ResponseWriter, r *http.Request) {
 			// Отпускание: сочетание собрано (или это отпускание клавиши, зажатой до начала захвата).
 			if e.Event.Value == ev.ValueUp {
 				if first != nil {
-					first.Name = strings.Join(names, "+")
+					first.Name = hotkeyText(names)
 					writeJSON(w, http.StatusOK, first)
 					return
 				}
@@ -405,6 +407,19 @@ func (m *Module) handleCaptureKey(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// hotkeyText записывает сочетание зажатием: все клавиши, кроме последней, зажаты, последняя нажата
+// ("^{Ctrl}^{Alt}{H}"); одна клавиша — "{F8}".
+func hotkeyText(names []string) string {
+	var b strings.Builder
+	for i, n := range names {
+		if i < len(names)-1 {
+			b.WriteString("^")
+		}
+		b.WriteString("{" + n + "}")
+	}
+	return b.String()
 }
 
 // anySide заменяет левый/правый модификатор на модификатор без стороны: в горячей клавише

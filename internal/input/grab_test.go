@@ -281,13 +281,13 @@ func TestCloneSetup(t *testing.T) {
 // TestEmergencyCodes проверяет разбор клавиш экстренной остановки.
 func TestEmergencyCodes(t *testing.T) {
 	t.Parallel()
-	if c, err := emergencyCodes([]string{"Esc", "backspace", "ENTER"}); err != nil || len(c) != 3 {
+	if c, err := emergencyKeys("^{Esc}^{backspace}{ENTER}"); err != nil || len(c) != 3 {
 		t.Fatalf("codes = %v, %v", c, err)
 	}
-	if _, err := emergencyCodes([]string{"Esc"}); err == nil {
+	if _, err := emergencyKeys("{Esc}"); err == nil {
 		t.Fatal("one key must be rejected")
 	}
-	if _, err := emergencyCodes([]string{"Esc", "Mous0"}); err == nil {
+	if _, err := emergencyKeys("^{Esc}{Mous0}"); err == nil {
 		t.Fatal("unknown key must be rejected")
 	}
 }

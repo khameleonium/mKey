@@ -94,6 +94,9 @@ func (f fakeDevices) Mouse() (contracts.VirtualDevice, error)    { return f.mous
 func (fakeDevices) Status() contracts.OutputStatus               { return contracts.OutputStatus{Available: true} }
 func (fakeDevices) ReleaseAll() error                            { return nil }
 
+// CenterPointer не нужен тестам движка.
+func (fakeDevices) CenterPointer(context.Context) error { return nil }
+
 // fakeLayouts — раскладки с журналом переключений.
 type fakeLayouts struct {
 	mu       sync.Mutex
