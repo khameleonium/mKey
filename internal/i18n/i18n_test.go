@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"slices"
 	"testing"
+
+	"mkey/internal/lib/dsl"
 )
 
 // placeholderRe находит плейсхолдеры вида {name} в тексте перевода.
@@ -105,6 +107,20 @@ func TestDetectLang(t *testing.T) {
 		getenv := func(k string) string { return c.env[k] }
 		if got := DetectLang(getenv); got != c.want {
 			t.Errorf("DetectLang(%v) = %q, want %q", c.env, got, c.want)
+		}
+	}
+}
+
+// TestDSLErrorsTranslated проверяет, что у каждого кода ошибки языка макросов есть перевод.
+func TestDSLErrorsTranslated(t *testing.T) {
+	t.Parallel()
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range dsl.AllErrorCodes {
+		if _, ok := cat[FallbackLang][code]; !ok {
+			t.Errorf("no translation for %s", code)
 		}
 	}
 }

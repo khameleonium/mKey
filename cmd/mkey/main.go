@@ -5,6 +5,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -25,9 +26,15 @@ func main() {
 	}
 	tr := i18n.New(cat, lang)
 
-	// Выполняем команду; ошибку печатаем на языке пользователя.
+	// Выполняем команду; ошибку печатаем на языке пользователя
+	// (готовые сообщения вроде ошибки в макросе — без префикса «Ошибка:»).
 	if err := newRootCmd(tr).Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, tr.T("cli.error.prefix", i18n.A("message", err)))
+		var ue userError
+		if errors.As(err, &ue) {
+			fmt.Fprintln(os.Stderr, ue)
+		} else {
+			fmt.Fprintln(os.Stderr, tr.T("cli.error.prefix", i18n.A("message", err)))
+		}
 		os.Exit(1)
 	}
 }

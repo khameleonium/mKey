@@ -1,0 +1,206 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
+
+	"mkey/internal/app"
+	"mkey/internal/contracts"
+	"mkey/internal/i18n"
+	"mkey/internal/lib/logfile"
+	"mkey/internal/lib/paths"
+)
+
+// Параметры журнала демона: 5 МиБ на файл, три старых файла (NFR-8).
+const (
+	logMaxBytes = 5 << 20
+	logBackups  = 3
+)
+
+// logPath возвращает путь к журналу демона.
+func logPath() string {
+	return filepath.Join(paths.State(os.Getenv), "mkey.log")
+}
+
+// newDaemonCmd создаёт команду `mkey daemon` (фоновая часть mKey) и `mkey daemon stop` (T2.4).
+func newDaemonCmd(tr *i18n.Translator) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "daemon",
+		Short: tr.T("cli.daemon.short"),
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runDaemon(cmd, tr)
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "stop",
+		Short: tr.T("cli.daemon.stop.short"),
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return stopDaemon(cmd, tr)
+		},
+	})
+	return cmd
+}
+
+// runDaemon запускает все модули и работает до сигнала завершения или команды `mkey daemon stop`.
+func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
+	// Личный каталог времени выполнения и блокировка: второй демон того же пользователя не запустится.
+	dir := runtimeDir()
+	if err := paths.EnsurePrivateDir(dir); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(filepath.Join(dir, "daemon.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Close() }()
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			return errors.New(tr.T("cli.daemon.already_running"))
+		}
+		return err
+	}
+
+	// Журнал: JSON в файл с ротацией; при запуске из терминала — ещё и читаемый текст в терминал.
+	file, err := logfile.Open(logPath(), logMaxBytes, logBackups)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	level := slog.LevelInfo
+	if v, _ := cmd.Flags().GetBool("verbose"); v {
+		level = slog.LevelDebug
+	}
+	handlers := []slog.Handler{slog.NewJSONHandler(file, &slog.HandlerOptions{Level: level})}
+	if isTerminal(os.Stderr) {
+		handlers = append(handlers, slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+	}
+	logger := slog.New(fanout(handlers))
+
+	// Собираем программу из всех модулей и добавляем управление жизненным циклом демона.
+	a, err := app.New(app.Options{Lang: tr.Lang(), Logger: logger})
+	if err != nil {
+		return err
+	}
+	life := &lifecycle{started: time.Now(), done: make(chan struct{})}
+	if err := contracts.ProvideService[contracts.Lifecycle](a.Manager.Services(), life); err != nil {
+		return err
+	}
+
+	// Запуск; сигнал завершения или команда stop — корректная остановка.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := a.Start(ctx); err != nil {
+		return err
+	}
+	logger.Info("daemon started", "pid", os.Getpid())
+	if isTerminal(os.Stdout) {
+		printf(cmd.OutOrStdout(), "%s\n", tr.T("cli.daemon.started", i18n.A("pid", os.Getpid())))
+	}
+	select {
+	case <-ctx.Done():
+	case <-life.done:
+	}
+
+	// Остановка: модули отпускают клавиши и уничтожают виртуальные устройства (SEC-2).
+	logger.Info("daemon stopping")
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return a.Stop(sctx)
+}
+
+// stopDaemon просит работающий демон завершиться и ждёт, пока он остановится.
+func stopDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
+	c := newClient(runtimeDir(), tr.Lang())
+	out := cmd.OutOrStdout()
+
+	// Демон не запущен — нечего останавливать.
+	err := c.do(cmd.Context(), "POST", "/api/v1/shutdown", nil, nil)
+	if errors.Is(err, errNotRunning) {
+		printf(out, "%s\n", tr.T("cli.daemon.not_running"))
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	// Ждём, пока демон перестанет отвечать (до 10 секунд).
+	for range 100 {
+		time.Sleep(100 * time.Millisecond)
+		if err := c.do(cmd.Context(), "GET", "/api/v1/status", nil, nil); errors.Is(err, errNotRunning) {
+			printf(out, "%s\n", tr.T("cli.daemon.stopped"))
+			return nil
+		}
+	}
+	return fmt.Errorf("%s", tr.T("cli.daemon.stop_timeout"))
+}
+
+// lifecycle — реализация contracts.Lifecycle для процесса демона.
+type lifecycle struct {
+	started time.Time
+	once    sync.Once
+	done    chan struct{}
+}
+
+// Shutdown просит демон завершиться (повторные вызовы безопасны).
+func (l *lifecycle) Shutdown() { l.once.Do(func() { close(l.done) }) }
+
+// StartedAt возвращает время запуска демона.
+func (l *lifecycle) StartedAt() time.Time { return l.started }
+
+// fanoutHandler — slog.Handler, передающий записи сразу нескольким обработчикам.
+type fanoutHandler []slog.Handler
+
+// fanout объединяет обработчики.
+func fanout(hs []slog.Handler) slog.Handler { return fanoutHandler(hs) }
+
+// Enabled — запись нужна, если её принимает хотя бы один обработчик.
+func (f fanoutHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	for _, h := range f {
+		if h.Enabled(ctx, l) {
+			return true
+		}
+	}
+	return false
+}
+
+// Handle передаёт запись каждому обработчику, который её принимает.
+func (f fanoutHandler) Handle(ctx context.Context, r slog.Record) error {
+	var errs []error
+	for _, h := range f {
+		if h.Enabled(ctx, r.Level) {
+			errs = append(errs, h.Handle(ctx, r.Clone()))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// WithAttrs добавляет атрибуты во все обработчики.
+func (f fanoutHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	out := make(fanoutHandler, len(f))
+	for i, h := range f {
+		out[i] = h.WithAttrs(attrs)
+	}
+	return out
+}
+
+// WithGroup добавляет группу во все обработчики.
+func (f fanoutHandler) WithGroup(name string) slog.Handler {
+	out := make(fanoutHandler, len(f))
+	for i, h := range f {
+		out[i] = h.WithGroup(name)
+	}
+	return out
+}

@@ -32,8 +32,15 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 
 	// Подкоманды.
 	root.AddCommand(
-		newVersionCmd(tr),
+		newSendCmd(tr),
+		newStopCmd(tr),
+		newPanicCmd(tr),
+		newStatusCmd(tr),
+		newDevicesCmd(tr),
 		newDoctorCmd(tr),
+		newDaemonCmd(tr),
+		newLogsCmd(tr),
+		newVersionCmd(tr),
 		newPrivilegedCmd(tr),
 		newDebugCmd(tr),
 	)
