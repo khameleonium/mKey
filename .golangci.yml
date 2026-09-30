@@ -1,0 +1,48 @@
+# Конфигурация golangci-lint v2 для mKey.
+# Границы модулей проверяет не depguard, а архитектурный тест internal/archtest (см. docs/modules.md).
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - revive # doc-комментарии у экспортируемых идентификаторов и пакетов
+    - godot # комментарии объявлений заканчиваются точкой
+    - misspell # опечатки в английских словах
+    - errorlint # корректная работа с обёрнутыми ошибками
+    - gocritic # распространённые ошибки и неидиоматичный код
+    - unconvert # лишние преобразования типов
+    - unparam # неиспользуемые параметры и результаты
+    - nolintlint # аккуратное использование //nolint
+    - bodyclose # закрытие тел HTTP-ответов
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: error-return
+        - name: error-naming
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: unused-parameter
+    godot:
+      scope: declarations
+      # Абзацы комментариев со списками и примерами кода точкой не заканчиваются.
+      exclude:
+        - "^\\s*-"
+        - "^\\s*\\t"
+  exclusions:
+    paths:
+      - web/node_modules
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - mkey

@@ -9,7 +9,7 @@ coverage.*
 node_modules/
 web/dist/*
 !web/dist/.gitkeep
-!web/dist/index.html
+web/node_modules/.installed
 
 # Редакторы и ОС
 .idea/

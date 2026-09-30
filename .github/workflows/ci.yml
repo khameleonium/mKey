@@ -1,0 +1,64 @@
+# CI mKey: линтеры и unit-тесты Go и фронтенда, сборка бинарников amd64/arm64 (T0.4).
+# Репозиторий пока локальный; workflow заработает после публикации на GitHub.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Линтеры Go (включая архитектурный тест границ модулей).
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+      - run: go vet ./...
+      # Unit-тесты без прав и устройств.
+      - run: go test -race ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  build:
+    needs: [go, web]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Полная сборка: фронтенд + статический бинарник под целевую архитектуру.
+      - run: make build GOARCH=${{ matrix.goarch }}
+        env:
+          GOARCH: ${{ matrix.goarch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mkey-linux-${{ matrix.goarch }}
+          path: mkey
