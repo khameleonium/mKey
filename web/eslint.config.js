@@ -12,6 +12,9 @@ export default ts.config(
   ...svelte.configs.recommended,
   // Глобальные переменные браузера и Node (для конфигов).
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
+  // В тестах «!» после заведомо существующих элементов делает проверки короче; ошибка всё равно
+  // проявится падением теста.
+  { files: ["**/*.test.ts"], rules: { "@typescript-eslint/no-non-null-assertion": "off" } },
   // В .svelte и .svelte.ts TypeScript разбирается парсером typescript-eslint.
   {
     files: ["**/*.svelte", "**/*.svelte.ts"],

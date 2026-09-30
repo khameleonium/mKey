@@ -56,3 +56,32 @@ describe("detectLang", () => {
     expect(detectLang([])).toBe("en");
   });
 });
+
+describe("used keys", () => {
+  it("translates every key used in the interface", async () => {
+    // Собираем ключи-строки из исходников интерфейса ("editor.save", "nav." + имя — префиксы).
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = join(__dirname, "..", "..");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (/\.(svelte|ts)$/.test(name) && !name.endsWith(".test.ts")) files.push(p);
+      }
+    };
+    walk(root);
+
+    // Каждый полный ключ есть в каталоге; для префикса ("nav.") есть хотя бы один ключ с ним.
+    const re =
+      /"((?:app|common|devices|diag|editor|home|key|nav|projects|settings|setup|trigger)\.[a-z_.0-9]*)"/g;
+    for (const f of files) {
+      for (const m of readFileSync(f, "utf8").matchAll(re)) {
+        const key = m[1]!;
+        const ok = key.endsWith(".") ? Object.keys(en).some((k) => k.startsWith(key)) : key in en;
+        expect(ok, `${f}: ${key}`).toBe(true);
+      }
+    }
+  });
+});

@@ -1,0 +1,265 @@
+<!--
+  ProjectsPage — список проектов (FR-UI-1.2): включение, открыть в редакторе, создать пустой
+  или из шаблона, импорт (новый проект выключен до проверки, SEC-7), экспорт файлом, удаление.
+  Props: нет.
+-->
+<script lang="ts">
+  import { api } from "../../lib/api";
+  import Modal from "../../lib/components/Modal.svelte";
+  import Toggle from "../../lib/components/Toggle.svelte";
+  import { t } from "../../lib/i18n/index.svelte";
+  import { href, navigate } from "../../lib/router.svelte";
+  import { onTopic } from "../../lib/stream.svelte";
+  import { errorText, toast } from "../../lib/toast.svelte";
+  import type { ProjectInfo, Template } from "../../lib/types";
+
+  /** Данные страницы. */
+  let projects = $state<ProjectInfo[]>([]);
+  let dir = $state("");
+  let loaded = $state(false);
+  /** Окна: создание и шаблоны. */
+  let creating = $state(false);
+  let newName = $state("");
+  let templates = $state<Template[] | null>(null);
+
+  /** load перечитывает список проектов. */
+  async function load(): Promise<void> {
+    try {
+      const r = await api.projects();
+      projects = r.projects;
+      dir = r.dir;
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      loaded = true;
+    }
+  }
+
+  // Загрузка при открытии и при любом изменении проектов.
+  $effect(() => {
+    void load();
+    return onTopic("store.projects_changed", () => void load());
+  });
+
+  /** toggle включает или выключает проект. */
+  async function toggle(p: ProjectInfo, on: boolean): Promise<void> {
+    try {
+      await api.setProjectEnabled(p.id, on);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+    await load();
+  }
+
+  /** create создаёт пустой проект с названием newName и открывает его в редакторе. */
+  async function create(): Promise<void> {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const { id } = await api.createProject(name);
+      creating = false;
+      newName = "";
+      navigate("editor", id);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  /** openTemplates показывает готовые шаблоны. */
+  async function openTemplates(): Promise<void> {
+    try {
+      templates = (await api.templates()).templates ?? [];
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  /** fromTemplate создаёт проект из шаблона и открывает его. */
+  async function fromTemplate(tpl: Template): Promise<void> {
+    try {
+      const { id } = await api.createProject(tpl.name, tpl.id);
+      templates = null;
+      navigate("editor", id);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  /** importFile загружает проект из выбранного файла (он будет выключен до проверки). */
+  async function importFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    try {
+      const { id } = await api.importProject(file.name, await file.text());
+      toast(t("projects.imported"));
+      navigate("editor", id);
+    } catch (err) {
+      toast(errorText(err), "error");
+    }
+  }
+
+  /** exportFile скачивает файл проекта. */
+  async function exportFile(p: ProjectInfo): Promise<void> {
+    try {
+      const { raw } = await api.project(p.id);
+      const url = URL.createObjectURL(new Blob([raw], { type: "application/yaml" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${p.id}.mkey.yaml`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  /** remove удаляет проект после подтверждения. */
+  async function remove(p: ProjectInfo): Promise<void> {
+    if (!confirm(t("projects.delete_confirm", { name: p.name || p.id }))) return;
+    try {
+      await api.deleteProject(p.id);
+      toast(t("projects.deleted"));
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+    await load();
+  }
+</script>
+
+<div class="row head">
+  <h1>{t("projects.title")}</h1>
+  <span class="spacer"></span>
+  <button class="primary" onclick={() => (creating = true)}>+ {t("projects.new")}</button>
+  <button onclick={openTemplates}>★ {t("projects.from_template")}</button>
+  <label class="btn">
+    ⇪ {t("projects.import")}
+    <input type="file" accept=".yaml,.yml" hidden onchange={importFile} />
+  </label>
+</div>
+
+{#if loaded && projects.length === 0}
+  <div class="note">{t("projects.empty")}</div>
+{/if}
+
+<div class="list">
+  {#each projects as p (p.id)}
+    <div class="card project" class:off={!p.enabled}>
+      <Toggle checked={p.enabled} title={t("projects.enabled")} onchange={(on) => toggle(p, on)} />
+      <div class="info">
+        <a class="name" href={href("editor", p.id)}>{p.name || p.id}</a>
+        <span class="muted">{t("projects.events_count", { n: p.events })}</span>
+        {#if p.error}<div class="err">⚠ {p.error}</div>{/if}
+      </div>
+      <span class="spacer"></span>
+      <a class="btn" href={href("editor", p.id)}>✎ {t("projects.edit")}</a>
+      <button class="ghost" title={t("projects.export")} onclick={() => exportFile(p)}>⇩</button>
+      <button class="ghost" title={t("common.delete")} onclick={() => remove(p)}>✕</button>
+    </div>
+  {/each}
+</div>
+
+{#if dir}
+  <details class="muted small">
+    <summary>{t("common.more")}</summary>
+    {t("projects.dir", { dir })}
+  </details>
+{/if}
+
+{#if creating}
+  <Modal title={t("projects.new")} onclose={() => (creating = false)}>
+    <label class="field">
+      {t("projects.name")}
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        bind:value={newName}
+        autofocus
+        placeholder={t("projects.name_placeholder")}
+        onkeydown={(e) => {
+          if (e.key === "Enter") void create();
+        }}
+      />
+    </label>
+    <p class="muted">{t("projects.new_hint")}</p>
+    {#snippet footer()}
+      <button onclick={() => (creating = false)}>{t("common.cancel")}</button>
+      <button class="primary" disabled={!newName.trim()} onclick={create}
+        >{t("common.create")}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
+
+{#if templates}
+  <Modal title={t("projects.templates")} wide onclose={() => (templates = null)}>
+    <div class="templates">
+      {#each templates as tpl (tpl.id)}
+        <button class="tpl" onclick={() => fromTemplate(tpl)}>
+          <b>{tpl.name}</b>
+          <span class="muted">{tpl.description}</span>
+        </button>
+      {/each}
+    </div>
+    <p class="muted">{t("projects.template_hint")}</p>
+  </Modal>
+{/if}
+
+<style>
+  .head {
+    margin-bottom: 12px;
+  }
+  .head h1 {
+    margin: 0;
+  }
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .project {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+  }
+  .project.off .name {
+    color: var(--muted);
+  }
+  .info {
+    display: flex;
+    flex-direction: column;
+  }
+  .name {
+    font-weight: 600;
+    font-size: 1.05rem;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .err {
+    color: var(--danger);
+    font-size: 0.88rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .templates {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .tpl {
+    flex-direction: column;
+    align-items: flex-start;
+    white-space: normal;
+    text-align: left;
+    padding: 12px;
+    gap: 4px;
+  }
+  .small {
+    margin-top: 16px;
+    font-size: 0.85rem;
+  }
+</style>

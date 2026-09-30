@@ -1,6 +1,7 @@
 // Точка входа веб-интерфейса: монтирует корневой компонент в #app.
 import { mount } from "svelte";
 import App from "./App.svelte";
+import "./app.css";
 
 // Находим контейнер приложения; без него интерфейс не может работать.
 const target = document.getElementById("app");
