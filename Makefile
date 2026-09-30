@@ -18,7 +18,7 @@ LDFLAGS := -s -w \
 WEB := web
 BIN := mkey
 
-.PHONY: all build go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module clean help
+.PHONY: all build go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module gencodes clean help
 
 ## all: то же, что build
 all: build
@@ -78,6 +78,10 @@ run: go-build
 new-module:
 	@if [ -z "$(NAME)" ]; then echo "usage: make new-module NAME=<id>"; exit 1; fi
 	go run ./tools/newmodule -name $(NAME)
+
+## gencodes: перегенерировать коды событий из linux/input-event-codes.h
+gencodes:
+	go run ./tools/gencodes
 
 ## clean: удалить бинарник и собранный фронтенд
 clean:
