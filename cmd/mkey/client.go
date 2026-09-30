@@ -10,11 +10,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
-	"time"
 
 	"mkey/internal/api"
 	"mkey/internal/i18n"
@@ -122,26 +119,20 @@ func ensureDaemon(ctx context.Context, c *client, tr *i18n.Translator, autostart
 
 	// Запускаем `mkey daemon` отдельным процессом в новой сессии: он переживёт закрытие терминала.
 	fmt.Fprintln(os.Stderr, tr.T("cli.daemon.autostart"))
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+	// Установленная копия предпочтительнее: демон должен быть тем же, что запускается при входе.
+	exe := newInstallEnv().Exe
+	if ienv := newInstallEnv(); ienv.Installed() {
+		exe = ienv.BinPath()
 	}
-	cmd := exec.Command(exe, "daemon", "--lang", tr.Lang())
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
+	if err := spawnDaemon(exe, tr.Lang()); err != nil {
 		return errors.New(tr.T("cli.daemon.autostart_failed", i18n.A("error", err)))
 	}
-	_ = cmd.Process.Release()
 
 	// Ждём, пока демон начнёт отвечать (до 5 секунд).
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
-		if err := c.do(ctx, http.MethodGet, "/api/v1/status", nil, nil); err == nil {
-			return nil
-		}
+	if !waitDaemon(ctx, c) {
+		return errors.New(tr.T("cli.daemon.autostart_failed", i18n.A("error", "timeout")))
 	}
-	return errors.New(tr.T("cli.daemon.autostart_failed", i18n.A("error", "timeout")))
+	return nil
 }
 
 // userError — готовое сообщение для пользователя: печатается как есть, без префикса «Ошибка:».

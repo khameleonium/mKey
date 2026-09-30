@@ -1,8 +1,12 @@
 package i18n
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"mkey/internal/lib/dsl"
@@ -122,5 +126,49 @@ func TestDSLErrorsTranslated(t *testing.T) {
 		if _, ok := cat[FallbackLang][code]; !ok {
 			t.Errorf("no translation for %s", code)
 		}
+	}
+}
+
+// keyUseRe находит в исходном коде вызовы перевода с ключом-литералом: tr.T("cli.x"), m.tr.T("…").
+var keyUseRe = regexp.MustCompile(`\.T\("([a-z0-9_.\-]+)"`)
+
+// TestAllUsedKeysTranslated проверяет, что у каждого ключа, использованного в коде, есть перевод:
+// иначе пользователь увидел бы вместо текста технический ключ.
+func TestAllUsedKeysTranslated(t *testing.T) {
+	t.Parallel()
+	cat, err := LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Обходим исходники репозитория (тест запускается из internal/i18n), кроме тестов.
+	root := filepath.Join("..", "..")
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == "node_modules" || d.Name() == ".git") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range keyUseRe.FindAllStringSubmatch(string(data), -1) {
+			// Ключ, собираемый из частей ("cli.project." + action), проверить так нельзя — пропускаем.
+			if strings.HasSuffix(m[1], ".") {
+				continue
+			}
+			if _, ok := cat[FallbackLang][m[1]]; !ok {
+				t.Errorf("%s: no translation for %q", path, m[1])
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

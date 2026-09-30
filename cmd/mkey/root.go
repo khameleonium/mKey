@@ -20,8 +20,9 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		Long:          tr.T("cli.root.long"),
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Без параметров: не установлен — мастер установки, установлен — окно программы.
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
+			return runDefault(cmd, tr)
 		},
 	}
 
@@ -44,6 +45,9 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		newWaitCmd(tr),
 		newResumeCmd(tr),
 		newDoctorCmd(tr),
+		newSetupCmd(tr),
+		newUninstallCmd(tr),
+		newGUICmd(tr),
 		newDaemonCmd(tr),
 		newLogsCmd(tr),
 		newVersionCmd(tr),

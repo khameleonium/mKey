@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -143,7 +142,7 @@ func runFix(ctx context.Context, cmd *cobra.Command, tr *i18n.Translator, doctor
 			return nil
 		}
 		printf(out, "\n%s", tr.T("cli.doctor.fix.confirm"))
-		answer, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+		answer := readLine(cmd.InOrStdin())
 		if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" && a != "д" && a != "да" {
 			printf(out, "%s\n", tr.T("cli.doctor.fix.cancelled"))
 			return nil
