@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mkey/internal/contracts"
@@ -16,6 +19,7 @@ import (
 	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/layout"
+	"mkey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля.
@@ -32,6 +36,8 @@ type Config struct {
 	KeyDelayMS int `json:"key_delay_ms"`
 	// LayoutSwitchMS — пауза после переключения раскладки, чтобы система успела его применить.
 	LayoutSwitchMS int `json:"layout_switch_ms"`
+	// VarsFile — файл сохраняемых переменных (по умолчанию ~/.local/state/mkey/vars.json).
+	VarsFile string `json:"vars_file"`
 }
 
 // Module — модуль выполнения макросов, реализует contracts.SequenceRunner.
@@ -49,8 +55,29 @@ type Module struct {
 
 	// mu защищает runs.
 	mu sync.Mutex
-	// runs — выполняющиеся сейчас макросы.
+	// runs — выполняющиеся сейчас макросы и события.
 	runs map[*run]struct{}
+
+	// Сервисы для событий (любой, кроме ext и bus, может отсутствовать).
+	ext      contracts.ExtensionRegistry
+	bus      contracts.Bus
+	projects contracts.Projects
+	keyState contracts.KeyState
+	notifier contracts.Notifier
+	// root живёт до Stop: от него наследуются контексты проектов.
+	root       context.Context
+	rootCancel context.CancelFunc
+	// unsub — отписки от шины; wg ждёт горутину обработки шины.
+	unsub []func()
+	wg    sync.WaitGroup
+	// evMu защищает runtimes; runtimes — взведённые проекты по ID.
+	evMu     sync.Mutex
+	runtimes map[string]*projectRuntime
+	// persist — файл сохраняемых переменных.
+	persist *persistFile
+	// suspended — mKey приостановлен после экстренной остановки: триггеры не запускают события
+	// до `mkey resume` (ручной запуск и `mkey send` работают).
+	suspended atomic.Bool
 }
 
 // run — один выполняющийся макрос.
@@ -70,12 +97,16 @@ func New() *Module {
 
 // newModule создаёт модуль с заданными часами и генератором случайных чисел (для тестов).
 func newModule(clk clock.Clock, rnd *rand.Rand) *Module {
-	return &Module{
-		clk:  clk,
-		rnd:  rnd,
-		cfg:  Config{KeyHoldMS: 20, KeyDelayMS: 10, LayoutSwitchMS: 60},
-		runs: map[*run]struct{}{},
+	m := &Module{
+		clk:      clk,
+		rnd:      rnd,
+		cfg:      Config{KeyHoldMS: 20, KeyDelayMS: 10, LayoutSwitchMS: 60},
+		runs:     map[*run]struct{}{},
+		runtimes: map[string]*projectRuntime{},
+		persist:  &persistFile{path: filepath.Join(paths.State(os.Getenv), "vars.json")},
 	}
+	m.root, m.rootCancel = context.WithCancel(context.Background())
+	return m
 }
 
 // ID возвращает идентификатор модуля.
@@ -95,19 +126,93 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		return fmt.Errorf("%s: virtual devices: %w", ModuleID, err)
 	}
 	m.devices = vd
-	if lp, err := contracts.LookupService[contracts.LayoutProvider](host.Services()); err == nil {
-		m.layouts = lp
+	m.layouts, _ = contracts.LookupService[contracts.LayoutProvider](host.Services())
+	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
+	m.keyState, _ = contracts.LookupService[contracts.KeyState](host.Services())
+	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	if m.cfg.VarsFile != "" {
+		m.persist.path = m.cfg.VarsFile
 	}
-	return contracts.ProvideService[contracts.SequenceRunner](host.Services(), m)
+
+	// Встроенные виды триггеров, условий и действий.
+	m.ext = host.Extensions()
+	m.bus = host.Bus()
+	if err := m.registerBuiltins(m.ext); err != nil {
+		return err
+	}
+
+	// Подписки: изменения проектов и экстренная остановка.
+	projCh, u1 := m.bus.Subscribe(contracts.TopicProjectsChanged)
+	emerCh, u2 := m.bus.Subscribe(contracts.TopicEmergency)
+	resCh, u3 := m.bus.Subscribe(contracts.TopicResumed)
+	m.unsub = []func(){u1, u2, u3}
+	m.wg.Add(1)
+	go m.listen(projCh, emerCh, resCh)
+
+	// Сервисы.
+	if err := contracts.ProvideService[contracts.SequenceRunner](host.Services(), m); err != nil {
+		return err
+	}
+	return contracts.ProvideService[contracts.Events](host.Services(), m)
 }
 
-// Start ничего не делает: макросы запускаются по запросу.
-func (m *Module) Start(context.Context) error { return nil }
-
-// Stop прерывает все макросы (их клавиши отпускаются).
-func (m *Module) Stop(context.Context) error {
-	m.StopAll()
+// Start взводит все включённые проекты (все модули уже зарегистрировали свои виды действий).
+func (m *Module) Start(context.Context) error {
+	m.reloadAll()
 	return nil
+}
+
+// Stop снимает все проекты, прерывает все макросы (их клавиши отпускаются) и сохраняет переменные.
+func (m *Module) Stop(context.Context) error {
+	for _, u := range m.unsub {
+		u()
+	}
+	m.wg.Wait()
+	m.evMu.Lock()
+	runtimes := m.runtimes
+	m.runtimes = map[string]*projectRuntime{}
+	m.evMu.Unlock()
+	for _, rt := range runtimes {
+		m.teardown(rt)
+	}
+	m.StopAll()
+	m.rootCancel()
+	return nil
+}
+
+// listen обрабатывает события шины: перезагрузка изменённых проектов, экстренная остановка
+// и возобновление работы.
+func (m *Module) listen(projects, emergency, resumed <-chan contracts.Event) {
+	defer m.wg.Done()
+	for {
+		select {
+		case e, ok := <-projects:
+			if !ok {
+				return
+			}
+			ids, _ := e.Payload.([]string)
+			for _, id := range ids {
+				m.reloadProject(id)
+			}
+		case _, ok := <-emergency:
+			if !ok {
+				return
+			}
+			// Экстренная остановка (SEC-1): приостановиться, всё прервать и отпустить.
+			m.log.Warn("emergency stop: stopping all macros, triggers suspended until resume")
+			m.suspended.Store(true)
+			m.StopAll()
+			if err := m.devices.ReleaseAll(); err != nil {
+				m.log.Error("release all after emergency", "err", err)
+			}
+		case _, ok := <-resumed:
+			if !ok {
+				return
+			}
+			m.log.Info("triggers resumed")
+			m.suspended.Store(false)
+		}
+	}
 }
 
 // Running возвращает число выполняющихся макросов.
@@ -117,8 +222,9 @@ func (m *Module) Running() int {
 	return len(m.runs)
 }
 
-// StopAll прерывает все выполняющиеся макросы.
+// StopAll прерывает все выполняющиеся макросы и события и выключает переключатели.
 func (m *Module) StopAll() {
+	m.resetToggles()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for r := range m.runs {
@@ -126,27 +232,37 @@ func (m *Module) StopAll() {
 	}
 }
 
-// Run разбирает, компилирует и выполняет макрос.
+// Run разбирает, компилирует и выполняет макрос как отдельный раннер: всё, что он зажал,
+// отпускается по его завершению (FR-DSL-5).
 func (m *Module) Run(ctx context.Context, src string) error {
-	// Разбор и компиляция: ошибки в тексте макроса возвращаются как *dsl.Error.
+	// Проверяем макрос до регистрации раннера: ошибка в тексте ничего не нажимает.
+	steps, err := compileSource(src)
+	if err != nil {
+		return err
+	}
+	ctx, r, finish := m.newRun(ctx)
+	defer finish()
+	return m.exec(ctx, r, steps)
+}
+
+// compileSource разбирает и компилирует макрос; ошибки — *dsl.Error.
+func compileSource(src string) ([]dsl.Step, error) {
 	nodes, err := dsl.Parse(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	steps, err := dsl.Compile(nodes, dsl.DefaultResolver{})
-	if err != nil {
-		return err
-	}
+	return dsl.Compile(nodes, dsl.DefaultResolver{})
+}
 
-	// Регистрируем раннер, чтобы StopAll мог его прервать.
-	ctx, cancel := context.WithCancel(ctx)
+// newRun регистрирует раннер, чтобы StopAll мог его прервать. finish отпускает всё,
+// что раннер зажал, и снимает его с учёта; его нужно вызвать всегда.
+func (m *Module) newRun(parent context.Context) (context.Context, *run, func()) {
+	ctx, cancel := context.WithCancel(parent)
 	r := &run{cancel: cancel, held: map[string][]uint16{}}
 	m.mu.Lock()
 	m.runs[r] = struct{}{}
 	m.mu.Unlock()
-
-	// Что бы ни случилось, отпускаем всё зажатое и снимаем раннер с учёта (FR-DSL-5).
-	defer func() {
+	return ctx, r, func() {
 		if err := m.releaseAll(r); err != nil {
 			m.log.Error("release after macro", "err", err)
 		}
@@ -154,9 +270,16 @@ func (m *Module) Run(ctx context.Context, src string) error {
 		m.mu.Lock()
 		delete(m.runs, r)
 		m.mu.Unlock()
-	}()
+	}
+}
 
-	// Выполняем план.
+// execSource выполняет макрос в рамках существующего раннера r: зажатые клавиши остаются
+// зажатыми для следующих действий события и отпускаются по завершению события.
+func (m *Module) execSource(ctx context.Context, r *run, src string) error {
+	steps, err := compileSource(src)
+	if err != nil {
+		return err
+	}
 	return m.exec(ctx, r, steps)
 }
 
@@ -496,4 +619,5 @@ func controlKey(c rune) (uint16, bool) {
 var (
 	_ contracts.Module         = (*Module)(nil)
 	_ contracts.SequenceRunner = (*Module)(nil)
+	_ contracts.Events         = (*Module)(nil)
 )
