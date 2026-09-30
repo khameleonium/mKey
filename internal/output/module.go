@@ -22,6 +22,8 @@ type Config struct {
 	UInputPath string `json:"uinput_path"`
 	// SettleMS — сколько миллисекунд ждать после создания устройства, прежде чем отправлять события.
 	SettleMS int `json:"settle_ms"`
+	// MaxEventsPerSecond — предел событий в секунду на устройство (SEC-4); 0 — без ограничения.
+	MaxEventsPerSecond int `json:"max_events_per_second"`
 }
 
 // creator создаёт uinput-устройство по описанию (подменяется в тестах).
@@ -57,7 +59,7 @@ func New() *Module {
 
 // newModule создаёт модуль с заданной фабрикой устройств и часами (для тестов).
 func newModule(create creator, clk clock.Clock) *Module {
-	return &Module{create: create, clk: clk, cfg: Config{UInputPath: ev.DefaultUInputPath, SettleMS: 500}}
+	return &Module{create: create, clk: clk, cfg: Config{UInputPath: ev.DefaultUInputPath, SettleMS: 500, MaxEventsPerSecond: 2000}}
 }
 
 // ID возвращает идентификатор модуля.
@@ -169,7 +171,7 @@ func (m *Module) ensure() error {
 			m.lastErr = err
 			return fmt.Errorf("%w: %s: %w", contracts.ErrOutputUnavailable, slot.setup.Name, err)
 		}
-		*slot.dev = newDevice(slot.setup.Name, w, m.clk, settle)
+		*slot.dev = newDevice(slot.setup.Name, w, m.clk, settle, m.cfg.MaxEventsPerSecond)
 		m.log.Info("virtual device created", "name", slot.setup.Name)
 	}
 	m.lastErr = nil

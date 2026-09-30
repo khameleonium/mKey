@@ -49,7 +49,7 @@ func (f *fakeWriter) Close() error {
 func newTestDevice() (*device, *fakeWriter, *clock.Fake) {
 	w := &fakeWriter{}
 	clk := clock.NewFake(time.Unix(0, 0))
-	return newDevice("mKey Test", w, clk, 0), w, clk
+	return newDevice("mKey Test", w, clk, 0, 0), w, clk
 }
 
 // TestTap проверяет пакеты нажатия/отпускания и паузу удержания.
@@ -107,7 +107,7 @@ func TestSettleWait(t *testing.T) {
 	t.Parallel()
 	w := &fakeWriter{}
 	clk := clock.NewFake(time.Unix(0, 0))
-	d := newDevice("mKey Test", w, clk, 500*time.Millisecond)
+	d := newDevice("mKey Test", w, clk, 500*time.Millisecond, 0)
 
 	// Первое событие ждёт 500 мс, второе — нет.
 	_ = d.Press(context.Background(), ev.KeyA)
@@ -215,5 +215,34 @@ func TestModuleUnavailable(t *testing.T) {
 	}
 	if _, err := mod.Keyboard(); !errors.Is(err, contracts.ErrOutputUnavailable) || !errors.Is(err, os.ErrPermission) {
 		t.Fatalf("Keyboard err = %v", err)
+	}
+}
+
+// TestRateLimit проверяет, что сверх предела события замедляются до следующей секунды (SEC-4).
+func TestRateLimit(t *testing.T) {
+	t.Parallel()
+	w := &fakeWriter{}
+	clk := clock.NewFake(time.Unix(1_700_000_000, 0))
+	d := newDevice("mKey Test", w, clk, 0, 10)
+
+	// Пять пакетов по 2 события (нажатие + SYN) укладываются в предел 10/с без ожидания.
+	for range 5 {
+		if err := d.Press(context.Background(), ev.KeyA); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(clk.Sleeps()) != 5 || slices.ContainsFunc(clk.Sleeps(), func(s time.Duration) bool { return s > 0 }) {
+		t.Fatalf("unexpected waits: %v", clk.Sleeps())
+	}
+
+	// Шестой пакет превышает предел — ждём до конца текущей секунды, и событие всё равно отправлено.
+	if err := d.Press(context.Background(), ev.KeyB); err != nil {
+		t.Fatal(err)
+	}
+	if last := clk.Sleeps()[len(clk.Sleeps())-1]; last != time.Second {
+		t.Fatalf("throttle wait = %v, want 1s", last)
+	}
+	if len(w.packets) != 6 {
+		t.Fatalf("packets = %d", len(w.packets))
 	}
 }

@@ -34,11 +34,17 @@ type device struct {
 	mu sync.Mutex
 	// held — зажатые сейчас клавиши.
 	held map[uint16]bool
+	// limit — наибольшее число событий в секунду (SEC-4); 0 — без ограничения.
+	limit int
+	// windowStart и windowCount — текущее окно ограничителя скорости.
+	windowStart time.Time
+	windowCount int
 }
 
-// newDevice оборачивает writer в виртуальное устройство. settle — время прогрева после создания.
-func newDevice(name string, w eventWriter, clk clock.Clock, settle time.Duration) *device {
-	return &device{name: name, w: w, clk: clk, readyAt: clk.Now().Add(settle), held: map[uint16]bool{}}
+// newDevice оборачивает writer в виртуальное устройство. settle — время прогрева после создания,
+// limit — наибольшее число событий в секунду (0 — без ограничения).
+func newDevice(name string, w eventWriter, clk clock.Clock, settle time.Duration, limit int) *device {
+	return &device{name: name, w: w, clk: clk, readyAt: clk.Now().Add(settle), held: map[uint16]bool{}, limit: limit}
 }
 
 // Name возвращает имя устройства.
@@ -92,6 +98,12 @@ func (d *device) Emit(ctx context.Context, events ...ev.Event) error {
 		events = append(events, ev.Sync())
 	}
 
+	// Ограничитель скорости: слишком частые события замедляются, а не отбрасываются —
+	// потерянное «отпускание» оставило бы клавишу зажатой (SEC-4).
+	if err := d.throttle(ctx, len(events)); err != nil {
+		return err
+	}
+
 	// Отправляем пакет и обновляем набор зажатых клавиш только при успешной записи.
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -110,6 +122,26 @@ func (d *device) Emit(ctx context.Context, events ...ev.Event) error {
 		}
 	}
 	return nil
+}
+
+// throttle ждёт, если за текущую секунду уже отправлено больше limit событий.
+func (d *device) throttle(ctx context.Context, n int) error {
+	if d.limit <= 0 {
+		return nil
+	}
+	d.mu.Lock()
+	now := d.clk.Now()
+	if now.Sub(d.windowStart) >= time.Second {
+		d.windowStart, d.windowCount = now, 0
+	}
+	d.windowCount += n
+	wait := time.Duration(0)
+	if d.windowCount > d.limit {
+		wait = d.windowStart.Add(time.Second).Sub(now)
+		d.windowStart, d.windowCount = d.windowStart.Add(time.Second), n
+	}
+	d.mu.Unlock()
+	return d.clk.Sleep(ctx, wait)
 }
 
 // Held возвращает отсортированные коды зажатых клавиш.

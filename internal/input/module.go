@@ -38,6 +38,15 @@ type Config struct {
 	RetryAttempts int `json:"retry_attempts"`
 	// RetryDelayMS — пауза между попытками в миллисекундах.
 	RetryDelayMS int `json:"retry_delay_ms"`
+	// UInputPath — путь к uinput для passthrough-копий захваченных устройств.
+	UInputPath string `json:"uinput_path"`
+	// SettleMS — сколько ждать после создания passthrough-копии, прежде чем захватить устройство
+	// (композитор должен успеть подхватить копию, иначе первые нажатия потеряются).
+	SettleMS int `json:"settle_ms"`
+	// WatchdogMS — если обработка событий захваченного устройства зависла дольше, захват снимается (SEC-3).
+	WatchdogMS int `json:"watchdog_ms"`
+	// EmergencyStop — клавиши экстренной остановки, нажатые одновременно (SEC-1).
+	EmergencyStop []string `json:"emergency_stop"`
 }
 
 // deviceReader — открытое устройство: настоящее (*evdev.Device) или фейк в тестах.
@@ -48,6 +57,11 @@ type deviceReader interface {
 	ReadEvents(buf []ev.Event) ([]ev.Event, error)
 	// Close закрывает устройство и прерывает ожидающий ReadEvents.
 	Close() error
+	// Grab захватывает устройство эксклюзивно; Ungrab снимает захват.
+	Grab() error
+	Ungrab() error
+	// PressedKeys возвращает коды клавиш, зажатых на устройстве прямо сейчас.
+	PressedKeys() ([]uint16, error)
 }
 
 // Module — модуль чтения физических устройств, реализует contracts.InputSource.
@@ -81,12 +95,41 @@ type Module struct {
 	subs map[*subscriber]struct{}
 	// dropped — число событий, отброшенных из-за медленных подписчиков.
 	dropped atomic.Uint64
+
+	// sysInfo читает имя и phys устройства из sysfs без открытия файла устройства
+	// (доступно всем пользователям); пустые строки — сведений нет.
+	sysInfo func(path string) (name, phys string)
+	// createClone создаёт passthrough-копию устройства (uinput или фейк в тестах).
+	createClone func(ev.Setup) (cloneWriter, error)
+	// handler — синхронный обработчик событий (модуль hotkeys); nil — нет.
+	handler atomic.Pointer[handlerBox]
+	// grabPolicy решает, какие устройства захватывать (под mu).
+	grabPolicy func(contracts.InputDevice) bool
+	// suspended — перехват отключён после экстренной остановки до ResumeGrab.
+	suspended atomic.Bool
+	// emergency — коды клавиш экстренной остановки.
+	emergency []uint16
 }
 
-// openDevice — открытое устройство и его описание для подписчиков.
+// openDevice — открытое устройство, его описание и состояние захвата.
 type openDevice struct {
 	reader deviceReader
 	desc   contracts.InputDevice
+
+	// grabbed — устройство захвачено: события идут в систему только через clone.
+	grabbed atomic.Bool
+	// grabbing — идёт подготовка захвата (ожидание отпускания клавиш, создание копии).
+	grabbing atomic.Bool
+	// cloneMu защищает clone.
+	cloneMu sync.Mutex
+	// clone — passthrough-копия устройства (nil, если не захвачено).
+	clone *passthrough
+	// busySince — момент начала обработки текущей пачки событий (UnixNano; 0 — не занят), для watchdog.
+	busySince atomic.Int64
+	// down — зажатые сейчас клавиши (только из горутины чтения) — для экстренной остановки.
+	down map[uint16]bool
+	// emergencyFired — комбинация уже сработала и ещё не отпущена.
+	emergencyFired bool
 }
 
 // subscriber — подписка на события устройств.
@@ -94,17 +137,24 @@ type subscriber struct {
 	ch chan contracts.InputEvent
 }
 
-// New создаёт модуль, работающий с настоящим каталогом /dev/input.
+// New создаёт модуль, работающий с настоящим каталогом /dev/input и настоящим uinput.
 func New() *Module {
-	return newModule(DefaultDir, func(path string) (deviceReader, error) { return ev.Open(path) }, clock.Real{})
+	m := newModule(DefaultDir, func(path string) (deviceReader, error) { return ev.Open(path) }, clock.Real{})
+	m.createClone = func(s ev.Setup) (cloneWriter, error) { return ev.CreateUInput(m.cfg.UInputPath, s) }
+	m.sysInfo = sysfsInfo
+	return m
 }
 
 // newModule создаёт модуль с заданными каталогом, функцией открытия и часами (для тестов).
 func newModule(dir string, open func(string) (deviceReader, error), clk clock.Clock) *Module {
 	return &Module{
-		open:    open,
-		clk:     clk,
-		cfg:     Config{Dir: dir, RetryAttempts: 10, RetryDelayMS: 100},
+		open: open,
+		clk:  clk,
+		cfg: Config{
+			Dir: dir, RetryAttempts: 10, RetryDelayMS: 100,
+			UInputPath: ev.DefaultUInputPath, SettleMS: 300, WatchdogMS: 500,
+			EmergencyStop: []string{"Esc", "Backspace", "Enter"},
+		},
 		devices: map[string]*openDevice{},
 		denied:  map[string]bool{},
 		own:     map[string]bool{},
@@ -123,6 +173,13 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
+
+	// Клавиши экстренной остановки: без неё захват клавиатуры небезопасен, поэтому ошибка здесь фатальна.
+	codes, err := emergencyCodes(m.cfg.EmergencyStop)
+	if err != nil {
+		return fmt.Errorf("%s: emergency_stop: %w", ModuleID, err)
+	}
+	m.emergency = codes
 
 	// Публикуем сервис.
 	return contracts.ProvideService[contracts.InputSource](host.Services(), m)
@@ -159,6 +216,10 @@ func (m *Module) Start(context.Context) error {
 		m.tryOpen(p)
 	}
 	m.publishStatus()
+
+	// Сторожевой таймер захваченных устройств (SEC-3).
+	m.wg.Add(1)
+	go m.watchdog()
 	return nil
 }
 
@@ -175,9 +236,16 @@ func (m *Module) Stop(context.Context) error {
 		_ = m.watcher.Close()
 	}
 
-	// Закрываем устройства: это прерывает ожидающие ReadEvents в горутинах чтения.
+	// Снимаем захват и уничтожаем passthrough-копии (зажатые на них клавиши отпускаются),
+	// затем закрываем устройства: это прерывает ожидающие ReadEvents в горутинах чтения.
 	m.mu.Lock()
-	for _, d := range m.devices {
+	for p, d := range m.devices {
+		if d.grabbed.Swap(false) {
+			if err := d.reader.Ungrab(); err != nil {
+				m.log.Warn("ungrab on stop", "path", p, "err", err)
+			}
+		}
+		m.dropClone(d)
 		_ = d.reader.Close()
 	}
 	m.mu.Unlock()
@@ -334,6 +402,18 @@ func (m *Module) tryOpen(path string) (retry bool) {
 		return false
 	}
 
+	// Свои виртуальные устройства узнаём по sysfs ещё до открытия: права на только что
+	// созданное устройство выставляются с задержкой, и без этого оно на миг считалось бы «недоступным».
+	if m.sysInfo != nil {
+		if name, phys := m.sysInfo(path); isOwnDevice(name, phys) {
+			m.mu.Lock()
+			m.own[path] = true
+			delete(m.denied, path)
+			m.mu.Unlock()
+			return false
+		}
+	}
+
 	// Открываем устройство; отказ в доступе запоминаем для диагностики.
 	r, err := m.open(path)
 	if err != nil {
@@ -349,7 +429,7 @@ func (m *Module) tryOpen(path string) (retry bool) {
 
 	// Собственные виртуальные устройства mKey не читаем никогда (защита от петель).
 	info := r.Info()
-	if strings.HasPrefix(info.Name, contracts.VirtualNamePrefix) || strings.HasPrefix(info.Phys, contracts.VirtualPhysPrefix) {
+	if isOwnDevice(info.Name, info.Phys) {
 		_ = r.Close()
 		m.mu.Lock()
 		m.own[path] = true
@@ -359,7 +439,7 @@ func (m *Module) tryOpen(path string) (retry bool) {
 	}
 
 	// Регистрируем устройство и запускаем горутину чтения.
-	d := &openDevice{reader: r, desc: contracts.InputDevice{Info: info, Kinds: ev.Classify(info.Caps)}}
+	d := &openDevice{reader: r, desc: contracts.InputDevice{Info: info, Kinds: ev.Classify(info.Caps)}, down: map[uint16]bool{}}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		m.mu.Unlock()
@@ -375,6 +455,9 @@ func (m *Module) tryOpen(path string) (retry bool) {
 	// Сообщаем остальным модулям о новом устройстве.
 	m.log.Info("device opened", "path", path, "name", info.Name, "id", info.ID.String(), "kinds", d.desc.Kinds)
 	m.bus.Publish(contracts.TopicInputDeviceAdded, d.desc)
+
+	// Новое устройство может подпадать под политику захвата.
+	m.applyGrab(path, d)
 	return false
 }
 
@@ -390,20 +473,48 @@ func (m *Module) read(path string, d *openDevice) {
 			m.detach(path, d, err)
 			return
 		}
+		m.process(path, d, events)
+	}
+}
 
-		// Раздаём события подписчикам без блокировки.
+// process обрабатывает пачку событий устройства: экстренная остановка, синхронный обработчик,
+// passthrough для захваченного устройства, рассылка подписчикам.
+func (m *Module) process(path string, d *openDevice, events []ev.Event) {
+	// Отмечаем начало обработки для watchdog.
+	d.busySince.Store(m.clk.Now().UnixNano())
+	defer d.busySince.Store(0)
+
+	// Каждое событие: сначала экстренная остановка (до любых обработчиков), затем обработчик.
+	grabbed := d.grabbed.Load()
+	hb := m.handler.Load()
+	var out []ev.Event
+	for _, e := range events {
+		orig := e
+		m.checkEmergency(path, d, e)
+		drop := false
+		if hb != nil {
+			drop = hb.h.HandleInput(path, &e, grabbed)
+		}
+		if grabbed && !drop {
+			out = append(out, e)
+		}
+
+		// Подписчикам (запись, инспектор) — исходное событие, без блокировки.
 		m.mu.RLock()
-		for _, e := range events {
-			ie := contracts.InputEvent{Device: path, Event: e}
-			for s := range m.subs {
-				select {
-				case s.ch <- ie:
-				default:
-					m.dropped.Add(1)
-				}
+		ie := contracts.InputEvent{Device: path, Event: orig}
+		for s := range m.subs {
+			select {
+			case s.ch <- ie:
+			default:
+				m.dropped.Add(1)
 			}
 		}
 		m.mu.RUnlock()
+	}
+
+	// Захваченное устройство: всё, что не «съел» обработчик, — в систему через копию.
+	if grabbed && len(out) > 0 {
+		m.forward(d, out)
 	}
 }
 
@@ -420,10 +531,25 @@ func (m *Module) detach(path string, d *openDevice, err error) {
 		delete(m.devices, path)
 	}
 	m.mu.Unlock()
+	d.grabbed.Store(false)
+	m.dropClone(d)
 	_ = d.reader.Close()
 	m.log.Info("device removed", "path", path, "name", d.desc.Info.Name, "reason", err)
 	m.bus.Publish(contracts.TopicInputDeviceRemoved, d.desc)
 	m.publishStatus()
+}
+
+// isOwnDevice сообщает, что устройство создано самим mKey (по имени или phys).
+func isOwnDevice(name, phys string) bool {
+	return strings.HasPrefix(name, contracts.VirtualNamePrefix) || strings.HasPrefix(phys, contracts.VirtualPhysPrefix)
+}
+
+// sysfsInfo читает имя и phys устройства /dev/input/eventN из /sys/class/input/eventN/device.
+func sysfsInfo(path string) (string, string) {
+	dir := filepath.Join("/sys/class/input", filepath.Base(path), "device")
+	name, _ := os.ReadFile(filepath.Join(dir, "name"))
+	phys, _ := os.ReadFile(filepath.Join(dir, "phys"))
+	return strings.TrimSpace(string(name)), strings.TrimSpace(string(phys))
 }
 
 // publishStatus сообщает на шину текущую доступность устройств.

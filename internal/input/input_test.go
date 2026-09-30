@@ -28,6 +28,10 @@ type fakeDevice struct {
 	done   chan struct{}
 	// gone — устройство «отключено»: чтение вернёт ошибку, как при ENODEV.
 	gone chan struct{}
+	// mu защищает grabbed и pressed.
+	mu      sync.Mutex
+	grabbed bool
+	pressed []uint16
 }
 
 func newFakeDevice(path, name, phys string) *fakeDevice {
@@ -58,6 +62,32 @@ func (f *fakeDevice) ReadEvents(buf []ev.Event) ([]ev.Event, error) {
 func (f *fakeDevice) Close() error {
 	f.once.Do(func() { close(f.done) })
 	return nil
+}
+
+func (f *fakeDevice) Grab() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grabbed = true
+	return nil
+}
+
+func (f *fakeDevice) Ungrab() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.grabbed = false
+	return nil
+}
+
+func (f *fakeDevice) PressedKeys() ([]uint16, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]uint16(nil), f.pressed...), nil
+}
+
+func (f *fakeDevice) isGrabbed() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.grabbed
 }
 
 // fakeFS — набор фейковых устройств и отказов в доступе по пути.
