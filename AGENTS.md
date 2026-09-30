@@ -42,7 +42,10 @@ make test               # go test ./... + фронтенд-тесты (без п
 make test-integration   # go test -tags integration ./test/integration/... (нужен /dev/uinput)
 make lint               # golangci-lint, go vet, eslint, svelte-check, prettier --check
 make fmt                # gofmt/goimports + prettier
-make run                # ./mkey daemon --dev (фронтенд с hot-reload через Vite proxy)
+make run                # ./mkey daemon --dev (фронтенд с hot-reload через Vite proxy) — появится в фазе 2
+make gencodes           # перегенерировать коды клавиш из linux/input-event-codes.h
+./mkey doctor           # диагностика окружения (только чтение)
+./mkey debug devices    # список устройств ввода (временная команда фазы 1)
 ./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e)
 ```
 
@@ -68,7 +71,7 @@ make run                # ./mkey daemon --dev (фронтенд с hot-reload ч
 ### 4.3 Прочие правила
 
 - **Ввод/вывод — только evdev/uinput** (`internal/input`, `internal/output`). Никакого XTest, ydotool, keyd, xdotool.
-- **`internal/engine` зависит только от контрактов** (`contracts.InputSource`, `contracts.OutputSink`, `contracts.WindowTracker`, `contracts.PixelReader`, `contracts.PointerLocator`, `contracts.LayoutProvider`, часы `clock.Clock`). Импорт конкретных адаптеров или бэкендов из `engine` запрещён.
+- **`internal/engine` зависит только от контрактов** (`contracts.InputSource`, `contracts.VirtualDevices`, `contracts.WindowTracker`, `contracts.PixelReader`, `contracts.PointerLocator`, `contracts.LayoutProvider`, часы `clock.Clock`). Импорт конкретных адаптеров или бэкендов из `engine` запрещён.
 - **Зависящее от окружения рабочего стола** (окна, пиксели, курсор, раскладка) — только в `internal/desktop/<adapter>`, каждый адаптер сообщает `Capabilities()`. Нет возможности — возвращай типизированную ошибку `contracts.ErrUnsupported` с понятным объяснением, не паникуй и не молчи.
 - **Единый источник истины — YAML-модель** (`internal/store`). GUI и CLI меняют её только через API.
 - **CLI — клиент того же HTTP API** через Unix-сокет. Не дублируй бизнес-логику в CLI.

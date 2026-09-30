@@ -906,15 +906,24 @@ mkey/
 **Критерий приёмки:** `make build && ./mkey version` работает, CI зелёный, `make new-module NAME=demo` создаёт модуль, который подключается одной строкой в `internal/app/modules.go`.
 
 ### Фаза 1. Ввод/вывод ядра и диагностика
-- [ ] T1.1 `internal/lib/keys`: таблица имён ↔ кодов evdev (клавиатура, мышь `mouse0..`, геймпад), алиасы, подсказки по опечаткам.
-- [ ] T1.2 `internal/output`: vdev manager, шаблоны keyboard/mouse (relative), учёт зажатых клавиш, `ReleaseAll()`; префикс имён `mKey `.
-- [ ] T1.3 `internal/input`: перечисление устройств, классификация, hotplug (fsnotify + retry на EACCES), чтение, фильтрация собственных устройств.
-- [ ] T1.4 `internal/session`: определение X11/Wayland/композитора.
-- [ ] T1.5 `internal/setup/doctor`: проверки (§5.11 шаг 2) с человекочитаемыми результатами и кодами; `mkey doctor [--json]`.
-- [ ] T1.6 `mkey privileged install-rules|uninstall-rules` (белый список, зашитые файлы); `mkey doctor --fix` через `contracts.Elevator`.
-- [ ] T1.8 `internal/platform`: определение init-системы, менеджера устройств, logind/elogind, polkit, пакетного менеджера, запасной `XDG_RUNTIME_DIR`; бэкенды `elevate` (pkexec, terminal-sudo/doas, manual) и `devaccess` (uaccess, group, mdev) — FR-INST-7.
-- [ ] T1.7 Интеграционные тесты: создать клавиатуру → прочитать свои события; `kill -9` → устройство исчезло.
-**Приёмка:** на чистой Ubuntu (GNOME Wayland), в X11-сессии и на Void Linux (runit) после `mkey doctor --fix` временная команда `mkey debug tap a` печатает «a» в текстовом редакторе.
+- [x] T1.1 `internal/lib/keys`: таблица имён ↔ кодов evdev (клавиатура, мышь `mouse0..`, геймпад), алиасы, подсказки по опечаткам.  
+  _Готово: `internal/lib/keys` (клавиатура, мышь Mouse0–7, геймпад, оси; алиасы; регистронезависимо; `Suggest` по Левенштейну). Коды — из `internal/lib/evdev/codes_gen.go`, сгенерированного `tools/gencodes` из заголовков ядра (ADR-0018). Локализованные подписи клавиш для GUI — в фазе 5._
+- [x] T1.2 `internal/output`: vdev manager, шаблоны keyboard/mouse (relative), учёт зажатых клавиш, `ReleaseAll()`; префикс имён `mKey `.  
+  _Готово: модуль `internal/output`, контракт `contracts.VirtualDevices` (вместо OutputSink, ADR-0018): «mKey Keyboard» (все KEY_*, без BTN_*) и «mKey Mouse»; учёт зажатых, `ReleaseAll` при остановке; прогрев 500 мс (`settle_ms`); без прав — режим «недоступно» без падения._
+- [x] T1.3 `internal/input`: перечисление устройств, классификация, hotplug (fsnotify + retry на EACCES), чтение, фильтрация собственных устройств.  
+  _Готово: модуль `internal/input` + `internal/lib/evdev` (свои ioctl, ADR-0018): перечисление, классификация, hotplug через fsnotify с повтором при EACCES, открытие после выдачи прав (Chmod), фильтрация своих устройств по имени/phys, события на шину. Grab — фаза 3._
+- [x] T1.4 `internal/session`: определение X11/Wayland/композитора.  
+  _Готово: модуль `internal/session` (`contracts.Session`): x11/wayland/tty, композитор (gnome, kde, sway, hyprland, niri, xfce, cinnamon…). Проверено на этой машине: wayland/kde._
+- [x] T1.5 `internal/setup/doctor`: проверки (§5.11 шаг 2) с человекочитаемыми результатами и кодами; `mkey doctor [--json]`.  
+  _Готово: модуль `internal/setup` (`contracts.Doctor`), `mkey doctor [--json]`: ядро, сессия, система, uinput, доступ к устройствам, правила, способ запроса прав, runtime dir. Проверено на этой машине (Mint 22.3, KDE Wayland): uinput доступен, устройства ввода — нет._
+- [x] T1.6 `mkey privileged install-rules|uninstall-rules` (белый список, зашитые файлы); `mkey doctor --fix` через `contracts.Elevator`.  
+  _Готово: `mkey privileged install-rules|uninstall-rules` (скрыта, без аргументов, файлы зашиты в код), `mkey doctor --fix [--yes]` с объяснением и подтверждением. Не запускалось от root на машине разработчика — проверка владельцем._
+- [x] T1.8 `internal/platform`: определение init-системы, менеджера устройств, logind/elogind, polkit, пакетного менеджера, запасной `XDG_RUNTIME_DIR`; бэкенды `elevate` (pkexec, terminal-sudo/doas, manual) и `devaccess` (uaccess, group, mdev) — FR-INST-7.  
+  _Готово: `internal/platform` (`contracts.Platform`) с подпакетами `detect`, `elevate` (pkexec, sudo, doas, terminal-sudo/doas, manual), `devaccess` (uaccess, group, mdev); автозагрузка uinput через modules-load.d или /etc/modules; `docs/platforms.md`._
+- [~] T1.7 Интеграционные тесты: создать клавиатуру → прочитать свои события; `kill -9` → устройство исчезло.  
+  _Написаны `test/integration/uinput_test.go` (round-trip, kill -9, hotplug модуля input; только безопасные виртуальные джойстики с BTN_TRIGGER_HAPPY*). Компилируются и проходят линтер; запуск — владельцем после `mkey doctor --fix`: `make test-integration`._
+**Приёмка:** на чистой Ubuntu (GNOME Wayland), в X11-сессии и на Void Linux (runit) после `mkey doctor --fix` временная команда `mkey debug tap a` печатает «a» в текстовом редакторе.  
+_Статус (2026-09-30, Mint 22.3 KDE Wayland): владелец подтвердил `doctor --fix` и чтение всех устройств, включая подключённые во время работы. Найдена и исправлена ошибка: клавиатуры не открывались из-за запроса EVIOCGBIT(EV_REP). `mkey debug tap a` подтверждён — **приёмка фазы 1 на Mint KDE Wayland пройдена**. Ubuntu GNOME, X11 и Void — не проверялись; интеграционные тесты (T1.7) владелец не запускал._
 
 ### Фаза 2. DSL, демон, API, CLI
 - [ ] T2.1 `docs/dsl.md`: финальная грамматика EBNF (на основе §5.1), согласовать спорные моменты в ADR.
