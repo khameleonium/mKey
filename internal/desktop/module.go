@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 
@@ -37,6 +38,14 @@ type Module struct {
 	// adapter — выбранный адаптер раскладок; fallback — раскладки из настроек.
 	adapter  contracts.LayoutProvider
 	fallback contracts.LayoutProvider
+	// tr — переводчик уведомлений; ctx живёт до Stop; wg ждёт горутину уведомлений.
+	tr     contracts.Translator
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+	// notices — подписки на события, о которых нужно уведомить пользователя; unsub — отписки.
+	notices [3]<-chan contracts.Event
+	unsub   []func()
 }
 
 // New создаёт модуль.
@@ -60,28 +69,58 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if s, err := contracts.LookupService[contracts.Session](host.Services()); err == nil {
 		m.compositor = s.Info().Compositor
 	}
-	return contracts.ProvideService[contracts.LayoutProvider](host.Services(), m)
+
+	// Подписки на события, о которых нужно уведомлять пользователя.
+	m.tr = host.I18n()
+	var u [3]func()
+	m.notices[0], u[0] = host.Bus().Subscribe(contracts.TopicEmergency)
+	m.notices[1], u[1] = host.Bus().Subscribe(contracts.TopicProjectError)
+	m.notices[2], u[2] = host.Bus().Subscribe(contracts.TopicEngineError)
+	m.unsub = u[:]
+
+	// Сервисы: раскладки и уведомления.
+	if err := contracts.ProvideService[contracts.LayoutProvider](host.Services(), m); err != nil {
+		return err
+	}
+	return contracts.ProvideService[contracts.Notifier](host.Services(), m)
 }
 
-// Start выбирает адаптер раскладок для окружения; при сбое остаётся источник из настроек.
+// Start подключается к сессионной шине D-Bus (уведомления, KDE), выбирает адаптер раскладок
+// и начинает показывать уведомления. Без D-Bus модуль работает: раскладки из настроек, без уведомлений.
 func (m *Module) Start(context.Context) error {
-	switch m.compositor {
-	case "kde":
-		conn, err := m.connect()
-		if err != nil {
-			m.log.Warn("D-Bus unavailable, keyboard layouts from config", "err", err)
-			return nil
-		}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+
+	// D-Bus сессии.
+	conn, err := m.connect()
+	if err != nil {
+		m.log.Warn("session D-Bus unavailable: no notifications, keyboard layouts from config", "err", err)
+	} else {
 		m.conn = conn
-		m.adapter = kde.New(conn)
-	case "gnome":
+	}
+
+	// Адаптер раскладок окружения.
+	switch {
+	case m.compositor == "kde" && m.conn != nil:
+		m.adapter = kde.New(m.conn)
+	case m.compositor == "gnome":
 		m.adapter = gnome.New()
 	}
+
+	// Уведомления о важных событиях.
+	m.wg.Add(1)
+	go m.watchNotices(m.notices[0], m.notices[1], m.notices[2])
 	return nil
 }
 
-// Stop закрывает подключение к D-Bus.
+// Stop прекращает уведомления и закрывает подключение к D-Bus.
 func (m *Module) Stop(context.Context) error {
+	for _, u := range m.unsub {
+		u()
+	}
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.wg.Wait()
 	if m.conn != nil {
 		return m.conn.Close()
 	}
@@ -133,4 +172,5 @@ func (configLayouts) Switch(context.Context, string) error { return contracts.Er
 var (
 	_ contracts.Module         = (*Module)(nil)
 	_ contracts.LayoutProvider = (*Module)(nil)
+	_ contracts.Notifier       = (*Module)(nil)
 )
