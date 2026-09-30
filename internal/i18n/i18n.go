@@ -75,6 +75,9 @@ func New(cat Catalog, lang string) *Translator {
 // Lang возвращает текущий язык.
 func (t *Translator) Lang() string { return t.lang }
 
+// WithLang возвращает переводчик на язык lang с тем же каталогом.
+func (t *Translator) WithLang(lang string) contracts.Translator { return New(t.cat, lang) }
+
 // T возвращает перевод ключа с подставленными параметрами.
 func (t *Translator) T(key string, args ...contracts.Arg) string {
 	// Ищем перевод: текущий язык → язык по умолчанию → сам ключ.

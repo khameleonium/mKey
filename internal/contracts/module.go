@@ -56,6 +56,9 @@ type Translator interface {
 	T(key string, args ...Arg) string
 	// Lang возвращает текущий язык интерфейса ("ru", "en").
 	Lang() string
+	// WithLang возвращает переводчик на язык lang (например, для ответа API на языке клиента).
+	// Неизвестный язык заменяется языком по умолчанию.
+	WithLang(lang string) Translator
 }
 
 // Arg — именованный параметр для подстановки в перевод.

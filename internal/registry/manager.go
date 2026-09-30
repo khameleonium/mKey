@@ -116,7 +116,25 @@ func NewManager(opts Options, entries []Entry) (*Manager, error) {
 		seen[id] = true
 		items = append(items, &item{entry: e, state: StatePending})
 	}
-	return &Manager{opts: opts, items: items}, nil
+	// Ядро само публикует сведения о модулях, чтобы их могли показать API и диагностика.
+	m := &Manager{opts: opts, items: items}
+	if err := contracts.ProvideService[contracts.Modules](opts.Services, m); err != nil {
+		return nil, fmt.Errorf("module manager: %w", err)
+	}
+	return m, nil
+}
+
+// ModuleStatuses возвращает состояния модулей в виде контракта contracts.Modules.
+func (m *Manager) ModuleStatuses() []contracts.ModuleStatus {
+	statuses := m.Statuses()
+	out := make([]contracts.ModuleStatus, len(statuses))
+	for i, s := range statuses {
+		out[i] = contracts.ModuleStatus{ID: s.ID, Core: s.Core, State: string(s.State)}
+		if s.Err != nil {
+			out[i].Error = s.Err.Error()
+		}
+	}
+	return out
 }
 
 // Services возвращает реестр сервисов менеджера.

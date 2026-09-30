@@ -17,6 +17,7 @@ type stubTranslator struct{}
 
 func (stubTranslator) T(key string, _ ...contracts.Arg) string { return key }
 func (stubTranslator) Lang() string                            { return "en" }
+func (s stubTranslator) WithLang(string) contracts.Translator  { return s }
 
 // fakeModule — модуль для тестов, записывающий вызовы в общий журнал.
 type fakeModule struct {
