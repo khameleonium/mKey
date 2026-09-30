@@ -64,3 +64,22 @@ func TestFind(t *testing.T) {
 		t.Error("unknown layout must not be found")
 	}
 }
+
+// TestChar проверяет обратный поиск «клавиша → символ».
+func TestChar(t *testing.T) {
+	t.Parallel()
+	ru, _ := Get("ru")
+	if r, ok := ru.Char(ev.KeyG, true); !ok || r != 'П' {
+		t.Errorf("ru Char(G, shift) = %q, %v", r, ok)
+	}
+	if r, ok := ru.Char(ev.KeySlash, false); !ok || r != '.' {
+		t.Errorf("ru Char(/) = %q, %v", r, ok)
+	}
+	us, _ := Get("us")
+	if r, ok := us.Char(ev.KeySpace, true); !ok || r != ' ' {
+		t.Errorf("us Char(space, shift) = %q, %v", r, ok)
+	}
+	if _, ok := us.Char(ev.KeyEsc, false); ok {
+		t.Error("Esc must not produce a character")
+	}
+}

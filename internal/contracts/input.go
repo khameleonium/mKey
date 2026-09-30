@@ -1,6 +1,13 @@
 package contracts
 
-import "mkey/internal/lib/evdev"
+import (
+	"errors"
+
+	"mkey/internal/lib/evdev"
+)
+
+// ErrNotGrabbed возвращается при отправке в passthrough-устройство, которое сейчас не захвачено.
+var ErrNotGrabbed = errors.New("device is not grabbed")
 
 // Темы шины, которые публикует модуль ввода.
 const (
@@ -47,4 +54,26 @@ type InputSource interface {
 	// если подписчик не успевает читать, события для него отбрасываются.
 	// Функция отписки закрывает канал.
 	Subscribe(buffer int) (<-chan InputEvent, func())
+	// SetHandler устанавливает синхронный обработчик событий всех устройств (модуль hotkeys).
+	// Он вызывается прямо в потоке чтения и должен работать быстро (NFR-1).
+	SetHandler(h InputHandler)
+	// SetGrabPolicy задаёт, какие устройства захватывать (FR-HK-2); nil — не захватывать никакие.
+	// Захват включается только когда на устройстве не зажата ни одна клавиша.
+	SetGrabPolicy(policy func(InputDevice) bool)
+	// Inject отправляет события в passthrough-копию захваченного устройства device
+	// (например, чтобы отпустить модификаторы для приложений); ErrNotGrabbed, если устройство не захвачено.
+	Inject(device string, events ...evdev.Event) error
+	// GrabSuspended сообщает, что перехват отключён после экстренной остановки (SEC-1).
+	GrabSuspended() bool
+	// ResumeGrab снова разрешает перехват после экстренной остановки.
+	ResumeGrab()
+}
+
+// InputHandler — синхронный обработчик событий физических устройств.
+type InputHandler interface {
+	// HandleInput вызывается для каждого события каждого устройства. grabbed — устройство захвачено,
+	// и событие попадёт в систему только через passthrough. Обработчик может изменить событие
+	// (переназначение клавиши) и вернуть drop = true, чтобы не передавать его в систему
+	// (для незахваченных устройств drop игнорируется).
+	HandleInput(device string, e *evdev.Event, grabbed bool) (drop bool)
 }

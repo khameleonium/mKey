@@ -30,12 +30,20 @@ type Layout struct {
 	Name string
 	// strokes — таблица символов.
 	strokes map[rune]Stroke
+	// chars — обратная таблица: нажатие → символ.
+	chars map[Stroke]rune
 }
 
 // Find возвращает нажатие для символа r в этой раскладке.
 func (l *Layout) Find(r rune) (Stroke, bool) {
 	s, ok := l.strokes[r]
 	return s, ok
+}
+
+// Char возвращает символ, который набирает клавиша code (с Shift или без) в этой раскладке.
+func (l *Layout) Char(code uint16, shift bool) (rune, bool) {
+	r, ok := l.chars[Stroke{Code: code, Shift: shift}]
+	return r, ok
 }
 
 // row — ряд клавиш: коды по порядку, символы без Shift и с Shift в том же порядке.
@@ -82,7 +90,11 @@ func Get(name string) (*Layout, bool) {
 	}
 
 	// Строим таблицу символов; пробел одинаков во всех раскладках.
-	l := &Layout{Name: base, strokes: map[rune]Stroke{' ': {Code: ev.KeySpace}}}
+	l := &Layout{
+		Name:    base,
+		strokes: map[rune]Stroke{' ': {Code: ev.KeySpace}},
+		chars:   map[Stroke]rune{{Code: ev.KeySpace}: ' ', {Code: ev.KeySpace, Shift: true}: ' '},
+	}
 	for _, r := range rows {
 		lower, shifted := []rune(r.lower), []rune(r.shifted)
 		for i, code := range r.codes {
@@ -93,6 +105,8 @@ func Get(name string) (*Layout, bool) {
 			if _, exists := l.strokes[shifted[i]]; !exists {
 				l.strokes[shifted[i]] = Stroke{Code: code, Shift: true}
 			}
+			l.chars[Stroke{Code: code}] = lower[i]
+			l.chars[Stroke{Code: code, Shift: true}] = shifted[i]
 		}
 	}
 	return l, true
