@@ -1,22 +1,39 @@
-# Сборка
+# Сборка: бинарники mkey (полная и консольная версии) и прочие артефакты Go.
 /mkey
 /mkey-cli
 /dist/
 *.test
 *.out
+*.prof
 coverage.*
 
-# Фронтенд
+# Фронтенд: зависимости и сборка (в git только заглушка web/dist/.gitkeep).
 node_modules/
 web/dist/*
 !web/dist/.gitkeep
 web/node_modules/.installed
+web/.vite/
+web/coverage/
+*.tsbuildinfo
 
-# Редакторы и ОС
+# Временные и рабочие файлы: черновики записей mKey, журналы, резервные копии.
+*.part
+*.tmp
+*.log
+*.bak
+*~
+
+# Локальные секреты и переменные окружения.
+.env
+.env.*
+
+# Редакторы и ОС.
 .idea/
 .vscode/
 *.swp
+*.swo
 .DS_Store
+Thumbs.db
 
-# Локальные настройки Claude Code
+# Локальные настройки Claude Code (общие правила для агентов — в AGENTS.md и CLAUDE.md).
 .claude/settings.local.json

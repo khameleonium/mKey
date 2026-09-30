@@ -33,7 +33,7 @@ ADR и правка `SPEC.md` — в одном коммите/PR. Если ре
 
 ## 3. Команды
 
-Go-модуль называется `mkey` (репозиторий пока локальный, без remote; не добавляй remote и не пушь). Go 1.27 установлен в `/usr/local/go` (в `PATH` может не быть — тогда вызывай `/usr/local/go/bin/go` или добавь `export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin`). `staticcheck` лежит в `~/go/bin`. В `go.mod` — `go 1.27`.
+Go-модуль называется `mkey`. Репозиторий: https://github.com/khameleonium/mKey (публичный); пушить — только когда об этом просит владелец. Go 1.27 установлен в `/usr/local/go` (в `PATH` может не быть — тогда вызывай `/usr/local/go/bin/go` или добавь `export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin`). `staticcheck` лежит в `~/go/bin`. В `go.mod` — `go 1.27`.
 
 ```bash
 make build              # web + go build (CGO_ENABLED=0) → ./mkey и консольная ./mkey-cli
