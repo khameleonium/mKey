@@ -17,25 +17,25 @@ func (m *Module) builtinConditions() []contracts.ConditionType {
 	return []contracts.ConditionType{
 		// variable — сравнение переменной проекта со значением.
 		builtinCondition{
-			meta:     meta("condition", "variable", "logic", `{"type":"object","required":["name","op"],"properties":{"name":{"type":"string"},"op":{"enum":["==","!=","<",">","<=",">="]},"value":{}}}`),
+			meta:     meta("condition", "variable", "logic", `{"type":"object","required":["name","op"],"properties":{"name":{"type":"string","x-widget":"variable"},"op":{"enum":["==","!=","<",">","<=",">="],"default":"=="},"value":{"x-widget":"value"}}}`),
 			validate: func(c project.Condition) error { _, err := variableParams(c); return err },
 			check:    checkVariable,
 		},
 		// key_state — клавиша сейчас зажата или отпущена.
 		builtinCondition{
-			meta:     meta("condition", "key_state", "input", `{"type":"object","required":["key"],"properties":{"key":{"type":"string"},"state":{"enum":["down","up"]}}}`),
+			meta:     meta("condition", "key_state", "input", `{"type":"object","required":["key"],"properties":{"key":{"type":"string","x-widget":"key"},"state":{"enum":["down","up"],"default":"down"}}}`),
 			validate: func(c project.Condition) error { _, _, err := keyStateParams(c); return err },
 			check:    m.checkKeyState,
 		},
 		// toggle — состояние переключателя события (по умолчанию — своего).
 		builtinCondition{
-			meta:     meta("condition", "toggle", "logic", `{"type":"object","properties":{"event":{"type":"string"},"state":{"type":"boolean"}}}`),
+			meta:     meta("condition", "toggle", "logic", `{"type":"object","properties":{"event":{"type":"string","x-widget":"event"},"state":{"type":"boolean","default":true}}}`),
 			validate: func(c project.Condition) error { _, err := toggleParams(c); return err },
 			check:    m.checkToggle,
 		},
 		// time — текущее время суток в интервале [from, to) (через полночь — тоже).
 		builtinCondition{
-			meta:     meta("condition", "time", "system", `{"type":"object","required":["from","to"],"properties":{"from":{"type":"string"},"to":{"type":"string"}}}`),
+			meta:     meta("condition", "time", "system", `{"type":"object","required":["from","to"],"properties":{"from":{"type":"string","x-widget":"time","default":"09:00"},"to":{"type":"string","x-widget":"time","default":"18:00"}}}`),
 			validate: func(c project.Condition) error { _, _, err := timeParams(c); return err },
 			check:    checkTime,
 		},
@@ -65,7 +65,7 @@ func variableParams(c project.Condition) (variableCond, error) {
 		return p, fmt.Errorf("unknown op %q", p.Op)
 	}
 	if p.Name == "" {
-		return p, errors.New("name is required")
+		return p, project.Required("condition", "variable", "name")
 	}
 	return p, nil
 }
@@ -224,7 +224,7 @@ func (m *Module) groupCondition(kind string) builtinCondition {
 		return project.DecodeConditions(p.Of)
 	}
 	return builtinCondition{
-		meta: meta("condition", kind, "logic", `{"type":"object","required":["of"],"properties":{"of":{"type":"array"}}}`),
+		meta: meta("condition", kind, "logic", `{"type":"object","required":["of"],"properties":{"of":{"type":"array","x-widget":"conditions"}}}`),
 		validate: func(c project.Condition) error {
 			conds, err := sub(c)
 			if err != nil {

@@ -33,6 +33,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("POST /api/v1/dsl/format", m.handleFormat)
 	mux.HandleFunc("POST /api/v1/stop", m.handleStop)
 	mux.HandleFunc("POST /api/v1/panic", m.handlePanic)
+	mux.HandleFunc("POST /api/v1/emergency", m.handleEmergency)
 
 	// Проекты, события, переменные (этап 3).
 	mux.HandleFunc("GET /api/v1/projects", m.handleProjects)
@@ -45,6 +46,9 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("POST /api/v1/wait/key", m.handleWaitKey)
 	mux.HandleFunc("POST /api/v1/resume", m.handleResume)
 	mux.HandleFunc("GET /api/v1/registry", m.handleRegistry)
+
+	// Веб-интерфейс (этап 5).
+	m.registerGUIRoutes(mux)
 
 	// Управление демоном.
 	mux.HandleFunc("POST /api/v1/shutdown", m.handleShutdown)
@@ -245,6 +249,17 @@ func (m *Module) handlePanic(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleEmergency выполняет экстренную остановку, как сочетание Esc+Backspace+Enter (SEC-1):
+// mKey приостанавливается до POST /resume.
+func (m *Module) handleEmergency(w http.ResponseWriter, r *http.Request) {
+	if m.svc.input == nil {
+		m.unavailable(w, r)
+		return
+	}
+	m.svc.input.EmergencyStop("api")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

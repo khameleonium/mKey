@@ -47,21 +47,37 @@ func (hotstringType) Meta() contracts.ExtensionMeta {
 		ID: "hotstring", NameKey: "trigger.hotstring", DescriptionKey: "trigger.hotstring.description",
 		Category: "input", Icon: "text", Provider: ModuleID,
 		ParamsSchema: []byte(`{"type":"object","required":["text"],"properties":{"text":{"type":"string"},` +
-			`"replace":{"type":"string"},"end_chars":{"type":"string"},"case_sensitive":{"type":"boolean"}}}`),
+			`"replace":{"type":"string"},"end_chars":{"type":"string","x-advanced":true},` +
+			`"case_sensitive":{"type":"boolean","x-advanced":true}}}`),
 	}
+}
+
+// parseHotstring разбирает и проверяет параметры триггера hotstring.
+func parseHotstring(tr project.Trigger) (hotstringParams, error) {
+	var p hotstringParams
+	if err := project.Decode(tr.Params, &p); err != nil {
+		return p, fmt.Errorf("hotstring: %w", err)
+	}
+	if strings.TrimSpace(p.Text) == "" {
+		return p, project.Required("trigger", "hotstring", "text")
+	}
+	if p.EndChars == "" {
+		p.EndChars = defaultEndChars
+	}
+	return p, nil
+}
+
+// Validate проверяет параметры, ничего не регистрируя.
+func (hotstringType) Validate(tr project.Trigger) error {
+	_, err := parseHotstring(tr)
+	return err
 }
 
 // Arm проверяет параметры и регистрирует слово.
 func (t hotstringType) Arm(_ context.Context, _ contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	var p hotstringParams
-	if err := project.Decode(tr.Params, &p); err != nil {
-		return nil, fmt.Errorf("hotstring: %w", err)
-	}
-	if strings.TrimSpace(p.Text) == "" {
-		return nil, fmt.Errorf("hotstring: text is required")
-	}
-	if p.EndChars == "" {
-		p.EndChars = defaultEndChars
+	p, err := parseHotstring(tr)
+	if err != nil {
+		return nil, err
 	}
 	h := &hotstring{p: p, fire: fire}
 

@@ -238,16 +238,16 @@ func TestExtensions(t *testing.T) {
 	t.Parallel()
 	e := NewExtensions()
 
-	// Регистрируем два действия в обратном порядке.
+	// Регистрируем два действия не по алфавиту.
 	for _, id := range []string{"send", "pause"} {
 		if err := e.Register(contracts.PointAction, testExt{id}); err != nil {
 			t.Fatalf("Register %s: %v", id, err)
 		}
 	}
 
-	// Список отсортирован по ID.
+	// Список — в порядке регистрации.
 	list := e.List(contracts.PointAction)
-	if len(list) != 2 || list[0].Meta().ID != "pause" || list[1].Meta().ID != "send" {
+	if len(list) != 2 || list[0].Meta().ID != "send" || list[1].Meta().ID != "pause" {
 		t.Fatalf("List = %v", list)
 	}
 

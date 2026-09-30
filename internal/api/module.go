@@ -43,6 +43,8 @@ type Config struct {
 	Port int `json:"port"`
 	// RuntimeDir — каталог сокета и токена; пусто — из модуля platform.
 	RuntimeDir string `json:"runtime_dir"`
+	// LogFile — журнал демона для /logs (по умолчанию ~/.local/state/mkey/mkey.log).
+	LogFile string `json:"log_file"`
 }
 
 // Info — содержимое api.json: как подключиться к запущенному демону.
@@ -55,10 +57,11 @@ type Info struct {
 
 // Module — модуль HTTP API.
 type Module struct {
-	// log — логгер; cfg — настройки; tr — переводчик (язык ответа выбирается по запросу).
+	// log — логгер; cfg — настройки; tr — переводчик (язык ответа выбирается по запросу); bus — шина.
 	log *slog.Logger
 	cfg Config
 	tr  contracts.Translator
+	bus contracts.Bus
 	// svc — сервисы других модулей (любой может быть nil).
 	svc services
 	// static — файлы веб-интерфейса (nil — без GUI).
@@ -87,6 +90,7 @@ type services struct {
 	projects contracts.Projects
 	events   contracts.Events
 	keyState contracts.KeyState
+	convert  contracts.ActionConverter
 	ext      contracts.ExtensionRegistry
 }
 
@@ -103,6 +107,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	// Настройки.
 	m.log = host.Logger()
 	m.tr = host.I18n()
+	m.bus = host.Bus()
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
@@ -121,6 +126,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		projects: lookup[contracts.Projects](s),
 		events:   lookup[contracts.Events](s),
 		keyState: lookup[contracts.KeyState](s),
+		convert:  lookup[contracts.ActionConverter](s),
 		ext:      host.Extensions(),
 	}
 
@@ -131,7 +137,21 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if m.cfg.RuntimeDir == "" {
 		return fmt.Errorf("%s: runtime directory is unknown", ModuleID)
 	}
-	return nil
+	if m.cfg.LogFile == "" {
+		m.cfg.LogFile = filepath.Join(paths.State(os.Getenv), "mkey.log")
+	}
+
+	// Адрес веб-интерфейса нужен значку в трее.
+	return contracts.ProvideService[contracts.GUIServer](s, m)
+}
+
+// GUIURL возвращает адрес входа в веб-интерфейс (contracts.GUIServer).
+// Порт и токен задаются в Start, до запуска модулей, которые пользуются этим адресом.
+func (m *Module) GUIURL() (string, error) {
+	if m.port == 0 || m.token == "" {
+		return "", errors.New("web interface is not listening")
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/?t=%s", m.port, m.token), nil
 }
 
 // lookup возвращает сервис контракта T или нулевое значение, если его нет.

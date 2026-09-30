@@ -19,20 +19,19 @@ func (m *Module) builtinTriggers() []contracts.TriggerType {
 	return []contracts.TriggerType{
 		// manual — только ручной запуск (GUI, CLI, API, действие run_event).
 		builtinTrigger{
-			meta: meta("trigger", "manual", "system", `{"type":"object"}`),
+			meta:     meta("trigger", "manual", "system", `{"type":"object"}`),
+			validate: noParams("manual"),
 			arm: func(_ context.Context, _ contracts.EventRef, t project.Trigger, _ func(contracts.Fire)) (func(), error) {
-				if err := project.Decode(t.Params, &struct{}{}); err != nil {
-					return nil, fmt.Errorf("manual: %w", err)
-				}
-				return func() {}, nil
+				return func() {}, noParams("manual")(t)
 			},
 		},
 		// startup — один раз при загрузке (или перезагрузке) проекта.
 		builtinTrigger{
-			meta: meta("trigger", "startup", "system", `{"type":"object"}`),
+			meta:     meta("trigger", "startup", "system", `{"type":"object"}`),
+			validate: noParams("startup"),
 			arm: func(ctx context.Context, _ contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
-				if err := project.Decode(t.Params, &struct{}{}); err != nil {
-					return nil, fmt.Errorf("startup: %w", err)
+				if err := noParams("startup")(t); err != nil {
+					return nil, err
 				}
 				// Срабатываем чуть позже, когда проект уже полностью взведён.
 				timer := time.AfterFunc(50*time.Millisecond, func() {
@@ -45,36 +44,61 @@ func (m *Module) builtinTriggers() []contracts.TriggerType {
 		},
 		// timer — периодически (every_ms) или однократно через время после загрузки (after_ms).
 		builtinTrigger{
-			meta: meta("trigger", "timer", "system", `{"type":"object","properties":{"every_ms":{"type":"integer","minimum":10},"after_ms":{"type":"integer","minimum":0}}}`),
-			arm:  m.armTimer,
+			meta:     meta("trigger", "timer", "system", `{"oneOf":[{"type":"object","required":["every_ms"],"properties":{"every_ms":{"type":"integer","minimum":10,"default":1000,"x-widget":"ms"}}},{"type":"object","required":["after_ms"],"properties":{"after_ms":{"type":"integer","minimum":0,"default":1000,"x-widget":"ms"}}}]}`),
+			validate: func(t project.Trigger) error { _, err := timerParams(t); return err },
+			arm:      m.armTimer,
 		},
 		// device — подключение или отключение устройства ввода.
 		builtinTrigger{
-			meta: meta("trigger", "device", "system", `{"type":"object","required":["match"],"properties":{"match":{"type":"string"},"on":{"enum":["connected","disconnected"]}}}`),
-			arm:  m.armDevice,
+			meta:     meta("trigger", "device", "system", `{"type":"object","required":["match"],"properties":{"match":{"type":"string","x-widget":"device"},"on":{"enum":["connected","disconnected"],"default":"connected"}}}`),
+			validate: func(t project.Trigger) error { _, _, err := deviceParams(t); return err },
+			arm:      m.armDevice,
 		},
 	}
 }
 
+// noParams возвращает проверку триггера без параметров.
+func noParams(id string) func(project.Trigger) error {
+	return func(t project.Trigger) error {
+		if err := project.Decode(t.Params, &struct{}{}); err != nil {
+			return fmt.Errorf("%s: %w", id, err)
+		}
+		return nil
+	}
+}
+
+// timerCfg — параметры триггера timer.
+type timerCfg struct {
+	EveryMS *int `json:"every_ms"`
+	AfterMS *int `json:"after_ms"`
+}
+
+// timerParams разбирает и проверяет параметры таймера: ровно один из every_ms и after_ms.
+func timerParams(t project.Trigger) (timerCfg, error) {
+	var p timerCfg
+	if err := project.Decode(t.Params, &p); err != nil {
+		return p, fmt.Errorf("timer: %w", err)
+	}
+	switch {
+	case (p.EveryMS == nil) == (p.AfterMS == nil):
+		return p, errors.New("timer: set exactly one of every_ms and after_ms")
+	case p.AfterMS != nil && *p.AfterMS < 0:
+		return p, errors.New("timer: after_ms must not be negative")
+	case p.EveryMS != nil && *p.EveryMS < minTimerMS:
+		return p, fmt.Errorf("timer: every_ms must be at least %d", minTimerMS)
+	}
+	return p, nil
+}
+
 // armTimer взводит таймер.
 func (m *Module) armTimer(ctx context.Context, _ contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	// Параметры: ровно один из every_ms и after_ms.
-	var p struct {
-		EveryMS *int `json:"every_ms"`
-		AfterMS *int `json:"after_ms"`
-	}
-	if err := project.Decode(t.Params, &p); err != nil {
-		return nil, fmt.Errorf("timer: %w", err)
-	}
-	if (p.EveryMS == nil) == (p.AfterMS == nil) {
-		return nil, errors.New("timer: set exactly one of every_ms and after_ms")
+	p, err := timerParams(t)
+	if err != nil {
+		return nil, err
 	}
 
 	// Однократный таймер.
 	if p.AfterMS != nil {
-		if *p.AfterMS < 0 {
-			return nil, errors.New("timer: after_ms must not be negative")
-		}
 		timer := time.AfterFunc(time.Duration(*p.AfterMS)*time.Millisecond, func() {
 			if ctx.Err() == nil {
 				fire(contracts.Fire{})
@@ -84,9 +108,6 @@ func (m *Module) armTimer(ctx context.Context, _ contracts.EventRef, t project.T
 	}
 
 	// Периодический таймер в своей горутине до снятия.
-	if *p.EveryMS < minTimerMS {
-		return nil, fmt.Errorf("timer: every_ms must be at least %d", minTimerMS)
-	}
 	tctx, cancel := context.WithCancel(ctx)
 	go func() {
 		tk := time.NewTicker(time.Duration(*p.EveryMS) * time.Millisecond)
@@ -103,31 +124,38 @@ func (m *Module) armTimer(ctx context.Context, _ contracts.EventRef, t project.T
 	return cancel, nil
 }
 
-// armDevice взводит триггер подключения/отключения устройства.
-func (m *Module) armDevice(ctx context.Context, _ contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	// Параметры: часть имени или "vid:pid"; событие — подключение (по умолчанию) или отключение.
+// deviceParams разбирает параметры триггера device: часть имени или "vid:pid" и тема шины.
+func deviceParams(t project.Trigger) (string, string, error) {
 	var p struct {
 		Match string `json:"match"`
 		On    string `json:"on"`
 	}
 	if err := project.Decode(t.Params, &p); err != nil {
-		return nil, fmt.Errorf("device: %w", err)
+		return "", "", fmt.Errorf("device: %w", err)
 	}
 	if strings.TrimSpace(p.Match) == "" {
-		return nil, errors.New("device: match is required")
+		return "", "", project.Required("trigger", "device", "match")
 	}
-	topic := contracts.TopicInputDeviceAdded
 	switch p.On {
 	case "", "connected":
+		return p.Match, contracts.TopicInputDeviceAdded, nil
 	case "disconnected":
-		topic = contracts.TopicInputDeviceRemoved
-	default:
-		return nil, fmt.Errorf("device: unknown on %q", p.On)
+		return p.Match, contracts.TopicInputDeviceRemoved, nil
+	}
+	return "", "", fmt.Errorf("device: unknown on %q", p.On)
+}
+
+// armDevice взводит триггер подключения/отключения устройства.
+func (m *Module) armDevice(ctx context.Context, _ contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
+	// Параметры: часть имени или "vid:pid"; событие — подключение (по умолчанию) или отключение.
+	matchText, topic, err := deviceParams(t)
+	if err != nil {
+		return nil, err
 	}
 
 	// Подписка на шину до снятия триггера.
 	ch, unsub := m.bus.Subscribe(topic)
-	match := strings.ToLower(p.Match)
+	match := strings.ToLower(matchText)
 	go func() {
 		for {
 			select {

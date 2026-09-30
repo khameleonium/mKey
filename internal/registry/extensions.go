@@ -2,7 +2,6 @@ package registry
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 
@@ -15,12 +14,17 @@ type Extensions struct {
 	mu sync.RWMutex
 	// points — расширения по точкам, внутри точки — по ID.
 	points map[contracts.ExtensionPoint]map[string]contracts.Extension
+	// order — ID расширений каждой точки в порядке регистрации.
+	order map[contracts.ExtensionPoint][]string
 }
 
 // NewExtensions создаёт реестр, в котором заранее заведены все известные точки расширения.
 func NewExtensions() *Extensions {
 	// Заводим пустую карту для каждой известной точки: регистрация в неизвестную точку — ошибка.
-	e := &Extensions{points: make(map[contracts.ExtensionPoint]map[string]contracts.Extension)}
+	e := &Extensions{
+		points: make(map[contracts.ExtensionPoint]map[string]contracts.Extension),
+		order:  make(map[contracts.ExtensionPoint][]string),
+	}
 	for _, p := range contracts.AllExtensionPoints() {
 		e.points[p] = make(map[string]contracts.Extension)
 	}
@@ -50,6 +54,7 @@ func (e *Extensions) Register(point contracts.ExtensionPoint, ext contracts.Exte
 		return fmt.Errorf("register %s/%s: %w", point, meta.ID, contracts.ErrExtensionExists)
 	}
 	items[meta.ID] = ext
+	e.order[point] = append(e.order[point], meta.ID)
 	return nil
 }
 
@@ -61,20 +66,15 @@ func (e *Extensions) Get(point contracts.ExtensionPoint, id string) (contracts.E
 	return ext, ok
 }
 
-// List возвращает все расширения точки point, отсортированные по ID.
+// List возвращает все расширения точки point в порядке регистрации (порядок стабилен:
+// модули запускаются в заданном порядке и регистрируют виды по списку).
 func (e *Extensions) List(point contracts.ExtensionPoint) []contracts.Extension {
-	// Копируем расширения точки под блокировкой.
 	e.mu.RLock()
-	items := make([]contracts.Extension, 0, len(e.points[point]))
-	for _, ext := range e.points[point] {
-		items = append(items, ext)
+	defer e.mu.RUnlock()
+	items := make([]contracts.Extension, 0, len(e.order[point]))
+	for _, id := range e.order[point] {
+		items = append(items, e.points[point][id])
 	}
-	e.mu.RUnlock()
-
-	// Сортируем по ID, чтобы порядок был стабильным (для GUI и тестов).
-	slices.SortFunc(items, func(a, b contracts.Extension) int {
-		return strings.Compare(a.Meta().ID, b.Meta().ID)
-	})
 	return items
 }
 

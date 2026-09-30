@@ -22,6 +22,10 @@ const (
 	TopicEmergency = "input.emergency"
 	// TopicResumed — работа возобновлена после экстренной остановки (`mkey resume`); Payload: nil.
 	TopicResumed = "input.resumed"
+	// TopicEventStarted — событие начало выполняться; Payload: EventRef.
+	TopicEventStarted = "engine.event_started"
+	// TopicEventFinished — выполнение события закончилось; Payload: EventFinished.
+	TopicEventFinished = "engine.event_finished"
 )
 
 // ErrEventInactive — событие не найдено или его проект выключен.
@@ -33,6 +37,21 @@ type ProjectError struct {
 	ID string `json:"id"`
 	// Error — текст ошибки.
 	Error string `json:"error"`
+}
+
+// EventFinished — итог выполнения события.
+type EventFinished struct {
+	EventRef
+	// Error — ошибка выполнения (пусто — успешно или остановлено).
+	Error string `json:"error,omitempty"`
+}
+
+// Template — шаблон проекта (название и описание — i18n-ключи template.<id>.name и .description).
+type Template struct {
+	// ID — идентификатор шаблона.
+	ID string `json:"id"`
+	// Content — содержимое файла проекта.
+	Content string `json:"content"`
 }
 
 // ProjectState — загруженный проект и сведения о файле.
@@ -59,6 +78,18 @@ type Projects interface {
 	SetEventEnabled(projectID, eventID string, enabled bool) error
 	// Import сохраняет новый проект из содержимого файла; новый проект по умолчанию выключен (SEC-7).
 	Import(name string, data []byte) (string, error)
+	// Raw возвращает содержимое файла проекта.
+	Raw(id string) ([]byte, error)
+	// Save сохраняет проект из структуры (например, из конструктора GUI); комментарии файла не сохраняются.
+	Save(id string, p project.Project) error
+	// SaveRaw сохраняет проект из текста YAML (после проверки структуры).
+	SaveRaw(id string, data []byte) error
+	// Create создаёт новый выключенный проект с содержимым data (пусто — пустой проект) и возвращает его ID.
+	Create(id string, data []byte) (string, error)
+	// Delete удаляет проект (файл).
+	Delete(id string) error
+	// Templates возвращает встроенные шаблоны проектов.
+	Templates() []Template
 }
 
 // EventRef — ссылка на событие проекта.
@@ -95,6 +126,8 @@ type ModifierControl interface {
 // TriggerType — вид триггера (точка расширения PointTrigger).
 type TriggerType interface {
 	Extension
+	// Validate проверяет параметры триггера, ничего не взводя (для проверки проекта перед сохранением).
+	Validate(t project.Trigger) error
 	// Arm проверяет параметры и начинает следить за триггером; fire вызывается при каждом срабатывании
 	// (из любой горутины). Возвращает функцию снятия триггера.
 	Arm(ctx context.Context, ev EventRef, t project.Trigger, fire func(Fire)) (disarm func(), err error)
@@ -174,6 +207,8 @@ type Events interface {
 	RunEvent(ctx context.Context, projectID, eventID string) error
 	// Vars возвращает переменные проекта (nil, если проекта нет).
 	Vars(projectID string) VarStore
+	// ValidateProject проверяет проект целиком: виды и параметры триггеров, условий и действий.
+	ValidateProject(p project.Project) error
 }
 
 // KeyState — текущее состояние физических клавиш и кнопок (модуль hotkeys).
@@ -192,4 +227,27 @@ type KeyState interface {
 type Notifier interface {
 	// Notify показывает уведомление с заголовком title и текстом body.
 	Notify(ctx context.Context, title, body string) error
+}
+
+// ActionConverter переводит действия ввода в макрос DSL и обратно (режим DSL конструктора, FR-UI-4).
+type ActionConverter interface {
+	// ActionsToDSL склеивает действия в один макрос; ошибка — среди действий есть такое,
+	// которое нельзя записать макросом (повтор, условие, скрипт…).
+	ActionsToDSL(actions []project.Action) (string, error)
+	// DSLToActions разбирает макрос на отдельные действия (нажать, зажать, пауза, текст…);
+	// части без отдельного действия (группы с повтором, оси) остаются действиями send.
+	DSLToActions(text string) ([]project.Action, error)
+}
+
+// URLOpener открывает адрес в браузере по умолчанию (модуль desktop).
+type URLOpener interface {
+	// OpenURL запускает браузер с адресом url и не ждёт его закрытия.
+	OpenURL(ctx context.Context, url string) error
+}
+
+// GUIServer сообщает адрес веб-интерфейса (модуль api).
+type GUIServer interface {
+	// GUIURL возвращает адрес входа в веб-интерфейс (с одноразовым входом по токену);
+	// ошибка — веб-интерфейс не открыт (TCP-порт выключен).
+	GUIURL() (string, error)
 }

@@ -90,7 +90,6 @@ func TestParseErrors(t *testing.T) {
 		"missing id":      "events:\n  - trigger: {type: manual}\n    actions: [{send: '{A}'}]\n",
 		"duplicate id":    "events:\n  - {id: a, trigger: {type: manual}, actions: [{send: '{A}'}]}\n  - {id: a, trigger: {type: manual}, actions: [{send: '{A}'}]}\n",
 		"no trigger":      "events:\n  - {id: a, actions: [{send: '{A}'}]}\n",
-		"no actions":      "events:\n  - {id: a, trigger: {type: manual}, actions: []}\n",
 		"trigger no type": "events:\n  - {id: a, trigger: {keys: '{A}'}, actions: [{send: '{A}'}]}\n",
 		"action two keys": "events:\n  - {id: a, trigger: {type: manual}, actions: [{send: '{A}', pause: 1}]}\n",
 		"bad policy":      "events:\n  - {id: a, policy: sometimes, trigger: {type: manual}, actions: [{send: '{A}'}]}\n",
@@ -134,5 +133,17 @@ func TestIDFromFile(t *testing.T) {
 		if _, ok := IDFromFile(n); ok {
 			t.Errorf("%s must not be a project file", n)
 		}
+	}
+}
+
+// TestMarshalTypeFirst проверяет, что в записанном YAML ключ type идёт первым, а параметры — по алфавиту.
+func TestMarshalTypeFirst(t *testing.T) {
+	t.Parallel()
+	out, err := yaml.Marshal(Trigger{Type: "hotkey", Params: map[string]any{"on": "toggle", "keys": "{F8}"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(out); !strings.HasPrefix(got, "type: hotkey\nkeys: '{F8}'\n") {
+		t.Fatalf("yaml = %q", got)
 	}
 }

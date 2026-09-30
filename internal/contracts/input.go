@@ -67,6 +67,10 @@ type InputSource interface {
 	GrabSuspended() bool
 	// ResumeGrab снова разрешает перехват после экстренной остановки.
 	ResumeGrab()
+	// EmergencyStop выполняет экстренную остановку так же, как сочетание клавиш (SEC-1):
+	// снимает перехват, останавливает макросы, отпускает клавиши и приостанавливает mKey.
+	// reason — источник для журнала ("tray", "api").
+	EmergencyStop(reason string)
 }
 
 // InputHandler — синхронный обработчик событий физических устройств.

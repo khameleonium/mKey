@@ -64,21 +64,26 @@ func (hotkeyType) Meta() contracts.ExtensionMeta {
 		ID: "hotkey", NameKey: "trigger.hotkey", DescriptionKey: "trigger.hotkey.description",
 		Category: "input", Icon: "keyboard", Provider: ModuleID,
 		ParamsSchema: []byte(`{"type":"object","required":["keys"],"properties":{` +
-			`"keys":{"type":"string"},"on":{"enum":["press","release","hold","double","toggle"]},` +
-			`"consume":{"type":"boolean"},"device":{"type":"string"},"hold_ms":{"type":"integer"},"double_ms":{"type":"integer"}}}`),
+			`"keys":{"type":"string","x-widget":"keys"},` +
+			`"on":{"enum":["press","release","hold","double","toggle"],"default":"press"},` +
+			`"consume":{"type":"boolean"},"device":{"type":"string","x-widget":"device","x-advanced":true},` +
+			`"hold_ms":{"type":"integer","minimum":1,"x-widget":"ms","x-advanced":true},` +
+			`"double_ms":{"type":"integer","minimum":1,"x-widget":"ms","x-advanced":true}}}`),
 	}
 }
 
-// Arm проверяет параметры и регистрирует горячую клавишу.
-func (t hotkeyType) Arm(_ context.Context, ref contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	// Параметры и значения по умолчанию.
+// parseHotkey разбирает и проверяет параметры триггера hotkey.
+func parseHotkey(tr project.Trigger) (hotkeyParams, []keys.Key, error) {
 	var p hotkeyParams
 	if err := project.Decode(tr.Params, &p); err != nil {
-		return nil, fmt.Errorf("hotkey: %w", err)
+		return p, nil, fmt.Errorf("hotkey: %w", err)
+	}
+	if strings.Trim(p.Keys, "{} ") == "" {
+		return p, nil, project.Required("trigger", "hotkey", "keys")
 	}
 	chord, err := parseChord(p.Keys)
 	if err != nil {
-		return nil, fmt.Errorf("hotkey: %w", err)
+		return p, nil, fmt.Errorf("hotkey: %w", err)
 	}
 	if p.On == "" {
 		p.On = onPress
@@ -86,7 +91,22 @@ func (t hotkeyType) Arm(_ context.Context, ref contracts.EventRef, tr project.Tr
 	switch p.On {
 	case onPress, onRelease, onHold, onDouble, onToggle:
 	default:
-		return nil, fmt.Errorf("hotkey: unknown on %q", p.On)
+		return p, nil, fmt.Errorf("hotkey: unknown on %q", p.On)
+	}
+	return p, chord, nil
+}
+
+// Validate проверяет параметры, ничего не регистрируя.
+func (hotkeyType) Validate(tr project.Trigger) error {
+	_, _, err := parseHotkey(tr)
+	return err
+}
+
+// Arm проверяет параметры и регистрирует горячую клавишу.
+func (t hotkeyType) Arm(_ context.Context, ref contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
+	p, chord, err := parseHotkey(tr)
+	if err != nil {
+		return nil, err
 	}
 	h := &hotkey{
 		ev: ref, chord: chord, on: p.On, consume: p.Consume, device: p.Device, fire: fire,

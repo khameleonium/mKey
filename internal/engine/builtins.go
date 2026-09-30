@@ -14,12 +14,16 @@ import (
 
 // builtinTrigger — вид триггера из функции взведения.
 type builtinTrigger struct {
-	meta contracts.ExtensionMeta
-	arm  func(ctx context.Context, ref contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error)
+	meta     contracts.ExtensionMeta
+	validate func(t project.Trigger) error
+	arm      func(ctx context.Context, ref contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error)
 }
 
 // Meta возвращает метаданные.
 func (b builtinTrigger) Meta() contracts.ExtensionMeta { return b.meta }
+
+// Validate проверяет параметры.
+func (b builtinTrigger) Validate(t project.Trigger) error { return b.validate(t) }
 
 // Arm взводит триггер.
 func (b builtinTrigger) Arm(ctx context.Context, ref contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
@@ -49,6 +53,8 @@ type builtinAction struct {
 	meta     contracts.ExtensionMeta
 	validate func(a project.Action) error
 	run      func(ctx context.Context, rc contracts.RunContext, a project.Action) error
+	// toDSL переводит значение действия в макрос; nil — действие нельзя записать макросом.
+	toDSL func(any) (string, error)
 }
 
 // Meta возвращает метаданные.

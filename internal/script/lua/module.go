@@ -77,7 +77,7 @@ func (luaAction) Meta() contracts.ExtensionMeta {
 	return contracts.ExtensionMeta{
 		ID: "lua", NameKey: "action.lua", DescriptionKey: "action.lua.description", Category: "script", Icon: "code",
 		Provider:     ModuleID,
-		ParamsSchema: []byte(`{"oneOf":[{"type":"string"},{"type":"object","properties":{"code":{"type":"string"},"file":{"type":"string"}}}]}`),
+		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"lua"},{"type":"object","required":["file"],"properties":{"file":{"type":"string"}}}]}`),
 	}
 }
 

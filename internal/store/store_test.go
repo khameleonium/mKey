@@ -13,6 +13,7 @@ import (
 	"mkey/internal/bus"
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/project"
 	"mkey/internal/registry"
 )
 
@@ -146,5 +147,60 @@ func TestImport(t *testing.T) {
 	}
 	if _, err := m.Import("bad.yaml", []byte("events: [ {id: 1} ]")); err == nil {
 		t.Fatal("invalid project must not be imported")
+	}
+}
+
+// TestSaveCreateDeleteTemplates проверяет сохранение из структуры и текста, создание, шаблоны и удаление.
+func TestSaveCreateDeleteTemplates(t *testing.T) {
+	t.Parallel()
+	m, _ := startStore(t, t.TempDir())
+
+	// Все шаблоны — правильные проекты; создание из шаблона даёт выключенный проект.
+	for _, tpl := range m.Templates() {
+		id, err := m.Create(tpl.ID, []byte(tpl.Content))
+		if err != nil {
+			t.Fatalf("template %s: %v", tpl.ID, err)
+		}
+		if st, _ := m.Get(id); st.Project.IsEnabled() || st.Error != "" {
+			t.Fatalf("template %s: state %+v", tpl.ID, st)
+		}
+	}
+
+	// Пустой проект.
+	id, err := m.Create("Новый", nil)
+	if err != nil || id != "Новый" {
+		t.Fatalf("Create = %q, %v", id, err)
+	}
+
+	// Сохранение из структуры: добавляем событие и читаем обратно.
+	st, _ := m.Get(id)
+	p := st.Project
+	p.Name = "Изменён"
+	p.Events = append(p.Events, project.Event{ID: "e", Trigger: &project.Trigger{Type: "manual"}, Actions: []project.Action{{Type: "send", Value: "{A}"}}})
+	if err := m.Save(id, p); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := m.Get(id); st.Project.Name != "Изменён" || len(st.Project.Events) != 1 {
+		t.Fatalf("after Save: %+v", st.Project)
+	}
+
+	// Сохранение текста: ошибочный текст не записывается.
+	if err := m.SaveRaw(id, []byte("events: [ {id: 1} ]")); err == nil {
+		t.Fatal("invalid raw must be rejected")
+	}
+	raw, _ := m.Raw(id)
+	if !strings.Contains(string(raw), "Изменён") {
+		t.Fatalf("raw = %s", raw)
+	}
+
+	// Опасные ID отвергаются; удаление убирает проект.
+	if err := m.SaveRaw("../evil", raw); err == nil {
+		t.Fatal("path traversal id must be rejected")
+	}
+	if err := m.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Get(id); ok {
+		t.Fatal("deleted project still present")
 	}
 }

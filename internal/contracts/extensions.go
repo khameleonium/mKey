@@ -88,6 +88,7 @@ type ExtensionRegistry interface {
 	Register(point ExtensionPoint, ext Extension) error
 	// Get возвращает расширение по ID в точке point.
 	Get(point ExtensionPoint, id string) (Extension, bool)
-	// List возвращает все расширения точки point, отсортированные по ID.
+	// List возвращает все расширения точки point в порядке регистрации (так их задумал автор
+	// модуля: например, палитра конструктора показывает «Нажать», затем «Зажать», «Отпустить»).
 	List(point ExtensionPoint) []Extension
 }

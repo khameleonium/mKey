@@ -331,6 +331,9 @@ func (m *Module) checkEmergency(path string, d *openDevice, e ev.Event) {
 	}
 }
 
+// EmergencyStop — экстренная остановка по команде (значок в трее, веб-интерфейс), см. emergencyStop.
+func (m *Module) EmergencyStop(reason string) { m.emergencyStop(reason) }
+
 // emergencyStop снимает весь захват, отключает его до ResumeGrab и сообщает остальным модулям,
 // чтобы они остановили макросы и отпустили клавиши (SEC-1).
 func (m *Module) emergencyStop(reason string) {

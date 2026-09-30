@@ -107,22 +107,53 @@ func (m *Module) reloadProject(id string) {
 	m.log.Info("project active", "project", id, "events", len(rt.events))
 }
 
+// ValidateProject проверяет проект целиком, ничего не взводя: триггеры, условия и действия всех
+// событий, включая выключенные (для проверки перед сохранением из GUI).
+func (m *Module) ValidateProject(p project.Project) error {
+	if err := project.Check(p); err != nil {
+		return err
+	}
+	return m.validate(p, true)
+}
+
+// validate проверяет условия, действия и (при withTriggers) триггеры событий проекта.
+// Выключенные события проверяются, только когда проверяется весь проект (withTriggers).
+func (m *Module) validate(p project.Project, withTriggers bool) error {
+	if err := m.validateConditions(p.ActiveWhen); err != nil {
+		return fmt.Errorf("active_when: %w", err)
+	}
+	for _, e := range p.Events {
+		if !e.IsEnabled() && !withTriggers {
+			continue
+		}
+		if withTriggers {
+			for i, t := range e.AllTriggers() {
+				ext, ok := m.ext.Get(contracts.PointTrigger, t.Type)
+				trig, isTrigger := ext.(contracts.TriggerType)
+				if !ok || !isTrigger {
+					err := fmt.Errorf("unknown trigger type %q (available: %s)", t.Type, m.available(contracts.PointTrigger))
+					return &project.Problem{Event: e.ID, Part: project.PartTrigger, Index: i, Err: err}
+				}
+				if err := trig.Validate(t); err != nil {
+					return &project.Problem{Event: e.ID, Part: project.PartTrigger, Index: i, Kind: t.Type, Err: err}
+				}
+			}
+		}
+		if err := m.validateConditions(e.Conditions); err != nil {
+			return inEvent(e.ID, err)
+		}
+		if err := m.validateActions(e.Actions); err != nil {
+			return inEvent(e.ID, err)
+		}
+	}
+	return nil
+}
+
 // build проверяет все условия и действия проекта и взводит триггеры включённых событий.
 func (m *Module) build(p project.Project) (*projectRuntime, error) {
 	// Проверка условий и действий всех включённых событий до взведения чего-либо.
-	if err := m.validateConditions(p.ActiveWhen); err != nil {
-		return nil, fmt.Errorf("active_when: %w", err)
-	}
-	for _, e := range p.Events {
-		if !e.IsEnabled() {
-			continue
-		}
-		if err := m.validateConditions(e.Conditions); err != nil {
-			return nil, fmt.Errorf("event %q: %w", e.ID, err)
-		}
-		if err := m.validateActions(e.Actions); err != nil {
-			return nil, fmt.Errorf("event %q: %w", e.ID, err)
-		}
+	if err := m.validate(p, false); err != nil {
+		return nil, err
 	}
 
 	// Переменные: прежние значения (при перезагрузке) и сохранённые переживают правку файла.
@@ -235,7 +266,15 @@ func (m *Module) onFire(er *eventRuntime, f contracts.Fire) {
 // runLoop выполняет событие и, для политики queue, накопленные срабатывания.
 func (m *Module) runLoop(er *eventRuntime, f contracts.Fire) {
 	for {
-		if err := m.runEvent(er.proj.ctx, er, f); err != nil {
+		// Начало и итог выполнения — на шину (GUI показывает, что сейчас работает).
+		m.bus.Publish(contracts.TopicEventStarted, er.ref)
+		err := m.runEvent(er.proj.ctx, er, f)
+		fin := contracts.EventFinished{EventRef: er.ref}
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, errStopSelf) {
+			fin.Error = err.Error()
+		}
+		m.bus.Publish(contracts.TopicEventFinished, fin)
+		if err != nil {
 			m.logRunError(er, err)
 		}
 
@@ -395,28 +434,42 @@ func (m *Module) savePersisted() {
 }
 
 // validateActions проверяет список действий по реестру видов действий.
+// Ошибка — *project.Problem с номером блока (ID события заполняет вызывающий код, см. inEvent).
 func (m *Module) validateActions(actions []project.Action) error {
 	for i, a := range actions {
 		at, err := m.actionType(a.Type)
 		if err != nil {
-			return fmt.Errorf("action #%d: %w", i+1, err)
+			return &project.Problem{Part: project.PartAction, Index: i, Err: err}
 		}
 		if err := at.Validate(a); err != nil {
-			return fmt.Errorf("action #%d (%s): %w", i+1, a.Type, err)
+			return &project.Problem{Part: project.PartAction, Index: i, Kind: a.Type, Err: err}
 		}
 	}
 	return nil
 }
 
+// inEvent дописывает ID события в ошибку проверки условий или действий события.
+// Для вложенных списков («Повторять», «Если») место остаётся у внешнего блока, а внутренняя
+// ошибка сохраняется в цепочке (её поле найдёт errors.As).
+func inEvent(eventID string, err error) error {
+	var p *project.Problem
+	if errors.As(err, &p) && p.Event == "" {
+		p.Event = eventID
+		return p
+	}
+	return &project.Problem{Event: eventID, Index: -1, Err: err}
+}
+
 // validateConditions проверяет список условий по реестру видов условий.
+// Ошибка — *project.Problem с номером условия (ID события заполняет вызывающий код).
 func (m *Module) validateConditions(conds []project.Condition) error {
 	for i, c := range conds {
 		ct, err := m.conditionType(c.Type)
 		if err != nil {
-			return fmt.Errorf("condition #%d: %w", i+1, err)
+			return &project.Problem{Part: project.PartCondition, Index: i, Err: err}
 		}
 		if err := ct.Validate(c); err != nil {
-			return fmt.Errorf("condition #%d (%s): %w", i+1, c.Type, err)
+			return &project.Problem{Part: project.PartCondition, Index: i, Kind: c.Type, Err: err}
 		}
 	}
 	return nil

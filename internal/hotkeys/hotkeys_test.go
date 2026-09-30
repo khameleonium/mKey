@@ -39,6 +39,9 @@ func (f *fakeInput) GrabSuspended() bool {
 	return f.suspended
 }
 func (f *fakeInput) ResumeGrab() {}
+
+// EmergencyStop не нужен тестам горячих клавиш.
+func (f *fakeInput) EmergencyStop(string) {}
 func (f *fakeInput) SetGrabPolicy(p func(contracts.InputDevice) bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -58,8 +61,11 @@ func (f *fakeInput) grabs() bool {
 	return f.policy != nil && f.policy(f.Devices()[0])
 }
 
-// fakeProjects — хранилище с одним проектом (для переназначений).
-type fakeProjects struct{ p project.Project }
+// fakeProjects — хранилище с одним проектом (для переназначений); остальные методы не используются.
+type fakeProjects struct {
+	contracts.Projects
+	p project.Project
+}
 
 func (f fakeProjects) Dir() string { return "" }
 func (f fakeProjects) List() []contracts.ProjectState {

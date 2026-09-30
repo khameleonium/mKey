@@ -26,6 +26,8 @@ type testTrigger struct {
 
 func (t *testTrigger) Meta() contracts.ExtensionMeta { return contracts.ExtensionMeta{ID: "test"} }
 
+func (t *testTrigger) Validate(project.Trigger) error { return nil }
+
 func (t *testTrigger) Arm(_ context.Context, ref contracts.EventRef, _ project.Trigger, fire func(contracts.Fire)) (func(), error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -51,8 +53,9 @@ func (t *testTrigger) fire(tst *testing.T, id string, f contracts.Fire) {
 
 // memProjects — хранилище проектов в памяти.
 type memProjects struct {
-	mu sync.Mutex
-	ps map[string]contracts.ProjectState
+	contracts.Projects // остальные методы в тестах не используются
+	mu                 sync.Mutex
+	ps                 map[string]contracts.ProjectState
 }
 
 func (p *memProjects) Dir() string { return "" }
@@ -318,6 +321,19 @@ events:
 	})
 }
 
+// TestReplaceWithoutActions проверяет, что событие без действий (только замена слова) допустимо
+// и замена выполняется.
+func TestReplaceWithoutActions(t *testing.T) {
+	t.Parallel()
+	r := newEventRig(t)
+	r.load(t, "p", `events: [ { id: btw, trigger: { type: test }, actions: [] } ]`)
+	r.trig.fire(t, "btw", contracts.Fire{Vars: map[string]any{"replace_dsl": "{Backspace*2}"}})
+	eventually(t, "replacement", func() bool {
+		kb := r.devs.kb.log()
+		return len(kb) >= 4 && kb[0].Code == ev.KeyBackspace
+	})
+}
+
 // TestReloadKeepsPrevious проверяет, что проект с ошибкой не заменяет рабочую версию.
 func TestReloadKeepsPrevious(t *testing.T) {
 	t.Parallel()
@@ -440,6 +456,26 @@ func TestValidateErrors(t *testing.T) {
 		p, _ := project.Parse([]byte("events: [ { id: a, trigger: { type: test }, conditions: ["+cond+"], actions: [{send: '{A}'}] } ]"), "p")
 		if err := r.m.validateConditions(p.Events[0].Conditions); err == nil {
 			t.Errorf("%s: expected validation error", name)
+		}
+	}
+}
+
+// TestValidateProject проверяет проверку проекта целиком, включая выключенные события и триггеры.
+func TestValidateProject(t *testing.T) {
+	t.Parallel()
+	r := newEventRig(t)
+	good, _ := project.Parse([]byte(`events: [ { id: a, enabled: false, trigger: { type: timer, every_ms: 1000 }, actions: [ { send: "{A}" } ] } ]`), "p")
+	if err := r.m.ValidateProject(good); err != nil {
+		t.Fatalf("good project: %v", err)
+	}
+	for _, src := range []string{
+		`events: [ { id: a, enabled: false, trigger: { type: timer, every_ms: 1 }, actions: [ { send: "{A}" } ] } ]`,
+		`events: [ { id: a, enabled: false, trigger: { type: nope }, actions: [ { send: "{A}" } ] } ]`,
+		`events: [ { id: a, enabled: false, trigger: { type: manual }, actions: [ { send: "{Mous0}" } ] } ]`,
+	} {
+		p, _ := project.Parse([]byte(src), "p")
+		if err := r.m.ValidateProject(p); err == nil {
+			t.Errorf("expected error for %s", src)
 		}
 	}
 }

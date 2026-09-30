@@ -153,6 +153,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if err := contracts.ProvideService[contracts.SequenceRunner](host.Services(), m); err != nil {
 		return err
 	}
+	if err := contracts.ProvideService[contracts.ActionConverter](host.Services(), m); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.Events](host.Services(), m)
 }
 

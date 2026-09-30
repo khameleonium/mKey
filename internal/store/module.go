@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -231,6 +232,71 @@ func (m *Module) Import(name string, data []byte) (string, error) {
 	}
 	m.reload(id)
 	return id, nil
+}
+
+// Raw возвращает содержимое файла проекта.
+func (m *Module) Raw(id string) ([]byte, error) {
+	if !validID(id) {
+		return nil, fmt.Errorf("invalid project id %q", id)
+	}
+	return os.ReadFile(m.path(id))
+}
+
+// Save сохраняет проект из структуры (конструктор GUI). Комментарии файла при этом теряются.
+func (m *Module) Save(id string, p project.Project) error {
+	var b bytes.Buffer
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(p); err != nil {
+		return err
+	}
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	return m.SaveRaw(id, b.Bytes())
+}
+
+// SaveRaw сохраняет проект из текста YAML после проверки структуры и сразу применяет его.
+func (m *Module) SaveRaw(id string, data []byte) error {
+	if !validID(id) {
+		return fmt.Errorf("invalid project id %q", id)
+	}
+	if _, err := project.Parse(data, id); err != nil {
+		return err
+	}
+	if err := writeAtomic(m.path(id), data); err != nil {
+		return err
+	}
+	m.reload(id)
+	return nil
+}
+
+// Create создаёт новый выключенный проект с содержимым data (пусто — пустой проект).
+func (m *Module) Create(id string, data []byte) (string, error) {
+	if len(data) == 0 {
+		data = []byte("version: 1\nname: " + strconv.Quote(id) + "\nevents: []\n")
+	}
+	return m.Import(id+project.FileSuffix, data)
+}
+
+// Delete удаляет файл проекта (проект сразу снимается).
+func (m *Module) Delete(id string) error {
+	if !validID(id) {
+		return fmt.Errorf("invalid project id %q", id)
+	}
+	if err := os.Remove(m.path(id)); err != nil {
+		return err
+	}
+	m.reload(id)
+	return nil
+}
+
+// Templates возвращает встроенные шаблоны проектов.
+func (m *Module) Templates() []contracts.Template { return slices.Clone(templates) }
+
+// validID сообщает, что ID проекта безопасен как имя файла (без путей и служебных символов).
+func validID(id string) bool {
+	return id != "" && !idCleanRe.MatchString(id)
 }
 
 // exists сообщает, есть ли проект или файл с таким ID.

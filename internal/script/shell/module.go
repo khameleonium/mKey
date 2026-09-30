@@ -97,7 +97,7 @@ func (shellAction) Meta() contracts.ExtensionMeta {
 	return contracts.ExtensionMeta{
 		ID: "shell", NameKey: "action.shell", DescriptionKey: "action.shell.description", Category: "script", Icon: "terminal",
 		Provider:     ModuleID,
-		ParamsSchema: []byte(`{"oneOf":[{"type":"string"},{"type":"object","properties":{"code":{"type":"string"},"file":{"type":"string"},"timeout_ms":{"type":"integer"}}}]}`),
+		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"shell"},{"type":"object","required":["code"],"properties":{"code":{"type":"string","x-widget":"code","x-lang":"shell"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}},{"type":"object","required":["file"],"properties":{"file":{"type":"string"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}}]}`),
 	}
 }
 
@@ -120,7 +120,7 @@ func (a shellAction) params(v any) (shellParams, error) {
 func (a shellAction) Validate(pa project.Action) error {
 	p, err := a.params(pa.Value)
 	if err == nil && p.Code == "" && p.File == "" {
-		err = errors.New("shell: empty script")
+		err = project.Required("action", "shell", "code")
 	}
 	return err
 }

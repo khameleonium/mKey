@@ -21,16 +21,16 @@ const minIterationSpacing = time.Millisecond
 func (m *Module) builtinActions() []contracts.ActionType {
 	return []contracts.ActionType{
 		// Действия ввода — все сводятся к макросу DSL.
-		dslAction("send", "keyboard", `{"type":"string"}`, sendDSL),
-		dslAction("tap", "keyboard", `{"type":"string"}`, keyDSL("")),
-		dslAction("key_down", "keyboard", `{"type":"string"}`, keyDSL("^")),
-		dslAction("key_up", "keyboard", `{"type":"string"}`, keyDSL("~")),
-		dslAction("hold", "keyboard", `{"type":"object","required":["key","ms"],"properties":{"key":{"type":"string"},"ms":{"type":"integer"}}}`, holdDSL),
-		dslAction("pause", "time", `{"oneOf":[{"type":"integer"},{"type":"object","properties":{"min_ms":{"type":"integer"},"max_ms":{"type":"integer"}}}]}`, pauseDSL),
-		dslAction("type_text", "keyboard", `{"type":"string"}`, textDSL),
-		dslAction("mouse_move", "mouse", `{"type":"object","required":["dx","dy"],"properties":{"dx":{"type":"integer"},"dy":{"type":"integer"}}}`, moveDSL),
-		dslAction("mouse_click", "mouse", `{"enum":[null,"Left","Right","Middle","Back","Forward"]}`, clickDSL),
-		dslAction("wheel", "mouse", `{"type":"object","required":["direction"],"properties":{"direction":{"enum":["Up","Down","Left","Right"]},"count":{"type":"integer"}}}`, wheelDSL),
+		dslAction("send", "keyboard", `{"type":"string","x-widget":"macro"}`, sendDSL),
+		dslAction("tap", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("")),
+		dslAction("key_down", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("^")),
+		dslAction("key_up", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("~")),
+		dslAction("hold", "keyboard", `{"type":"object","required":["key","ms"],"properties":{"key":{"type":"string","x-widget":"key"},"ms":{"type":"integer","minimum":1,"default":500,"x-widget":"ms"}}}`, holdDSL),
+		dslAction("pause", "time", `{"oneOf":[{"type":"integer","minimum":0,"default":100,"x-widget":"ms"},{"type":"object","required":["min_ms","max_ms"],"properties":{"min_ms":{"type":"integer","minimum":0,"x-widget":"ms"},"max_ms":{"type":"integer","minimum":0,"x-widget":"ms"}}}]}`, pauseDSL),
+		dslAction("type_text", "keyboard", `{"type":"string","x-widget":"multiline"}`, textDSL),
+		dslAction("mouse_move", "mouse", `{"type":"object","required":["dx","dy"],"properties":{"dx":{"type":"integer","default":0},"dy":{"type":"integer","default":0}}}`, moveDSL),
+		dslAction("mouse_click", "mouse", `{"enum":["Left","Right","Middle","Back","Forward"],"default":"Left"}`, clickDSL),
+		dslAction("wheel", "mouse", `{"type":"object","required":["direction"],"properties":{"direction":{"enum":["Up","Down","Left","Right"],"default":"Down"},"count":{"type":"integer","minimum":1,"default":1}}}`, wheelDSL),
 
 		// Логика и переменные.
 		m.repeatAction(),
@@ -49,9 +49,14 @@ func (m *Module) builtinActions() []contracts.ActionType {
 // dslAction создаёт действие, которое сводится к макросу DSL: проверка — разбор и компиляция макроса.
 func dslAction(id, category, schema string, toDSL func(any) (string, error)) builtinAction {
 	return builtinAction{
-		meta: meta("action", id, category, schema),
+		meta:  meta("action", id, category, schema),
+		toDSL: toDSL,
 		validate: func(a project.Action) error {
 			src, err := toDSL(a.Value)
+			if fe := (*project.FieldError)(nil); errors.As(err, &fe) && fe.Kind == "" {
+				// Незаполненное поле: подставляем вид блока, чтобы окно назвало поле.
+				fe.Kind = id
+			}
 			if err != nil {
 				return err
 			}
@@ -82,7 +87,7 @@ func keyDSL(prefix string) func(any) (string, error) {
 	return func(v any) (string, error) {
 		s, ok := v.(string)
 		if !ok || strings.TrimSpace(s) == "" {
-			return "", errors.New(`expected a key name, e.g. "Shift" or "Ctrl+C"`)
+			return "", project.Required("action", "", "")
 		}
 		return prefix + braces(s), nil
 	}
@@ -96,6 +101,9 @@ func holdDSL(v any) (string, error) {
 	}
 	if err := project.Decode(v, &p); err != nil {
 		return "", err
+	}
+	if strings.Trim(p.Key, "{} ") == "" {
+		return "", project.Required("action", "hold", "key")
 	}
 	return "{" + strings.Trim(p.Key, "{}") + " " + strconv.Itoa(p.MS) + "}", nil
 }
@@ -221,7 +229,7 @@ func (m *Module) repeatAction() builtinAction {
 	}
 
 	return builtinAction{
-		meta: meta("action", "repeat", "logic", `{"type":"object","required":["do"],"properties":{"times":{"type":"integer"},"while":{"enum":["toggled","held","forever"]},"conditions":{"type":"array"},"do":{"type":"array"}}}`),
+		meta: meta("action", "repeat", "logic", `{"oneOf":[{"type":"object","required":["times","do"],"properties":{"times":{"type":"integer","minimum":1,"default":3},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["while","do"],"properties":{"while":{"enum":["toggled","held","forever"],"default":"toggled"},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["conditions","do"],"properties":{"conditions":{"type":"array","x-widget":"conditions"},"do":{"type":"array","x-widget":"actions"}}}]}`),
 		validate: func(a project.Action) error {
 			_, body, conds, err := parse(a)
 			if err != nil {
@@ -293,7 +301,7 @@ func (m *Module) ifAction() builtinAction {
 		return
 	}
 	return builtinAction{
-		meta: meta("action", "if", "logic", `{"type":"object","required":["conditions","then"],"properties":{"conditions":{"type":"array"},"then":{"type":"array"},"else":{"type":"array"}}}`),
+		meta: meta("action", "if", "logic", `{"type":"object","required":["conditions","then"],"properties":{"conditions":{"type":"array","x-widget":"conditions"},"then":{"type":"array","x-widget":"actions"},"else":{"type":"array","x-widget":"actions"}}}`),
 		validate: func(a project.Action) error {
 			conds, then, els, err := parse(a)
 			if err != nil {
@@ -339,12 +347,12 @@ func (m *Module) setVarAction() builtinAction {
 			return p, err
 		}
 		if p.Name == "" {
-			return p, errors.New("name is required")
+			return p, project.Required("action", "set_var", "name")
 		}
 		return p, nil
 	}
 	return builtinAction{
-		meta:     meta("action", "set_var", "logic", `{"type":"object","required":["name"],"properties":{"name":{"type":"string"},"value":{},"add":{"type":"number"}}}`),
+		meta:     meta("action", "set_var", "logic", `{"oneOf":[{"type":"object","required":["name","value"],"properties":{"name":{"type":"string","x-widget":"variable"},"value":{"x-widget":"value"}}},{"type":"object","required":["name","add"],"properties":{"name":{"type":"string","x-widget":"variable"},"add":{"type":"number","default":1}}}]}`),
 		validate: func(a project.Action) error { _, err := parse(a); return err },
 		run: func(_ context.Context, rc contracts.RunContext, a project.Action) error {
 			p, err := parse(a)
@@ -379,11 +387,11 @@ func parseTarget(v any) (eventTarget, error) {
 // runEventAction — действие run_event: запустить другое событие (по умолчанию — дождаться).
 func (m *Module) runEventAction() builtinAction {
 	return builtinAction{
-		meta: meta("action", "run_event", "system", `{"oneOf":[{"type":"string"},{"type":"object","properties":{"project":{"type":"string"},"event":{"type":"string"},"wait":{"type":"boolean"}}}]}`),
+		meta: meta("action", "run_event", "system", `{"oneOf":[{"type":"string","x-widget":"event"},{"type":"object","required":["project","event"],"properties":{"project":{"type":"string","x-widget":"project"},"event":{"type":"string"},"wait":{"type":"boolean"}}}]}`),
 		validate: func(a project.Action) error {
 			t, err := parseTarget(a.Value)
 			if err == nil && t.Event == "" {
-				err = errors.New("event is required")
+				err = project.Required("action", "run_event", "event")
 			}
 			return err
 		},
@@ -427,7 +435,7 @@ func (m *Module) notifyAction() builtinAction {
 		return p.Title, p.Body, nil
 	}
 	return builtinAction{
-		meta:     meta("action", "notify", "system", `{"oneOf":[{"type":"string"},{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}}}]}`),
+		meta:     meta("action", "notify", "system", `{"oneOf":[{"type":"string"},{"type":"object","required":["title","body"],"properties":{"title":{"type":"string"},"body":{"type":"string","x-widget":"multiline"}}}]}`),
 		validate: func(a project.Action) error { _, _, err := parse(a.Value); return err },
 		run: func(ctx context.Context, rc contracts.RunContext, a project.Action) error {
 			title, body, err := parse(a.Value)
@@ -449,7 +457,7 @@ func (m *Module) notifyAction() builtinAction {
 // enableAction — действия enable/disable: событие того же проекта или {project, event}; без event — весь проект.
 func (m *Module) enableAction(id string, on bool) builtinAction {
 	return builtinAction{
-		meta: meta("action", id, "system", `{"oneOf":[{"type":"string"},{"type":"object","properties":{"project":{"type":"string"},"event":{"type":"string"}}}]}`),
+		meta: meta("action", id, "system", `{"oneOf":[{"type":"string","x-widget":"event"},{"type":"object","required":["project"],"properties":{"project":{"type":"string","x-widget":"project"},"event":{"type":"string"}}}]}`),
 		validate: func(a project.Action) error {
 			_, err := parseTarget(a.Value)
 			return err
@@ -487,7 +495,7 @@ func (m *Module) stopAction() builtinAction {
 		return "", errors.New(`stop: expected "self" or "all"`)
 	}
 	return builtinAction{
-		meta:     meta("action", "stop", "system", `{"enum":[null,"self","all"]}`),
+		meta:     meta("action", "stop", "system", `{"enum":["self","all"],"default":"self"}`),
 		validate: func(a project.Action) error { _, err := parse(a.Value); return err },
 		run: func(_ context.Context, _ contracts.RunContext, a project.Action) error {
 			what, err := parse(a.Value)

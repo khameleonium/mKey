@@ -209,18 +209,6 @@ func (m *Module) handleResume(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleRegistry возвращает все зарегистрированные виды триггеров, условий и действий
-// с метаданными и схемами параметров (для конструктора блоков GUI, SPEC §4.3).
-func (m *Module) handleRegistry(w http.ResponseWriter, _ *http.Request) {
-	out := map[string][]contracts.ExtensionMeta{}
-	for _, p := range contracts.AllExtensionPoints() {
-		for _, e := range m.svc.ext.List(p) {
-			out[string(p)] = append(out[string(p)], e.Meta())
-		}
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
 // enableFlag переводит "enable"/"disable" в логическое значение.
 func enableFlag(action string) (bool, bool) {
 	switch action {

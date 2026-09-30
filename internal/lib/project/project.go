@@ -24,7 +24,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -158,7 +160,7 @@ func (t *Trigger) UnmarshalYAML(n *yaml.Node) error {
 }
 
 // MarshalYAML записывает триггер обратно в форму {type: …, параметры…}.
-func (t Trigger) MarshalYAML() (any, error) { return withType(t.Type, t.Params), nil }
+func (t Trigger) MarshalYAML() (any, error) { return withType(t.Type, t.Params) }
 
 // UnmarshalYAML разбирает условие вида {type: variable, …}.
 func (c *Condition) UnmarshalYAML(n *yaml.Node) error {
@@ -168,7 +170,7 @@ func (c *Condition) UnmarshalYAML(n *yaml.Node) error {
 }
 
 // MarshalYAML записывает условие обратно в форму {type: …, параметры…}.
-func (c Condition) MarshalYAML() (any, error) { return withType(c.Type, c.Params), nil }
+func (c Condition) MarshalYAML() (any, error) { return withType(c.Type, c.Params) }
 
 // UnmarshalYAML разбирает действие — карту ровно с одним ключом: {send: "{A}"}.
 func (a *Action) UnmarshalYAML(n *yaml.Node) error {
@@ -204,13 +206,28 @@ func typedMap(n *yaml.Node) (string, map[string]any, error) {
 	return typ, m, nil
 }
 
-// withType собирает карту {type: …, параметры…} для записи в YAML.
-func withType(typ string, params map[string]any) map[string]any {
-	out := map[string]any{"type": typ}
-	for k, v := range params {
-		out[k] = v
+// withType собирает карту {type: …, параметры…} для записи в YAML: type — первым,
+// параметры — следом по алфавиту (обычная карта Go записалась бы целиком по алфавиту).
+func withType(typ string, params map[string]any) (*yaml.Node, error) {
+	// Ключ type и его значение.
+	out := &yaml.Node{Kind: yaml.MappingNode}
+	out.Content = append(out.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "type"},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: typ})
+
+	// Параметры в постоянном порядке.
+	for _, k := range slices.Sorted(maps.Keys(params)) {
+		var v yaml.Node
+		if err := v.Encode(params[k]); err != nil {
+			return nil, fmt.Errorf("param %s: %w", k, err)
+		}
+		key := &yaml.Node{Kind: yaml.ScalarNode}
+		if err := key.Encode(k); err != nil {
+			return nil, err
+		}
+		out.Content = append(out.Content, key, &v)
 	}
-	return out
+	return out, nil
 }
 
 // Parse разбирает содержимое файла проекта с идентификатором id и проверяет структуру.
@@ -251,12 +268,10 @@ func Check(p Project) error {
 		}
 		seen[e.ID] = true
 
-		// Триггер и действия.
+		// Триггер обязателен. Действий может не быть: например, замена слова (hotstring
+		// с replace) выполняется самим триггером, и больше ничего делать не нужно.
 		if len(e.AllTriggers()) == 0 {
-			errs = append(errs, fmt.Errorf("event %q: no trigger", e.ID))
-		}
-		if len(e.Actions) == 0 {
-			errs = append(errs, fmt.Errorf("event %q: no actions", e.ID))
+			errs = append(errs, &Problem{Event: e.ID, Part: PartTrigger, Index: -1, Err: ErrNoTrigger})
 		}
 
 		// Допустимые значения политик.

@@ -3,6 +3,7 @@ package hotkeys
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"mkey/internal/contracts"
@@ -36,19 +37,38 @@ func (sequenceType) Meta() contracts.ExtensionMeta {
 	return contracts.ExtensionMeta{
 		ID: "sequence", NameKey: "trigger.sequence", DescriptionKey: "trigger.sequence.description",
 		Category: "input", Icon: "keyboard", Provider: ModuleID,
-		ParamsSchema: []byte(`{"type":"object","required":["keys"],"properties":{"keys":{"type":"string"},"within_ms":{"type":"integer"}}}`),
+		ParamsSchema: []byte(`{"type":"object","required":["keys"],"properties":{"keys":{"type":"string","x-widget":"keys"},` +
+			`"within_ms":{"type":"integer","minimum":1,"x-widget":"ms","x-advanced":true}}}`),
 	}
+}
+
+// parseSequenceParams разбирает и проверяет параметры триггера sequence.
+func parseSequenceParams(tr project.Trigger) (sequenceParams, []keys.Key, error) {
+	var p sequenceParams
+	if err := project.Decode(tr.Params, &p); err != nil {
+		return p, nil, fmt.Errorf("sequence: %w", err)
+	}
+	if strings.Trim(p.Keys, "{} ") == "" {
+		return p, nil, project.Required("trigger", "sequence", "keys")
+	}
+	ks, err := parseSequence(p.Keys)
+	if err != nil {
+		return p, nil, fmt.Errorf("sequence: %w", err)
+	}
+	return p, ks, nil
+}
+
+// Validate проверяет параметры, ничего не регистрируя.
+func (sequenceType) Validate(tr project.Trigger) error {
+	_, _, err := parseSequenceParams(tr)
+	return err
 }
 
 // Arm проверяет параметры и регистрирует последовательность.
 func (t sequenceType) Arm(_ context.Context, _ contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	var p sequenceParams
-	if err := project.Decode(tr.Params, &p); err != nil {
-		return nil, fmt.Errorf("sequence: %w", err)
-	}
-	ks, err := parseSequence(p.Keys)
+	p, ks, err := parseSequenceParams(tr)
 	if err != nil {
-		return nil, fmt.Errorf("sequence: %w", err)
+		return nil, err
 	}
 	s := &sequence{keys: ks, within: ms(p.WithinMS, 1000), fire: fire}
 
