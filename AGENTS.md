@@ -42,9 +42,11 @@ make test               # go test ./... + фронтенд-тесты (без п
 make test-integration   # go test -tags integration ./test/integration/... (нужен /dev/uinput)
 make lint               # golangci-lint, go vet, eslint, svelte-check, prettier --check
 make fmt                # gofmt/goimports + prettier
-make run                # ./mkey daemon --dev (фронтенд с hot-reload через Vite proxy) — появится в фазе 2
+make run                # собрать и показать справку; демон — ./mkey daemon
 make gencodes           # перегенерировать коды клавиш из linux/input-event-codes.h
 ./mkey doctor           # диагностика окружения (только чтение)
+./mkey send --dry-run '{A}'  # проверить запись макроса без нажатий (сам запустит демон)
+./mkey daemon stop      # остановить фоновую часть
 ./mkey debug devices    # список устройств ввода (временная команда фазы 1)
 ./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e)
 ```

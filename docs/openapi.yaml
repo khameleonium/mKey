@@ -1,0 +1,250 @@
+openapi: 3.1.0
+info:
+  title: mKey daemon API
+  version: 1.0.0
+  description: |
+    HTTP API демона mKey (SPEC §9, модуль internal/api).
+
+    Транспорты:
+    - Unix-сокет `$XDG_RUNTIME_DIR/mkey/mkey.sock` (права 0600) — для CLI, без токена;
+    - `http://127.0.0.1:17420` — для веб-интерфейса: заголовок `Host` только 127.0.0.1/localhost,
+      для изменяющих запросов `Origin` — только страницы mKey, токен из `$XDG_RUNTIME_DIR/mkey/token`
+      в заголовке `Authorization: Bearer …` или cookie `mkey_session` (ставится при входе по `/?t=<токен>`).
+
+    Сообщения ошибок переводятся на язык из `Accept-Language` (ru, en).
+servers:
+  - url: http://127.0.0.1:17420
+security:
+  - bearer: []
+  - cookie: []
+paths:
+  /api/v1/status:
+    get:
+      summary: Состояние демона и модулей
+      responses:
+        "200":
+          description: Состояние
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+  /api/v1/send:
+    post:
+      summary: Выполнить макрос (ответ — после завершения; разрыв соединения прерывает макрос)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sequence]
+              additionalProperties: false
+              properties:
+                sequence: { type: string, example: '^{Shift}{"Привет, Вера!"}~{Shift}{Enter}' }
+                dry_run: { type: boolean, description: "Только проверить, ничего не нажимая; в ответе — план шагов" }
+      responses:
+        "200":
+          description: Макрос выполнен (или проверен)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  duration_ms: { type: integer }
+                  steps: { type: array, items: { type: object }, description: "Только при dry_run" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/v1/dsl/parse:
+    post:
+      summary: Разобрать макрос в дерево (для конструктора блоков)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TextRequest" }
+      responses:
+        "200":
+          description: Дерево разбора
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes: { type: array, items: { $ref: "#/components/schemas/Node" } }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/dsl/format:
+    post:
+      summary: Привести макрос к каноническому виду
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TextRequest" }
+      responses:
+        "200":
+          description: Канонический текст
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string, example: "^{Shift}{A}[1s]" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/stop:
+    post:
+      summary: Прервать все выполняющиеся макросы (их клавиши отпускаются)
+      responses:
+        "200":
+          description: Число прерванных макросов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stopped: { type: integer }
+  /api/v1/panic:
+    post:
+      summary: Экстренная остановка — прервать всё и отпустить все клавиши на всех устройствах (SEC-1)
+      responses:
+        "200": { description: Выполнено }
+  /api/v1/devices:
+    get:
+      summary: Физические устройства ввода
+      responses:
+        "200":
+          description: Устройства и доступ к ним
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices: { type: array, items: { type: object } }
+                  status: { $ref: "#/components/schemas/InputStatus" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/v1/doctor:
+    get:
+      summary: Диагностика окружения (сообщения на языке клиента)
+      responses:
+        "200":
+          description: Проверки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        status: { type: string, enum: [ok, info, warn, fail] }
+                        message: { type: string }
+                        message_key: { type: string }
+                        fix: { type: string }
+  /api/v1/layouts:
+    get:
+      summary: Раскладки клавиатуры пользователя
+      responses:
+        "200":
+          description: Раскладки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current: { type: string, example: ru }
+                  available: { type: array, items: { type: string }, example: [ru, us] }
+                  can_switch: { type: boolean }
+                  source: { type: string, enum: [kde, gnome, config] }
+  /api/v1/shutdown:
+    post:
+      summary: Корректно завершить демон
+      responses:
+        "200": { description: Демон завершается }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer }
+    cookie: { type: apiKey, in: cookie, name: mkey_session }
+  responses:
+    Error:
+      description: Ошибка в едином формате
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code: { type: string, example: dsl.unknown_key_hint }
+                  message: { type: string, example: "неизвестная клавиша «Mous0» — возможно, вы имели в виду «Mouse0»?" }
+                  details:
+                    type: object
+                    properties:
+                      pos:
+                        type: object
+                        properties:
+                          line: { type: integer }
+                          col: { type: integer }
+                      args: { type: object, additionalProperties: { type: string } }
+  schemas:
+    TextRequest:
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text: { type: string }
+    InputStatus:
+      type: object
+      properties:
+        open: { type: integer }
+        denied: { type: array, items: { type: string } }
+    Status:
+      type: object
+      properties:
+        version: { type: string }
+        commit: { type: string }
+        pid: { type: integer }
+        started_at: { type: string, format: date-time }
+        port: { type: integer }
+        running: { type: integer }
+        modules:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              core: { type: boolean }
+              state: { type: string }
+              error: { type: string }
+        input: { $ref: "#/components/schemas/InputStatus" }
+        output:
+          type: object
+          properties:
+            available: { type: boolean }
+            error: { type: string }
+    Node:
+      type: object
+      description: Узел дерева разбора (internal/lib/dsl.Node); используются поля, относящиеся к type.
+      properties:
+        type: { type: string, enum: [tap, down, up, up_all, axis, pause, text, command, group] }
+        pos: { type: object, properties: { line: { type: integer }, col: { type: integer } } }
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              device: { type: string }
+              name: { type: string }
+              code: { type: integer }
+        repeat: { type: integer }
+        hold_ms: { type: integer }
+        value: { type: number }
+        min_ms: { type: integer }
+        max_ms: { type: integer }
+        text: { type: string }
+        command: { type: string }
+        args: { type: array, items: { type: object } }
+        children: { type: array, items: { $ref: "#/components/schemas/Node" } }
