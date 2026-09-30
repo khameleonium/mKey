@@ -1,0 +1,9 @@
+{
+  "cli.root.short": "Input macro tool for Linux (X11 and Wayland)",
+  "cli.root.long": "mKey records and replays keyboard, mouse and touch actions, reacts to hotkeys, windows and pixel colors, and creates virtual input devices.\n\nRun \"mkey gui\" to open the web interface, or \"mkey help <command>\" for help on a command.",
+  "cli.version.short": "Show mKey version",
+  "cli.version.output": "mKey {version} (commit {commit}, built {date})",
+  "cli.flag.lang": "message language: ru or en (default: from system)",
+  "cli.flag.json": "output as JSON",
+  "cli.error.prefix": "Error: {message}"
+}
