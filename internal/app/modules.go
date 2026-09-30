@@ -1,7 +1,12 @@
 package app
 
 import (
+	"mkey/internal/input"
+	"mkey/internal/output"
+	"mkey/internal/platform"
 	"mkey/internal/registry"
+	"mkey/internal/session"
+	"mkey/internal/setup"
 	// mkey:imports — генератор `make new-module` добавляет импорты модулей над этой строкой.
 )
 
@@ -14,6 +19,14 @@ import (
 // Порядок важен: модули, от сервисов которых зависят другие, идут раньше.
 func Modules() []registry.Entry {
 	return []registry.Entry{
+		// Сведения о сессии и системе нужны почти всем — первыми.
+		{Module: session.New(), Core: true},
+		{Module: platform.New(), Core: true},
+		// Ввод и вывод: без них mKey бесполезен, но без прав они работают в режиме «недоступно».
+		{Module: input.New(), Core: true},
+		{Module: output.New(), Core: true},
+		// Диагностика и настройка.
+		{Module: setup.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой.
 	}
 }

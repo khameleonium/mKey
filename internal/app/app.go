@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"mkey/internal/bus"
+	"mkey/internal/contracts"
 	"mkey/internal/i18n"
 	"mkey/internal/registry"
 )
@@ -20,6 +21,9 @@ type Options struct {
 	Enabled func(id string) bool
 	// Modules — список модулей. nil — встроенный список из Modules().
 	Modules []registry.Entry
+	// Config возвращает секцию конфига модуля. nil — всем модулям пустые секции
+	// (настоящий config.yaml появится в модуле store, фаза 3).
+	Config func(id string) contracts.ConfigSection
 }
 
 // App — собранное приложение: ядро и модули.
@@ -54,6 +58,7 @@ func New(opts Options) (*App, error) {
 		Translator: tr,
 		Bus:        b,
 		Enabled:    opts.Enabled,
+		Config:     opts.Config,
 	}, entries)
 	if err != nil {
 		return nil, fmt.Errorf("app: %w", err)

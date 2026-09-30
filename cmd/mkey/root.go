@@ -28,9 +28,15 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 	// Глобальные флаги. Значение --lang уже учтено в main до разбора, здесь флаг
 	// объявлен, чтобы cobra его принимал и показывал в справке.
 	root.PersistentFlags().String("lang", "", tr.T("cli.flag.lang"))
+	root.PersistentFlags().BoolP("verbose", "v", false, tr.T("cli.flag.verbose"))
 
 	// Подкоманды.
-	root.AddCommand(newVersionCmd(tr))
+	root.AddCommand(
+		newVersionCmd(tr),
+		newDoctorCmd(tr),
+		newPrivilegedCmd(tr),
+		newDebugCmd(tr),
+	)
 	return root
 }
 

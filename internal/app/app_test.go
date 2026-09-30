@@ -6,8 +6,24 @@ import (
 	"log/slog"
 	"testing"
 
+	"mkey/internal/contracts"
 	"mkey/internal/registry"
 )
+
+// noHardware возвращает конфиг модулей, при котором ввод и вывод не трогают настоящие устройства:
+// тесты не должны создавать виртуальные устройства в живой сессии разработчика (AGENTS.md §5).
+func noHardware(t *testing.T) func(id string) contracts.ConfigSection {
+	dir := t.TempDir()
+	return func(id string) contracts.ConfigSection {
+		switch id {
+		case "input":
+			return registry.RawConfig(`{"dir": "` + dir + `"}`)
+		case "output":
+			return registry.RawConfig(`{"uinput_path": "` + dir + `/uinput"}`)
+		}
+		return nil
+	}
+}
 
 // TestAppStartsWithoutOptionalModules проверяет, что программа стартует и останавливается,
 // когда все необязательные модули отключены (T0.7, NFR-11).
@@ -19,6 +35,7 @@ func TestAppStartsWithoutOptionalModules(t *testing.T) {
 		Lang:    "ru",
 		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Enabled: func(string) bool { return false },
+		Config:  noHardware(t),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -57,6 +74,7 @@ func TestEachOptionalModuleCanBeDisabled(t *testing.T) {
 				Lang:    "en",
 				Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 				Enabled: func(other string) bool { return other != id },
+				Config:  noHardware(t),
 			})
 			if err != nil {
 				t.Fatalf("New: %v", err)
