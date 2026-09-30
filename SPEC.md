@@ -93,7 +93,7 @@
 | D9 | **Один API — два транспорта**: HTTP+WebSocket на `127.0.0.1` для браузера и тот же HTTP поверх Unix-сокета для CLI | CLI и GUI используют одинаковые эндпоинты — меньше кода и тестов. |
 | D10 | **Lua — gopher-lua (Lua 5.1, pure Go)** | Без cgo, легко встраивается, простые биндинги. |
 | D11 | **Все установленные файлы фиксируются в манифесте** | Гарантирует удаление «без следов». |
-| D12 | **Модульная архитектура**: модули + контракты + реестр точек расширения; модули не импортируют друг друга (проверяется линтером `depguard`) | Каждую функцию можно дорабатывать, тестировать и отключать отдельно; новые возможности добавляются без правки ядра. |
+| D12 | **Модульная архитектура**: модули + контракты + реестр точек расширения; модули не импортируют друг друга (проверяется архитектурным тестом `internal/archtest`, ADR-0016) | Каждую функцию можно дорабатывать, тестировать и отключать отдельно; новые возможности добавляются без правки ядра. |
 | D13 | **Плагины — Lua-плагины и плагины-процессы (JSON-RPC 2.0 через stdio)**; Go `plugin` (.so) не используем | Процесс-плагин можно написать на любом языке, его падение не роняет демон; `.so`-плагины Go требуют точного совпадения тулчейна и cgo. |
 | D14 | **Системные различия — через платформенные бэкенды** (`internal/platform`): systemd — один из бэкендов, а не допущение | Полная поддержка дистрибутивов без systemd (OpenRC, runit, dinit, s6, sysvinit) и простое добавление новых. |
 | D15 | **Код подробно комментируется**: у каждого пакета, типа и функции — doc-комментарий, у каждого логического блока внутри функции — комментарий «что делает этот блок» | Читаемость для людей и ИИ-агентов, независимая доработка модулей. Правила — `AGENTS.md` §6. |
@@ -130,8 +130,8 @@
 
 - `input` — перечисление устройств, hotplug (fsnotify на `/dev/input` + повтор при `EACCES`, т.к. ACL применяется с задержкой), чтение событий, grab, passthrough. Публикует события в шину (`bus`). Игнорирует **собственные** виртуальные устройства mKey (по имени-префиксу `mKey ` и `phys` = `mkey/...`), чтобы не было петель обратной связи.
 - `output` — менеджер виртуальных устройств (vdev): создание по шаблону, учёт «зажатых» клавиш, безопасное отпускание всего при остановке.
-- `keys` — таблица имён клавиш ↔ кодов evdev, алиасы, локализованные подписи.
-- `dsl` — лексер, парсер, AST, валидация, форматирование (AST → текст) и компиляция в список действий.
+- `lib/keys` — библиотека: таблица имён клавиш ↔ кодов evdev, алиасы, локализованные подписи.
+- `lib/dsl` — библиотека: лексер, парсер, AST, валидация, форматирование (AST → текст) и компиляция в список действий.
 - `engine` — загрузка проектов, регистрация триггеров, проверка условий, выполнение действий (каждый запуск события — отдельная горутина-«раннер» с контекстом отмены), переменные, политики повторного запуска.
 - `script/lua`, `script/shell` — исполнители скриптов.
 - `recorder` — запись и воспроизведение.
@@ -168,8 +168,8 @@
    }
    ```
    `Host` даёт модулю: реестр сервисов (контракты), шину событий, свою секцию конфига, логгер, i18n и реестры точек расширения.
-2. **Модули не импортируют друг друга.** Общение — только через контракты из `internal/contracts` (получаются из реестра сервисов) и через шину `bus`. Правило проверяется `depguard` в `golangci-lint`: из `internal/<module>` разрешён импорт только `internal/contracts`, `internal/registry`, `internal/bus`, `internal/i18n` и сторонних библиотек.
-3. **Ядро минимально:** `daemon`, `registry`, `bus`, `contracts`, `store`, `api`, `input`, `output`, `keys`, `dsl`, `engine`, `platform`. Всё остальное (`hotkeys`, `recorder`, `inspector`, `vdev`-привязки, `script/lua`, `script/shell`, каждый десктоп-адаптер, трей, обновления, хост плагинов) — **необязательные модули**, отключаемые в `config.yaml`:
+2. **Модули не импортируют друг друга.** Общение — только через контракты из `internal/contracts` (получаются из реестра сервисов) и через шину `bus`. Чистые библиотеки без жизненного цикла (`keys`, `dsl`, `clock`, `buildinfo`) живут в `internal/lib/*` и доступны всем. Правила проверяет архитектурный тест `internal/archtest` (ADR-0016, `docs/modules.md`): модуль `internal/<X>` может импортировать только `internal/contracts`, `internal/registry`, `internal/bus`, `internal/i18n`, `internal/lib/*`, свои подпакеты и сторонние библиотеки.
+3. **Ядро минимально:** `daemon`, `registry`, `bus`, `contracts`, `store`, `api`, `input`, `output`, `engine`, `platform` (плюс библиотеки `internal/lib/*`). Всё остальное (`hotkeys`, `recorder`, `inspector`, `vdev`-привязки, `script/lua`, `script/shell`, каждый десктоп-адаптер, трей, обновления, хост плагинов) — **необязательные модули**, отключаемые в `config.yaml`:
    ```yaml
    modules:
      recorder: { enabled: true }
@@ -253,7 +253,7 @@
 
 Пробелы и переводы строк между элементами игнорируются (можно форматировать макрос по строкам). Текст вне `{"..."}` — ошибка с подсказкой «чтобы набрать текст, заключите его в `{"..."}`».
 
-**Имена клавиш (`internal/keys`)** — **регистронезависимы** (`{ctrl}`, `{Ctrl}`, `{CTRL}` — одно и то же); форматтер приводит их к каноническому виду из таблицы. Основные: буквы/цифры (`A`, `1`), `F1..F24`, `Enter`, `Esc`, `Tab`, `Space`, `Backspace`, `Up/Down/Left/Right`, `Home/End/PgUp/PgDn`, `Insert/Delete`, `Ctrl/LCtrl/RCtrl`, `Shift/LShift/RShift`, `Alt/LAlt/RAlt` (`AltGr`), `Super/LSuper/RSuper` (алиасы `Win`, `Meta`), `CapsLock`, `PrintScreen`, `Pause`, медиа-клавиши (`VolumeUp`, `PlayPause`…), `Num0..Num9`, `NumEnter`…
+**Имена клавиш (`internal/lib/keys`)** — **регистронезависимы** (`{ctrl}`, `{Ctrl}`, `{CTRL}` — одно и то же); форматтер приводит их к каноническому виду из таблицы. Основные: буквы/цифры (`A`, `1`), `F1..F24`, `Enter`, `Esc`, `Tab`, `Space`, `Backspace`, `Up/Down/Left/Right`, `Home/End/PgUp/PgDn`, `Insert/Delete`, `Ctrl/LCtrl/RCtrl`, `Shift/LShift/RShift`, `Alt/LAlt/RAlt` (`AltGr`), `Super/LSuper/RSuper` (алиасы `Win`, `Meta`), `CapsLock`, `PrintScreen`, `Pause`, медиа-клавиши (`VolumeUp`, `PlayPause`…), `Num0..Num9`, `NumEnter`…
 Без префикса `L/R`: при **отправке** используется левая клавиша, при **распознавании** хоткея подходит любая.
 Мышь: `Mouse0` = левая, `Mouse1` = правая, `Mouse2` = средняя, `Mouse3` = «назад», `Mouse4` = «вперёд», далее `Mouse5+`. Геймпад (стандарт Linux): `South/East/North/West` (алиасы `A/B/Y/X` в стиле Xbox — только с префиксом устройства), `LB/RB/LT/RT`, `LS/RS`, `Start/Select/Mode`, `DPadUp...`, оси `LX/LY/RX/RY`.
 Имена клавиш — **физические позиции (US-раскладка)**, как в evdev: `{Q}` на русской раскладке даст «й», а `{A}` — строчную «a» (регистр в имени клавиши ничего не значит). Для заглавной буквы — `{"A"}` или `^{Shift}{A}~{Shift}`.
@@ -620,7 +620,7 @@ permissions: [net, vars.write]  # показываются пользовате�
 | NFR-8 | Логи: `log/slog`, JSON в `~/.local/state/mkey/mkey.log` с ротацией; **нажатия клавиш не логируются** на уровнях выше `debug` (и в `debug` — только с явным флагом `log_input_events`). |
 | NFR-9 | Все пользовательские тексты — через i18n (ru, en). |
 | NFR-10 | Схемы файлов версионированы (`version:`), есть миграции. |
-| NFR-11 | Модульность: каждый необязательный модуль отключается без поломки остальных; модули не импортируют друг друга (`depguard`). |
+| NFR-11 | Модульность: каждый необязательный модуль отключается без поломки остальных; модули не импортируют друг друга (`internal/archtest`). |
 | NFR-12 | Читаемость: doc-комментарии у всех пакетов/типов/функций и комментарии к каждому логическому блоку кода (`AGENTS.md` §6); проверяется линтерами и ревью. |
 
 ---
@@ -778,26 +778,29 @@ mkey/
 │   │   └── pkgmgr/ (apt, dnf, pacman, zypper, xbps, apk, emerge)
 │   ├── pluginhost/           # загрузка и работа внешних плагинов (lua, process, data)
 │   ├── inspector/            # инспектор устройств, авто-ID, метки
-│   ├── api/                  # HTTP/WS, auth, embed web/dist
+│   ├── api/                  # HTTP/WS, auth, раздача веб-интерфейса из пакета web
 │   ├── bus/                  # внутренняя шина событий
 │   ├── daemon/               # жизненный цикл, supervisor, сигналы
 │   ├── desktop/              # интерфейсы + адаптеры
 │   │   ├── x11/ gnome/ kde/ sway/ hyprland/ wlroots/ portal/ fake/
-│   ├── dsl/                  # lexer, parser, ast, format, compile
 │   ├── engine/               # проекты, триггеры, условия, действия, раннеры
 │   ├── hotkeys/              # матчинг аккордов/последовательностей/hotstrings
 │   ├── input/                # evdev, hotplug, grab, passthrough
-│   ├── keys/                 # таблица клавиш, алиасы
 │   ├── output/               # vdev manager, шаблоны, uinput
 │   ├── recorder/
 │   ├── script/lua/  script/shell/
 │   ├── session/              # определение окружения
 │   ├── setup/                # doctor, privileged, install, uninstall, manifest
 │   ├── store/                # конфиги, схемы, миграции, hot-reload
-│   └── i18n/                 # серверные сообщения (ru, en)
+│   ├── i18n/                 # серверные сообщения (ru, en)
+│   ├── archtest/             # архитектурный тест границ модулей
+│   └── lib/                  # чистые библиотеки: keys/ (таблица клавиш), dsl/ (парсер DSL), clock/, buildinfo/
 ├── web/                      # Svelte 5 + TS + Vite
 │   ├── src/  (lib/ — общие компоненты, api, i18n; features/<module>/ — страницы и блоки модулей)
-│   └── dist/                 # собранный фронтенд (в git только .gitkeep + заглушка index.html)
+│   ├── embed.go              # Go-пакет web: встраивание сборки (или заглушки) в бинарник
+│   ├── stub/index.html       # заглушка, если фронтенд не собран
+│   └── dist/                 # собранный фронтенд (в git только .gitkeep)
+├── tools/newmodule/          # генератор каркаса модуля (make new-module)
 ├── pkg/pluginsdk/            # публичный Go SDK для плагинов-процессов (+ plugintest)
 ├── examples/plugins/         # go-hello-action, lua-counter, python-webhook
 ├── profiles/devices/         # встроенные профили известных устройств (YAML)
@@ -838,7 +841,7 @@ mkey/
 | Трей | `fyne.io/systray` | проверить сборку без cgo на Linux (SNI через D-Bus) |
 | Логи | `log/slog` | |
 | Плагины | `encoding/json` (JSON-RPC 2.0 без внешних библиотек) | |
-| Границы модулей | `depguard` (в составе golangci-lint) | запрет импортов между модулями |
+| Границы модулей | архитектурный тест `internal/archtest` (без зависимостей) | запрет импортов между модулями (ADR-0016) |
 
 **Фронтенд:** Svelte 5, TypeScript, Vite, SortableJS, CodeMirror 6, `svelte-i18n` (или собственный лёгкий i18n), Playwright (тесты).
 
@@ -867,10 +870,10 @@ mkey/
 - **Интеграционные** (`//go:build integration`, нужен `/dev/uinput`): создание виртуальных устройств, чтение собственных событий через evdev, grab/ungrab, отпускание при падении процесса (дочерний процесс + `kill -9`), passthrough-задержка (бенчмарк). В CI — GitHub Actions ubuntu-runner с `sudo modprobe uinput`.
 - **Адаптеры:** X11 — Xvfb + простой WM; wlroots — headless sway (`WLR_BACKENDS=headless`); GNOME/KDE — ручной чек-лист (`docs/manual-test-checklist.md`) + по возможности VM-скрипты.
 - **GUI:** Vitest (компоненты, конвертация блоки⇄DSL), Playwright против демона с фейковыми бэкендами (`mkey daemon --fake-backends`).
-- **Модульность:** тест-матрица «демон стартует и проходит smoke-тест при отключении каждого необязательного модуля»; `depguard` в CI.
+- **Модульность:** тест-матрица «демон стартует и проходит smoke-тест при отключении каждого необязательного модуля» (`internal/app`); архитектурный тест `internal/archtest` в CI.
 - **Плагины:** `plugintest` — проверка соответствия протоколу; e2e с примерами из `examples/plugins/` (включая падение и перезапуск плагина).
 - **Платформы:** установка/удаление и smoke-тест в контейнерах/VM для каждой init-системы из NFR-6 (Void, Artix, Alpine, Devuan) и для systemd-дистрибутивов.
-- **Линтеры:** `golangci-lint` (включая `depguard`, `revive` с правилами `exported`/`package-comments`, `godot`, `misspell`), `go vet`, `staticcheck`; фронт — `eslint`, `svelte-check`, `prettier`.
+- **Линтеры:** `golangci-lint` (включая `revive` с правилами `exported`/`package-comments`, `godot`, `misspell`), `go vet`, `staticcheck`; фронт — `eslint`, `svelte-check`, `prettier`.
 - **Покрытие:** `dsl`, `engine`, `hotkeys`, `keys`, `store` — ≥ 80 %.
 
 ---
@@ -882,19 +885,28 @@ mkey/
 **MVP = фазы 0–5** (работающий макросер с CLI, хоткеями, DSL, Lua/bash, базовым GUI и мастером установки на X11 и Wayland без оконных/пиксельных триггеров).
 
 ### Фаза 0. Каркас репозитория
-- [ ] T0.1 `go.mod` (модуль `mkey` — репозиторий пока локальный; при публикации заменить на полный путь), `cmd/mkey` с cobra, `mkey version` (версия через `-ldflags`).
-- [ ] T0.2 `Makefile`: `build`, `web`, `test`, `test-integration`, `lint`, `fmt`, `run`, `clean`; `CGO_ENABLED=0` по умолчанию.
-- [ ] T0.3 Каркас `web/` (Svelte 5 + TS + Vite), заглушка `web/dist/index.html`, `go:embed`, чтобы `go build` работал без Node.
-- [ ] T0.4 CI (GitHub Actions): lint + unit Go, lint + test web, сборка amd64/arm64.
-- [ ] T0.5 `docs/adr/0001-*.md`… — перенести решения D1–D15 в ADR; шаблон ADR.
-- [ ] T0.6 `internal/i18n` + фронтовый i18n, ru/en, тест полноты ключей.
-- [ ] T0.7 Модульный каркас (§4.3): `internal/registry`, `internal/contracts`, `internal/bus`, `internal/app/modules.go`, интерфейс `Module`, реестр сервисов и точек расширения; правила `depguard`. Тест: демон стартует без необязательных модулей.
-- [ ] T0.8 `docs/modules.md` + генератор каркаса модуля `make new-module NAME=<id>` (doc.go, module.go, config, тест, i18n, папка во фронтенде).
-- [ ] T0.9 `docs/code-style.md` с правилами комментирования (`AGENTS.md` §6) и эталонным прокомментированным пакетом; настройка `revive`, `godot`, `misspell`.
+- [x] T0.1 `go.mod` (модуль `mkey` — репозиторий пока локальный; при публикации заменить на полный путь), `cmd/mkey` с cobra, `mkey version` (версия через `-ldflags`).  
+  _Готово: модуль `mkey`, `cmd/mkey` (cobra), `mkey version [--json]`, `--lang`, версия через ldflags (`internal/lib/buildinfo`). Справка cobra («Usage», «Flags») пока на английском — локализовать шаблоны в фазе 2._
+- [x] T0.2 `Makefile`: `build`, `web`, `test`, `test-integration`, `lint`, `fmt`, `run`, `clean`; `CGO_ENABLED=0` по умолчанию.  
+  _Готово: `build`, `go-build`, `web`, `test`, `test-integration` (пока заглушка), `lint`, `fmt`, `run` (пока справка — демон в фазе 2), `new-module`, `clean`, `help`._
+- [x] T0.3 Каркас `web/` (Svelte 5 + TS + Vite), заглушка `web/stub/index.html`, `go:embed`, чтобы `go build` работал без Node.  
+  _Готово: Svelte 5 + TS + Vite + Vitest + ESLint + Prettier; пакет `web` (`web/embed.go`): при несобранном фронтенде встраивается заглушка `web/stub/index.html`; `go.mod` игнорирует `web/node_modules` (ADR-0017)._
+- [x] T0.4 CI (GitHub Actions): lint + unit Go, lint + test web, сборка amd64/arm64.  
+  _Готово: `.github/workflows/ci.yml` (Go: golangci-lint, vet, `test -race`; web: check, lint, test, build; сборка amd64/arm64). Не запускался — репозиторий локальный, remote нет._
+- [x] T0.5 `docs/adr/0001-*.md`… — перенести решения D1–D15 в ADR; шаблон ADR.  
+  _Готово: `docs/adr/0001…0015` (D1–D15), `template.md`; новые ADR-0016 (internal/lib + archtest вместо depguard), ADR-0017 (стартовые зависимости)._
+- [x] T0.6 `internal/i18n` + фронтовый i18n, ru/en, тест полноты ключей.  
+  _Готово: `internal/i18n` (встроенные `locales/*.json`, откат ru→en→ключ, DetectLang) и `web/src/lib/i18n` (реактивный `t()`), тесты полноты ключей и плейсхолдеров в Go и во фронтенде._
+- [x] T0.7 Модульный каркас (§4.3): `internal/registry`, `internal/contracts`, `internal/bus`, `internal/app/modules.go`, интерфейс `Module`, реестр сервисов и точек расширения; проверка границ модулей. Тест: демон стартует без необязательных модулей.  
+  _Готово: `internal/contracts` (Module, Host, сервисы, точки расширения, Bus), `internal/registry` (Services, Extensions, Manager: core/optional, перехват паник, остановка в обратном порядке), `internal/bus`, `internal/app`. Вместо depguard — `internal/archtest` (ADR-0016). Тесты: запуск без модулей и с отключением каждого необязательного._
+- [x] T0.8 `docs/modules.md` + генератор каркаса модуля `make new-module NAME=<id>` (doc.go, module.go, config, тест, i18n, папка во фронтенде).  
+  _Готово: `docs/modules.md`, `tools/newmodule` (`make new-module NAME=<id>`): модуль + тест + папка фичи + i18n-ключ + строка в `modules.go`. Проверено на копии репозитория: сгенерированный модуль собирается, проходит тесты и линтер._
+- [x] T0.9 `docs/code-style.md` с правилами комментирования (`AGENTS.md` §6) и эталонным прокомментированным пакетом; настройка `revive`, `godot`, `misspell`.  
+  _Готово: `docs/code-style.md`, `.golangci.yml` (revive, godot, misspell, errorlint, gocritic и др.; gofmt/goimports). Эталон прокомментированного кода — `internal/registry`, `internal/bus`._
 **Критерий приёмки:** `make build && ./mkey version` работает, CI зелёный, `make new-module NAME=demo` создаёт модуль, который подключается одной строкой в `internal/app/modules.go`.
 
 ### Фаза 1. Ввод/вывод ядра и диагностика
-- [ ] T1.1 `internal/keys`: таблица имён ↔ кодов evdev (клавиатура, мышь `mouse0..`, геймпад), алиасы, подсказки по опечаткам.
+- [ ] T1.1 `internal/lib/keys`: таблица имён ↔ кодов evdev (клавиатура, мышь `mouse0..`, геймпад), алиасы, подсказки по опечаткам.
 - [ ] T1.2 `internal/output`: vdev manager, шаблоны keyboard/mouse (relative), учёт зажатых клавиш, `ReleaseAll()`; префикс имён `mKey `.
 - [ ] T1.3 `internal/input`: перечисление устройств, классификация, hotplug (fsnotify + retry на EACCES), чтение, фильтрация собственных устройств.
 - [ ] T1.4 `internal/session`: определение X11/Wayland/композитора.
@@ -906,7 +918,7 @@ mkey/
 
 ### Фаза 2. DSL, демон, API, CLI
 - [ ] T2.1 `docs/dsl.md`: финальная грамматика EBNF (на основе §5.1), согласовать спорные моменты в ADR.
-- [ ] T2.2 `internal/dsl`: lexer, parser, AST, ошибки с позицией и подсказками, форматтер, fuzz-тест. ← T1.1
+- [ ] T2.2 `internal/lib/dsl`: lexer, parser, AST, ошибки с позицией и подсказками, форматтер, fuzz-тест. ← T1.1
 - [ ] T2.3 Компиляция AST → действия; исполнитель с прерываемыми паузами и авто-отпусканием (FR-DSL-5). ← T1.2
 - [ ] T2.4 `internal/daemon`: жизненный цикл, сигналы, graceful shutdown с `ReleaseAll`.
 - [ ] T2.5 `internal/api`: HTTP поверх TCP (127.0.0.1) и Unix-сокета, auth (SEC-5), формат ошибок, `/status`, `/send`, `/dsl/parse`, `/dsl/format`, `/panic`.

@@ -16,7 +16,7 @@ mKey — макросер ввода для Linux (аналог AutoHotKey) дл
    - проходят `make lint` и `make test` (и `make test-integration`, если менялся ввод/вывод и есть `/dev/uinput`);
    - новые пользовательские строки есть в **ru и en**;
    - код прокомментирован по правилам §6.1 (doc-комментарии + комментарий к каждому логическому блоку);
-   - модульные границы соблюдены (§4.1), `depguard` не ругается;
+   - модульные границы соблюдены (§4.1), `internal/archtest` зелёный;
    - обновлена документация (`docs/dsl.md`, `docs/lua-api.md`, `docs/openapi.yaml`, `docs/adapters.md` — что затронуто);
    - критерий приёмки фазы не сломан.
 4. Не выполняй задачи из будущих фаз «заодно». Нашёл проблему вне задачи — запиши в «Открытые вопросы» (`SPEC.md` §14) или в заметку к задаче.
@@ -46,14 +46,15 @@ make run                # ./mkey daemon --dev (фронтенд с hot-reload ч
 ./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e)
 ```
 
-`go build ./...` должен работать **без Node** (в `web/dist` лежит заглушка `index.html`). Не коммить собранный `web/dist` (кроме заглушки и `.gitkeep`).
+`go build ./...` должен работать **без Node**: если `web/dist` не собран, пакет `web` встраивает заглушку `web/stub/index.html`. Не коммить собранный `web/dist` (в git только `web/dist/.gitkeep`).
 
 ## 4. Архитектурные правила
 
 ### 4.1 Модульность (SPEC §4.3) — главное правило
 
 - **Каждая функция — модуль** с интерфейсом `Module` (`ID/Init/Start/Stop`), своими тестами, `doc.go`, секцией конфига, i18n-ключами `<module>.*` и папкой `web/src/features/<module>/`. Новый модуль создавай через `make new-module NAME=<id>`.
-- **Модули не импортируют друг друга.** Нужна чужая функциональность → используй контракт из `internal/contracts` (получай его из реестра сервисов в `Init`) или события шины `internal/bus`. Нет подходящего контракта → добавь его в `internal/contracts` отдельным коммитом с обоснованием. Это проверяет `depguard`; не отключай его и не обходи.
+- **Модули не импортируют друг друга.** Нужна чужая функциональность → используй контракт из `internal/contracts` (получай его из реестра сервисов в `Init`) или события шины `internal/bus`. Нет подходящего контракта → добавь его в `internal/contracts` отдельным коммитом с обоснованием. Это проверяет архитектурный тест `internal/archtest` (ADR-0016, `docs/modules.md`); не ослабляй его правила без ADR.
+- **Чистые библиотеки** без жизненного цикла (таблица клавиш, парсер DSL, часы) — в `internal/lib/<name>`: их может импортировать кто угодно, сами они импортируют только другие `internal/lib/*`.
 - **Новые типы действий, триггеров, условий, команд DSL, адаптеров, шаблонов устройств, init-систем** и т.п. добавляются **регистрацией в точке расширения**, а не правкой `engine`/`dsl`/GUI. У каждого типа — метаданные и JSON Schema параметров: по ним GUI сам строит блок конструктора.
 - Встроенные модули подключаются **явно** одной строкой в `internal/app/modules.go`. Никаких `init()` с побочными эффектами регистрации.
 - Необязательный модуль должен отключаться без поломки остальных. Если твой код падает при отключённом соседнем модуле — это баг.
@@ -175,19 +176,21 @@ internal/bus         шина событий
 internal/platform/*  init-системы, повышение прав, доступ к устройствам, пакетные менеджеры → docs/platforms.md
 internal/pluginhost  внешние плагины                      → docs/plugins.md
 internal/inspector   инспектор устройств, авто-ID UnKey, метки
-internal/dsl         язык последовательностей          → docs/dsl.md
+internal/lib/dsl     язык последовательностей (библиотека) → docs/dsl.md
 internal/engine      события, триггеры, действия
 internal/hotkeys     матчинг хоткеев
 internal/input       evdev, grab, passthrough, hotplug
 internal/output      виртуальные устройства (uinput)
-internal/keys        имена клавиш ↔ коды
+internal/lib/keys    имена клавиш ↔ коды (библиотека)
+internal/archtest    архитектурный тест границ модулей
+tools/newmodule      генератор каркаса модуля (make new-module)
 internal/desktop/*   адаптеры X11/GNOME/KDE/Sway/Hyprland/wlroots/portal/fake → docs/adapters.md
 internal/script/*    Lua (gopher-lua) и bash            → docs/lua-api.md
 internal/recorder    запись/воспроизведение
 internal/setup       doctor, privileged, install/uninstall, manifest
 internal/store       YAML-модели, схемы, миграции
 internal/api         HTTP/WS                             → docs/openapi.yaml
-web/                 GUI (Svelte), фичи в web/src/features/<module>/
+web/                 GUI (Svelte), фичи в web/src/features/<module>/; web/embed.go — встраивание в бинарник
 pkg/pluginsdk        публичный Go SDK для плагинов
 examples/plugins/    примеры плагинов (Go, Lua, Python)
 profiles/devices/    профили известных устройств
