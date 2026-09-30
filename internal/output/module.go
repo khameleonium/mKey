@@ -1,0 +1,183 @@
+package output
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"mkey/internal/contracts"
+	"mkey/internal/lib/clock"
+	ev "mkey/internal/lib/evdev"
+)
+
+// ModuleID — идентификатор модуля.
+const ModuleID = "output"
+
+// Config — настройки модуля из секции modules.output.
+type Config struct {
+	// UInputPath — путь к интерфейсу uinput (по умолчанию /dev/uinput).
+	UInputPath string `json:"uinput_path"`
+	// SettleMS — сколько миллисекунд ждать после создания устройства, прежде чем отправлять события.
+	SettleMS int `json:"settle_ms"`
+}
+
+// creator создаёт uinput-устройство по описанию (подменяется в тестах).
+type creator func(ev.Setup) (eventWriter, error)
+
+// Module — модуль виртуальных устройств, реализует contracts.VirtualDevices.
+type Module struct {
+	// create — фабрика uinput-устройств.
+	create creator
+	// clk — часы.
+	clk clock.Clock
+	// log — логгер модуля.
+	log *slog.Logger
+	// cfg — настройки.
+	cfg Config
+
+	// mu защищает устройства и последнюю ошибку.
+	mu sync.Mutex
+	// keyboard и mouse — созданные устройства (nil, пока не созданы).
+	keyboard, mouse *device
+	// lastErr — последняя ошибка создания устройств.
+	lastErr error
+}
+
+// New создаёт модуль, работающий с настоящим uinput (путь берётся из настроек).
+func New() *Module {
+	m := newModule(nil, clock.Real{})
+	m.create = func(s ev.Setup) (eventWriter, error) {
+		return ev.CreateUInput(m.cfg.UInputPath, s)
+	}
+	return m
+}
+
+// newModule создаёт модуль с заданной фабрикой устройств и часами (для тестов).
+func newModule(create creator, clk clock.Clock) *Module {
+	return &Module{create: create, clk: clk, cfg: Config{UInputPath: ev.DefaultUInputPath, SettleMS: 500}}
+}
+
+// ID возвращает идентификатор модуля.
+func (m *Module) ID() string { return ModuleID }
+
+// Init читает настройки и публикует сервис виртуальных устройств.
+func (m *Module) Init(_ context.Context, host contracts.Host) error {
+	// Читаем настройки поверх значений по умолчанию.
+	m.log = host.Logger()
+	if err := host.Config().Decode(&m.cfg); err != nil {
+		return fmt.Errorf("%s: %w", ModuleID, err)
+	}
+
+	// Публикуем сервис для других модулей.
+	return contracts.ProvideService[contracts.VirtualDevices](host.Services(), m)
+}
+
+// Start создаёт виртуальные устройства заранее, чтобы к первому макросу композитор их уже подхватил.
+// Отсутствие прав не считается ошибкой модуля: он остаётся в состоянии «недоступно».
+func (m *Module) Start(context.Context) error {
+	if err := m.ensure(); err != nil {
+		m.log.Warn("virtual devices unavailable", "err", err)
+	}
+	return nil
+}
+
+// Stop отпускает всё зажатое и уничтожает виртуальные устройства.
+func (m *Module) Stop(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Закрываем устройства, собирая ошибки.
+	var errs []error
+	for _, d := range []*device{m.keyboard, m.mouse} {
+		if d != nil {
+			errs = append(errs, d.close())
+		}
+	}
+	m.keyboard, m.mouse = nil, nil
+	return errors.Join(errs...)
+}
+
+// Keyboard возвращает виртуальную клавиатуру, создавая её при необходимости.
+func (m *Module) Keyboard() (contracts.VirtualDevice, error) {
+	if err := m.ensure(); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.keyboard, nil
+}
+
+// Mouse возвращает виртуальную мышь, создавая её при необходимости.
+func (m *Module) Mouse() (contracts.VirtualDevice, error) {
+	if err := m.ensure(); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.mouse, nil
+}
+
+// Status возвращает доступность виртуального ввода.
+func (m *Module) Status() contracts.OutputStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.keyboard != nil && m.mouse != nil {
+		return contracts.OutputStatus{Available: true}
+	}
+	st := contracts.OutputStatus{}
+	if m.lastErr != nil {
+		st.Error = m.lastErr.Error()
+	}
+	return st
+}
+
+// ReleaseAll отпускает все зажатые клавиши на всех устройствах (SEC-2).
+func (m *Module) ReleaseAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var errs []error
+	for _, d := range []*device{m.keyboard, m.mouse} {
+		if d != nil {
+			errs = append(errs, d.ReleaseAll())
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// ensure создаёт недостающие устройства. Возвращает ошибку, обёрнутую в ErrOutputUnavailable.
+func (m *Module) ensure() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	settle := time.Duration(m.cfg.SettleMS) * time.Millisecond
+
+	// Создаём клавиатуру и мышь, если их ещё нет.
+	for _, slot := range []struct {
+		dev   **device
+		setup ev.Setup
+	}{
+		{&m.keyboard, keyboardSetup()},
+		{&m.mouse, mouseSetup()},
+	} {
+		if *slot.dev != nil {
+			continue
+		}
+		w, err := m.create(slot.setup)
+		if err != nil {
+			m.lastErr = err
+			return fmt.Errorf("%w: %s: %w", contracts.ErrOutputUnavailable, slot.setup.Name, err)
+		}
+		*slot.dev = newDevice(slot.setup.Name, w, m.clk, settle)
+		m.log.Info("virtual device created", "name", slot.setup.Name)
+	}
+	m.lastErr = nil
+	return nil
+}
+
+// Проверки на этапе компиляции, что Module реализует контракты.
+var (
+	_ contracts.Module         = (*Module)(nil)
+	_ contracts.VirtualDevices = (*Module)(nil)
+)

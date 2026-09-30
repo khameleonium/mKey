@@ -125,6 +125,9 @@ func (m *Manager) Services() *Services { return m.opts.Services }
 // Extensions возвращает реестр точек расширения менеджера.
 func (m *Manager) Extensions() *Extensions { return m.opts.Extensions }
 
+// Bus возвращает шину событий, общую для всех модулей.
+func (m *Manager) Bus() contracts.Bus { return m.opts.Bus }
+
 // Start инициализирует и запускает все включённые модули.
 //
 // Ошибка необязательного модуля записывается в его статус, модуль останавливается,
