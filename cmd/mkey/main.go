@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"mkey/internal/i18n"
+	"mkey/internal/lib/config"
+	"mkey/internal/lib/paths"
 )
 
 // main разбирает аргументы, выполняет команду и завершает процесс с кодом ошибки при сбое.
@@ -21,6 +24,9 @@ func main() {
 		os.Exit(1)
 	}
 	lang := langFromArgs(os.Args[1:])
+	if lang == "" {
+		lang = configLang()
+	}
 	if lang == "" {
 		lang = i18n.DetectLang(os.Getenv)
 	}
@@ -51,4 +57,13 @@ func langFromArgs(args []string) string {
 		}
 	}
 	return ""
+}
+
+// configLang возвращает язык из config.yaml (пусто, если не задан или файл не читается).
+func configLang() string {
+	cfg, err := config.Load(filepath.Join(paths.Config(os.Getenv), config.FileName))
+	if err != nil {
+		return ""
+	}
+	return cfg.Language
 }

@@ -84,6 +84,10 @@ type services struct {
 	life     contracts.Lifecycle
 	layouts  contracts.LayoutProvider
 	platform contracts.Platform
+	projects contracts.Projects
+	events   contracts.Events
+	keyState contracts.KeyState
+	ext      contracts.ExtensionRegistry
 }
 
 // New создаёт модуль. static — файлы веб-интерфейса (например, web.FS()) или nil.
@@ -114,6 +118,10 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		life:     lookup[contracts.Lifecycle](s),
 		layouts:  lookup[contracts.LayoutProvider](s),
 		platform: lookup[contracts.Platform](s),
+		projects: lookup[contracts.Projects](s),
+		events:   lookup[contracts.Events](s),
+		keyState: lookup[contracts.KeyState](s),
+		ext:      host.Extensions(),
 	}
 
 	// Каталог времени выполнения: из настроек или из модуля platform.

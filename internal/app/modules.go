@@ -4,12 +4,16 @@ import (
 	"mkey/internal/api"
 	"mkey/internal/desktop"
 	"mkey/internal/engine"
+	"mkey/internal/hotkeys"
 	"mkey/internal/input"
 	"mkey/internal/output"
 	"mkey/internal/platform"
 	"mkey/internal/registry"
+	"mkey/internal/script/lua"
+	"mkey/internal/script/shell"
 	"mkey/internal/session"
 	"mkey/internal/setup"
+	"mkey/internal/store"
 	"mkey/web"
 	// mkey:imports — генератор `make new-module` добавляет импорты модулей над этой строкой.
 )
@@ -26,13 +30,20 @@ func Modules() []registry.Entry {
 		// Сведения о сессии и системе нужны почти всем — первыми.
 		{Module: session.New(), Core: true},
 		{Module: platform.New(), Core: true},
-		// Десктоп-адаптеры (раскладки); без них текст набирается в раскладке из настроек.
+		// Проекты из файлов (нужны hotkeys для переназначений и engine для событий).
+		{Module: store.New(), Core: false},
+		// Десктоп-адаптеры (раскладки, уведомления); без них текст набирается в раскладке из настроек.
 		{Module: desktop.New(), Core: false},
 		// Ввод и вывод: без них mKey бесполезен, но без прав они работают в режиме «недоступно».
 		{Module: input.New(), Core: true},
 		{Module: output.New(), Core: true},
-		// Выполнение макросов (нужны output и, по возможности, desktop).
+		// Горячие клавиши и перехват (нужен input).
+		{Module: hotkeys.New(), Core: false},
+		// Выполнение макросов и событий (нужны output; store, hotkeys и desktop — по возможности).
 		{Module: engine.New(), Core: true},
+		// Скрипты: регистрируют действия lua и shell.
+		{Module: lua.New(), Core: false},
+		{Module: shell.New(), Core: false},
 		// Диагностика и настройка.
 		{Module: setup.New(), Core: false},
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.

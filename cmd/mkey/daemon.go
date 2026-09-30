@@ -18,8 +18,10 @@ import (
 	"mkey/internal/app"
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/config"
 	"mkey/internal/lib/logfile"
 	"mkey/internal/lib/paths"
+	"mkey/internal/registry"
 )
 
 // Параметры журнала демона: 5 МиБ на файл, три старых файла (NFR-8).
@@ -66,7 +68,7 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 		return err
 	}
 	defer func() { _ = lock.Close() }()
-	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	if err := acquireLock(lock); err != nil {
 		if errors.Is(err, unix.EWOULDBLOCK) {
 			return errors.New(tr.T("cli.daemon.already_running"))
 		}
@@ -89,8 +91,26 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	}
 	logger := slog.New(fanout(handlers))
 
+	// Настройки из config.yaml: включённые модули и их секции (ошибка в файле — не запускаемся,
+	// чтобы не работать с неожиданными настройками).
+	cfgPath := filepath.Join(paths.Config(os.Getenv), config.FileName)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return fmt.Errorf("%s: %w", cfgPath, err)
+	}
+
 	// Собираем программу из всех модулей и добавляем управление жизненным циклом демона.
-	a, err := app.New(app.Options{Lang: tr.Lang(), Logger: logger})
+	a, err := app.New(app.Options{
+		Lang:    tr.Lang(),
+		Logger:  logger,
+		Enabled: cfg.Enabled,
+		Config: func(id string) contracts.ConfigSection {
+			if sec := cfg.Section(id); sec != nil {
+				return registry.RawConfig(sec)
+			}
+			return nil
+		},
+	})
 	if err != nil {
 		return err
 	}
@@ -121,13 +141,30 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	return a.Stop(sctx)
 }
 
-// stopDaemon просит работающий демон завершиться и ждёт, пока он остановится.
+// acquireLock берёт блокировку демона. Если её держит демон, который как раз завершается
+// (например, сразу после `mkey daemon stop`), ждёт до 10 секунд.
+func acquireLock(lock *os.File) error {
+	var err error
+	for range 100 {
+		if err = unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); !errors.Is(err, unix.EWOULDBLOCK) {
+			return err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
+}
+
+// stopDaemon просит работающий демон завершиться и ждёт, пока его процесс полностью выйдет
+// (модули отпускают клавиши и уничтожают виртуальные устройства уже после закрытия API).
 func stopDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	c := newClient(runtimeDir(), tr.Lang())
 	out := cmd.OutOrStdout()
 
-	// Демон не запущен — нечего останавливать.
-	err := c.do(cmd.Context(), "POST", "/api/v1/shutdown", nil, nil)
+	// Номер процесса демона; не запущен — нечего останавливать.
+	var st struct {
+		PID int `json:"pid"`
+	}
+	err := c.do(cmd.Context(), "GET", "/api/v1/status", nil, &st)
 	if errors.Is(err, errNotRunning) {
 		printf(out, "%s\n", tr.T("cli.daemon.not_running"))
 		return nil
@@ -136,13 +173,16 @@ func stopDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 		return err
 	}
 
-	// Ждём, пока демон перестанет отвечать (до 10 секунд).
+	// Просим завершиться и ждём выхода процесса (до 10 секунд).
+	if err := c.do(cmd.Context(), "POST", "/api/v1/shutdown", nil, nil); err != nil && !errors.Is(err, errNotRunning) {
+		return err
+	}
 	for range 100 {
-		time.Sleep(100 * time.Millisecond)
-		if err := c.do(cmd.Context(), "GET", "/api/v1/status", nil, nil); errors.Is(err, errNotRunning) {
+		if err := syscall.Kill(st.PID, 0); errors.Is(err, syscall.ESRCH) {
 			printf(out, "%s\n", tr.T("cli.daemon.stopped"))
 			return nil
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("%s", tr.T("cli.daemon.stop_timeout"))
 }

@@ -34,6 +34,18 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("POST /api/v1/stop", m.handleStop)
 	mux.HandleFunc("POST /api/v1/panic", m.handlePanic)
 
+	// Проекты, события, переменные (этап 3).
+	mux.HandleFunc("GET /api/v1/projects", m.handleProjects)
+	mux.HandleFunc("POST /api/v1/projects/import", m.handleImport)
+	mux.HandleFunc("POST /api/v1/projects/{id}/{action}", m.handleProjectToggle)
+	mux.HandleFunc("GET /api/v1/events", m.handleEvents)
+	mux.HandleFunc("POST /api/v1/events/{project}/{event}/{action}", m.handleEventAction)
+	mux.HandleFunc("GET /api/v1/vars/{project}", m.handleVars)
+	mux.HandleFunc("PUT /api/v1/vars/{project}/{name}", m.handleSetVar)
+	mux.HandleFunc("POST /api/v1/wait/key", m.handleWaitKey)
+	mux.HandleFunc("POST /api/v1/resume", m.handleResume)
+	mux.HandleFunc("GET /api/v1/registry", m.handleRegistry)
+
 	// Управление демоном.
 	mux.HandleFunc("POST /api/v1/shutdown", m.handleShutdown)
 
@@ -55,6 +67,8 @@ type statusResponse struct {
 	Modules   []contracts.ModuleStatus `json:"modules,omitempty"`
 	Input     *contracts.InputStatus   `json:"input,omitempty"`
 	Output    *contracts.OutputStatus  `json:"output,omitempty"`
+	// GrabSuspended — перехват отключён после экстренной остановки (включить: mkey resume).
+	GrabSuspended bool `json:"grab_suspended"`
 }
 
 // handleStatus возвращает состояние демона и модулей.
@@ -79,6 +93,9 @@ func (m *Module) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	if m.svc.devices != nil {
 		st := m.svc.devices.Status()
 		resp.Output = &st
+	}
+	if m.svc.keyState != nil {
+		resp.GrabSuspended = m.svc.keyState.Suspended()
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -261,6 +278,8 @@ func (m *Module) writeRunError(w http.ResponseWriter, r *http.Request, err error
 		m.writeErrorDetails(w, r, http.StatusBadRequest, de.Code, de.Args, map[string]any{"pos": de.Pos, "args": de.Args})
 	case errors.Is(err, context.Canceled):
 		m.writeError(w, r, http.StatusConflict, "api.stopped", nil)
+	case errors.Is(err, contracts.ErrEventInactive):
+		m.writeError(w, r, http.StatusNotFound, "api.event_inactive", nil)
 	case errors.Is(err, contracts.ErrOutputUnavailable):
 		m.writeError(w, r, http.StatusServiceUnavailable, "api.output_unavailable", map[string]string{"error": err.Error()})
 	default:

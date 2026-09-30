@@ -22,6 +22,10 @@ func noHardware(t *testing.T) func(id string) contracts.ConfigSection {
 			return registry.RawConfig(`{"uinput_path": "` + dir + `/uinput"}`)
 		case "api":
 			return registry.RawConfig(`{"port": 0, "runtime_dir": "` + dir + `/rt"}`)
+		case "store":
+			return registry.RawConfig(`{"dir": "` + dir + `/projects"}`)
+		case "engine":
+			return registry.RawConfig(`{"vars_file": "` + dir + `/vars.json"}`)
 		}
 		return nil
 	}
