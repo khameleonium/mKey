@@ -57,3 +57,20 @@
 Юнит-тесты `detect` и `devaccess` описывают Mint (systemd), Void (runit + elogind + eudev),
 Alpine (OpenRC + mdev), Devuan (sysvinit + elogind), Artix (OpenRC + udev). Проверка на
 настоящих системах — задача T4.7.
+
+## Установка и автозапуск (этап 4, ADR-0021)
+
+`mkey setup` устанавливает программу в `~/.local/bin/mkey`, ярлык и иконку в меню, выдаёт доступ
+к устройствам (как `mkey doctor --fix`) и настраивает автозапуск первым подходящим способом:
+
+| Способ | Когда | Что меняет |
+|---|---|---|
+| `xdg` | полноценный рабочий стол (KDE, GNOME, Cinnamon, Xfce, MATE, LXQt…) | `~/.config/autostart/mkey.desktop` |
+| `systemd-user` | systemd и активная `graphical-session.target` (например, Hyprland через uwsm) | `~/.config/systemd/user/mkey.service` + `systemctl --user enable` |
+| `sway`, `hyprland`, `river`, `labwc`, `niri` | соответствующий композитор | блок mKey в его конфиге |
+| `manual` | ничего не подошло | показывает команду для ручной настройки |
+
+Всё записанное учитывается в `~/.local/share/mkey/install-manifest.json`; `mkey uninstall`
+удаляет ровно это, снимает правила доступа и удаляет данные (или сохраняет настройки и проекты).
+
+Проверка на системах без systemd в контейнерах: `sh test/install/run.sh` (нужен docker или podman).
