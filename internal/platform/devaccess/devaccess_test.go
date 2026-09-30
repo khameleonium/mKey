@@ -148,7 +148,7 @@ func TestMdevAlpine(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 	conf := read(env, MdevConfPath)
-	if !strings.HasPrefix(conf, markBegin) || !strings.Contains(conf, "uinput root:input 0660") || !strings.Contains(conf, "# default rules") {
+	if !strings.HasPrefix(conf, "# >>> mKey >>>") || !strings.Contains(conf, "uinput root:input 0660") || !strings.Contains(conf, "# default rules") {
 		t.Fatalf("mdev.conf = %q", conf)
 	}
 	if mods := read(env, EtcModulesPath); !strings.HasPrefix(mods, "af_packet\nipv6\n") || !strings.Contains(mods, "\nuinput\n") {
@@ -162,7 +162,7 @@ func TestMdevAlpine(t *testing.T) {
 	if err := (mdev{}).Install(context.Background(), env); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(read(env, MdevConfPath), markBegin) != 1 {
+	if strings.Count(read(env, MdevConfPath), ">>> mKey >>>") != 1 {
 		t.Fatal("block duplicated")
 	}
 

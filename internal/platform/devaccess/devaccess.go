@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/fileblock"
 )
 
 // Пути системных файлов, которые создаёт или меняет mKey.
@@ -42,12 +43,6 @@ const (
 	MdevConfPath = "/etc/mdev.conf"
 	// devUinput — файл устройства uinput.
 	devUinput = "/dev/uinput"
-)
-
-// Маркеры блока mKey внутри общих файлов (/etc/modules, /etc/mdev.conf).
-const (
-	markBegin = "# >>> mKey >>> managed by mKey, do not edit"
-	markEnd   = "# <<< mKey <<<"
 )
 
 // uaccessRules — правило для способа uaccess.
@@ -196,7 +191,7 @@ func (m mdev) Install(ctx context.Context, env contracts.PrivilegedEnv) error {
 // Installed сообщает, есть ли блок mKey в mdev.conf.
 func (mdev) Installed(root string) bool {
 	data, err := os.ReadFile(rooted(contracts.PrivilegedEnv{Root: root}, MdevConfPath))
-	return err == nil && strings.Contains(string(data), markBegin)
+	return err == nil && fileblock.Has(string(data))
 }
 
 // Uninstall убирает блок mKey из mdev.conf и автозагрузку uinput.
@@ -362,25 +357,11 @@ func removeFile(env contracts.PrivilegedEnv, path string) error {
 // setBlock записывает блок mKey (строки между маркерами) в общий файл, заменяя прежний блок.
 // prepend — поставить блок в начало файла, иначе в конец.
 func setBlock(env contracts.PrivilegedEnv, path string, lines []string, prepend bool) error {
-	// Читаем файл и убираем прежний блок mKey, если он был.
 	data, err := os.ReadFile(rooted(env, path))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	rest := stripBlock(string(data))
-
-	// Собираем новый блок и ставим его в начало или в конец.
-	block := markBegin + "\n" + strings.Join(lines, "\n") + "\n" + markEnd + "\n"
-	var out string
-	switch {
-	case prepend:
-		out = block + rest
-	case rest == "" || strings.HasSuffix(rest, "\n"):
-		out = rest + block
-	default:
-		out = rest + "\n" + block
-	}
-	return writeFile(env, path, out)
+	return writeFile(env, path, fileblock.Set(string(data), lines, prepend))
 }
 
 // removeBlock убирает блок mKey из общего файла; отсутствие файла или блока — не ошибка.
@@ -392,28 +373,10 @@ func removeBlock(env contracts.PrivilegedEnv, path string) error {
 	if err != nil {
 		return err
 	}
-	stripped := stripBlock(string(data))
-	if stripped == string(data) {
+	if !fileblock.Has(string(data)) {
 		return nil
 	}
-	return writeFile(env, path, stripped)
-}
-
-// stripBlock возвращает текст без блока mKey (включая маркеры).
-func stripBlock(s string) string {
-	start := strings.Index(s, markBegin)
-	if start < 0 {
-		return s
-	}
-	end := strings.Index(s[start:], markEnd)
-	if end < 0 {
-		return s
-	}
-	end += start + len(markEnd)
-	if end < len(s) && s[end] == '\n' {
-		end++
-	}
-	return s[:start] + s[end:]
+	return writeFile(env, path, fileblock.Strip(string(data)))
 }
 
 // hasLinePrefix сообщает, есть ли в тексте строка, начинающаяся с prefix.

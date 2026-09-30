@@ -167,6 +167,12 @@ var terminals = []struct {
 	{"xterm", []string{"-e"}},
 }
 
+// FindTerminal выбирает эмулятор терминала ($TERMINAL, затем известные по списку) и возвращает
+// его имя и аргументы, после которых идёт команда (например, "konsole", ["-e"]).
+func FindTerminal(getenv func(string) string, lookPath func(string) bool) (name string, prefix []string, ok bool) {
+	return findTerminal(Env{Getenv: getenv, LookPath: lookPath})
+}
+
 // findTerminal выбирает эмулятор терминала: $TERMINAL, затем известные по списку.
 func findTerminal(env Env) (name string, prefix []string, ok bool) {
 	// Предпочтение пользователя из переменной TERMINAL (флаг -e понимает большинство терминалов).

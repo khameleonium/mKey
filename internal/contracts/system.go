@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"errors"
+	"os"
 )
 
 // SessionInfo — сведения о графической сессии пользователя (модуль session).
@@ -169,4 +170,50 @@ type Doctor interface {
 	Run(ctx context.Context) []Check
 	// Fix выполняет исправление fix через бэкенд повышения прав elevator.
 	Fix(ctx context.Context, fix string, elevator Elevator) error
+}
+
+// FileWriter записывает файлы установки и учитывает их в манифесте (FR-INST-4):
+// всё, что записано через него, будет удалено при деинсталляции.
+type FileWriter interface {
+	// WriteFile записывает файл целиком и запоминает его.
+	WriteFile(path string, data []byte, perm os.FileMode) error
+	// SetBlock записывает блок mKey в чужой файл (comment — префикс комментария маркеров: "#", "//").
+	SetBlock(path, comment string, lines []string) error
+	// RemoveFile удаляет файл, записанный mKey.
+	RemoveFile(path string) error
+	// RemoveBlock убирает блок mKey из чужого файла.
+	RemoveBlock(path, comment string) error
+}
+
+// AutostartEnv — окружение бэкенда автозапуска.
+type AutostartEnv struct {
+	// Home — домашний каталог; ConfigHome — $XDG_CONFIG_HOME (или ~/.config).
+	Home, ConfigHome string
+	// Exe — путь к установленному mkey.
+	Exe string
+	// Session и Platform — сведения о сессии и системе.
+	Session  SessionInfo
+	Platform PlatformInfo
+	// Runner выполняет команды (systemctl --user …).
+	Runner CommandRunner
+	// Files записывает файлы с учётом манифеста.
+	Files FileWriter
+}
+
+// Autostart — способ автоматически запускать демон при входе в систему
+// (точка расширения PointInitSystem, FR-INST-2 шаг 5, FR-INST-7).
+type Autostart interface {
+	Extension
+	// Available сообщает, подходит ли способ для этой сессии и системы.
+	Available(env AutostartEnv) bool
+	// Target возвращает, что будет изменено (путь файла), — для объяснения пользователю.
+	Target(env AutostartEnv) string
+	// Installed сообщает, настроен ли автозапуск этим способом.
+	Installed(env AutostartEnv) bool
+	// Install настраивает автозапуск.
+	Install(ctx context.Context, env AutostartEnv) error
+	// Uninstall убирает автозапуск.
+	Uninstall(ctx context.Context, env AutostartEnv) error
+	// Start запускает демон сейчас силами этого способа (ErrUnsupported — запускать самостоятельно).
+	Start(ctx context.Context, env AutostartEnv) error
 }
