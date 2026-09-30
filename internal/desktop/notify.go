@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"os/exec"
 
 	"github.com/godbus/dbus/v5"
 
@@ -25,6 +26,26 @@ func (m *Module) Notify(ctx context.Context, title, body string) error {
 	return m.conn.Object(notifyService, notifyPath).CallWithContext(ctx, notifyMethod, 0,
 		"mKey", uint32(0), "input-keyboard", title, body, []string{}, map[string]dbus.Variant{}, int32(-1),
 	).Err
+}
+
+// OpenURL открывает адрес в браузере по умолчанию (contracts.URLOpener): xdg-open,
+// а если его нет — gio open (GNOME) или kde-open (KDE).
+func (m *Module) OpenURL(_ context.Context, url string) error {
+	for _, argv := range [][]string{{"xdg-open", url}, {"gio", "open", url}, {"kde-open", url}} {
+		// Пропускаем программы, которых нет в системе.
+		path, err := exec.LookPath(argv[0])
+		if err != nil {
+			continue
+		}
+		// Запускаем без ожидания: браузер живёт своей жизнью; Wait в фоне убирает зомби-процесс.
+		cmd := exec.Command(path, argv[1:]...)
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		go func() { _ = cmd.Wait() }()
+		return nil
+	}
+	return errors.New("no program to open links (install xdg-utils)")
 }
 
 // watchNotices показывает пользователю важные события программы: экстренную остановку

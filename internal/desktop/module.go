@@ -82,6 +82,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if err := contracts.ProvideService[contracts.LayoutProvider](host.Services(), m); err != nil {
 		return err
 	}
+	if err := contracts.ProvideService[contracts.URLOpener](host.Services(), m); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.Notifier](host.Services(), m)
 }
 

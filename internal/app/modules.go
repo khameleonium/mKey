@@ -14,6 +14,7 @@ import (
 	"mkey/internal/session"
 	"mkey/internal/setup"
 	"mkey/internal/store"
+	"mkey/internal/tray"
 	"mkey/web"
 	// mkey:imports — генератор `make new-module` добавляет импорты модулей над этой строкой.
 )
@@ -48,6 +49,7 @@ func Modules() []registry.Entry {
 		{Module: setup.New(), Core: false},
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.
 		{Module: api.New(web.FS()), Core: true},
+		{Module: tray.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой.
 	}
 }
