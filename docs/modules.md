@@ -68,6 +68,26 @@ New() → Init(ctx, host) → Start(ctx) → … работа … → Stop(ctx)
    в `host.Extensions()` с метаданными (`contracts.ExtensionMeta`), по которым GUI строит
    блоки конструктора.
 
+### Блок конструктора для своего вида
+
+GUI строит блок и его поля только по метаданным (`GET /api/v1/registry`), поэтому новому
+виду действия, триггера или условия достаточно правильных метаданных:
+
+- `NameKey` / `DescriptionKey` — i18n-ключи названия и описания (обычно `action.<id>` и
+  `action.<id>.description`); `Category` — раздел палитры (`keyboard`, `mouse`, `time`, `logic`,
+  `system`, `script` или свой — его название берётся из ключа `category.<имя>`).
+- `ParamsSchema` — JSON Schema параметров (`type`, `enum`, `properties`, `required`, `oneOf`,
+  `default`, `minimum`). Порядок полей в схеме — порядок полей в блоке. Подписи берутся из
+  i18n: `<NameKey>.field.<поле>` (и `.hint` — подсказка), `<NameKey>.field.<поле>.<значение>`
+  для значений списка, `<NameKey>.value.<значение>` — если схема сама список,
+  `<NameKey>.variant.<номер>` — для вариантов `oneOf`.
+- Подсказки для полей: `x-widget` — `key` (клавиша с кнопкой «Нажмите клавишу…»), `keys`
+  (сочетание в скобках, `{Ctrl+H}`), `macro` (текст макроса с проверкой), `ms` (миллисекунды),
+  `multiline`, `code` (+ `x-lang`: `lua` | `shell`), `event`, `project`, `variable`, `device`,
+  `time`, `value`, `actions` / `conditions` (вложенные блоки, как в «Повторять» и «Если»);
+  `x-advanced: true` — поле прячется под «Подробнее».
+- Виды показываются в порядке регистрации.
+
 Нужного контракта нет — добавьте интерфейс в `internal/contracts` **отдельным коммитом** с
 обоснованием. Контракты — публичное обещание плагинам: ломающие изменения только через ADR.
 

@@ -164,7 +164,7 @@ paths:
       responses: { "200": { description: Список проектов } }
   /api/v1/projects/import:
     post:
-      summary: Импортировать проект ({name, content}); новый проект выключен (SEC-7)
+      summary: "Импортировать проект ({name, content}); новый проект выключен (SEC-7)"
       responses: { "200": { description: "{id}" }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/{id}/{action}:
     post:
@@ -192,23 +192,89 @@ paths:
       responses: { "200": { description: "{vars: {...}}" }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/vars/{project}/{name}:
     put:
-      summary: Задать переменную ({value})
+      summary: "Задать переменную ({value})"
       parameters:
         - { name: project, in: path, required: true, schema: { type: string } }
         - { name: name, in: path, required: true, schema: { type: string } }
       responses: { "200": { description: Выполнено } }
   /api/v1/wait/key:
     post:
-      summary: Ждать нажатия клавиши ({key, timeout_ms}); 408 — время вышло
+      summary: "Ждать нажатия клавиши ({key, timeout_ms}); 408 — время вышло"
       responses: { "200": { description: Нажата }, "408": { $ref: "#/components/responses/Error" } }
   /api/v1/resume:
     post:
-      summary: Снова разрешить перехват клавиатуры после экстренной остановки
+      summary: Продолжить работу после экстренной остановки (перехват и триггеры)
       responses: { "200": { description: Выполнено } }
   /api/v1/registry:
     get:
       summary: Зарегистрированные виды (trigger, condition, action, …) с метаданными и JSON Schema параметров
-      responses: { "200": { description: "{точка: [ExtensionMeta]}" } }
+      description: |
+        Виды — в порядке регистрации. К метаданным добавлены `name`, `description`, `category_name`
+        на языке из `Accept-Language`; в схемах — `title` у полей и вариантов, `x-enum-labels`
+        у списков значений. Подсказки для конструктора GUI: `x-widget` (key, keys, macro, ms,
+        multiline, code, event, project, variable, device, time, value, actions, conditions),
+        `x-lang` (lua, shell), `x-advanced` (поле под «Подробнее»). См. docs/modules.md.
+      responses: { "200": { description: "{точка: [ExtensionMeta + name, description, category_name]}" } }
+  /api/v1/projects/{id}:
+    get:
+      summary: "Проект — структура и текст файла ({project, raw, path, error})"
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: Проект }, "404": { $ref: "#/components/responses/Error" } }
+    put:
+      summary: "Сохранить проект после полной проверки — {project} (из конструктора) или {raw} (текст YAML, комментарии сохраняются)"
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: Сохранено }, "400": { $ref: "#/components/responses/Error" } }
+    delete:
+      summary: Удалить проект (файл)
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: Удалено }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/projects/validate:
+    post:
+      summary: "Проверить проект ({project} или {raw}), не сохраняя"
+      responses: { "200": { description: Ошибок нет }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/templates:
+    get:
+      summary: "Шаблоны проектов ({templates: [{id, name, description, content}]}, названия — на языке клиента)"
+      responses: { "200": { description: Шаблоны } }
+  /api/v1/stream:
+    get:
+      summary: Поток новостей (Server-Sent Events) для веб-интерфейса
+      description: |
+        События: `store.projects_changed` ([id]), `store.project_error`, `engine.project_error`,
+        `engine.event_started` (EventRef), `engine.event_finished` (EventRef + error),
+        `input.emergency`, `input.resumed`, `input.device_added` / `input.device_removed` ({path, name}),
+        `input.access_changed`. Раз в 15 с — комментарий `: ping`.
+      responses: { "200": { description: "text/event-stream" } }
+  /api/v1/capture/key:
+    post:
+      summary: "Ждать нажатия ({timeout_ms, combo}); combo — сочетание до первого отпускания (\"Ctrl+H\")"
+      responses:
+        "200": { description: "{name, code, kernel, device, device_name}" }
+        "408": { $ref: "#/components/responses/Error" }
+  /api/v1/dsl/to_actions:
+    post:
+      summary: "Разобрать макрос на отдельные действия (блоки) — {text} → {actions}"
+      responses: { "200": { description: "{actions: [{type, value}]}" }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/actions/to_dsl:
+    post:
+      summary: "Склеить действия в один макрос — {actions} → {text}; 400, если действие нельзя записать макросом"
+      responses: { "200": { description: "{text}" }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/emergency:
+    post:
+      summary: Экстренная остановка (как Esc+Backspace+Enter); mKey приостановлен до /resume
+      responses: { "200": { description: Выполнено } }
+  /api/v1/doctor/fix:
+    post:
+      summary: Выдать доступ к устройствам ввода лучшим способом повышения прав
+      responses: { "200": { description: "{ok, method} или {manual_command}" } }
+  /api/v1/uninstall:
+    post:
+      summary: "Удалить mKey ({keep_config}); запускает `mkey uninstall --yes` отдельным процессом"
+      responses: { "200": { description: Удаление запущено } }
+  /api/v1/logs:
+    get:
+      summary: Последние строки журнала (?lines=N, по умолчанию 200, не больше 2000)
+      responses: { "200": { description: "{lines: [...]}" } }
   /api/v1/shutdown:
     post:
       summary: Корректно завершить демон
