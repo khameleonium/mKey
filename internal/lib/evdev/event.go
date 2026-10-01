@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -111,6 +113,31 @@ func CodeName(t, code uint16) string {
 		return n
 	}
 	return fmt.Sprintf("0x%x", code)
+}
+
+// ParseCode разбирает имя кода ядра типа t ("KEY_CALC", "BTN_TRIGGER_HAPPY3", "FF_RUMBLE")
+// или шестнадцатеричный код ("0x2c2"); принимаются только канонические имена (как их пишет CodeName).
+func ParseCode(t uint16, name string) (uint16, bool) {
+	// Шестнадцатеричный код.
+	if hex, ok := strings.CutPrefix(name, "0x"); ok {
+		v, err := strconv.ParseUint(hex, 16, 16)
+		return uint16(v), err == nil
+	}
+
+	// Имя: поиск по таблице группы (и по таблице отдачи для EV_FF).
+	for code, n := range codeNames[typeGroups[t]] {
+		if n == name {
+			return code, true
+		}
+	}
+	if t == EvFf {
+		for code, n := range ffNames {
+			if n == name {
+				return code, true
+			}
+		}
+	}
+	return 0, false
 }
 
 // ffNames — виды отдачи (force feedback) из linux/input.h: их нет в input-event-codes.h,

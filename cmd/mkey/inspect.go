@@ -67,6 +67,7 @@ func printDevice(out io.Writer, tr *i18n.Translator, d contracts.DeviceDetails) 
 		kinds = append(kinds, tr.T("device.kind."+string(k)))
 	}
 	field("cli.inspect.kind", strings.Join(kinds, ", "))
+	field("cli.inspect.auto_id", d.AutoID)
 	field("cli.inspect.file", d.Info.Path)
 	field("cli.inspect.by_id", d.ByID)
 	field("cli.inspect.by_path", d.ByPath)
@@ -76,18 +77,26 @@ func printDevice(out io.Writer, tr *i18n.Translator, d contracts.DeviceDetails) 
 	field("cli.inspect.uniq", d.Info.Uniq)
 	field("cli.inspect.props", strings.Join(d.Props, ", "))
 
-	// Кнопки: с именем для макросов — именами в строку; без имени — именами ядра.
-	var named, unnamed []string
+	// Кнопки: с именем для макросов — именами в строку; с авто-ID — авто-ID и именем ядра;
+	// без того и другого — именами ядра.
+	var named, labeled, unnamed []string
 	for _, k := range d.Keys {
-		if k.Name != "" {
+		switch {
+		case k.Name != "":
 			named = append(named, k.Name)
-		} else {
+		case k.Label != "":
+			labeled = append(labeled, fmt.Sprintf("{%s}=%s", k.Label, k.Kernel))
+		default:
 			unnamed = append(unnamed, fmt.Sprintf("%s (0x%x)", k.Kernel, k.Code))
 		}
 	}
 	if len(named) > 0 {
 		printf(out, "\n%s\n", tr.T("cli.inspect.keys", i18n.A("count", len(named)), i18n.A("example", "{"+named[0]+"}")))
 		printWrapped(out, named)
+	}
+	if len(labeled) > 0 {
+		printf(out, "\n%s\n", tr.T("cli.inspect.labeled", i18n.A("count", len(labeled))))
+		printWrapped(out, labeled)
 	}
 	if len(unnamed) > 0 {
 		printf(out, "\n%s\n", tr.T("cli.inspect.unnamed", i18n.A("count", len(unnamed))))
@@ -99,10 +108,14 @@ func printDevice(out io.Writer, tr *i18n.Translator, d contracts.DeviceDetails) 
 		printf(out, "\n%s\n", tr.T("cli.inspect.axes", i18n.A("count", len(d.Axes))))
 		for _, a := range d.Axes {
 			name := a.Name
-			if name == "" {
+			switch {
+			case name != "":
+			case a.Label != "":
+				name = "{" + a.Label + "}"
+			default:
 				name = "—"
 			}
-			printf(out, "  %-8s %-22s %s\n", name, a.Kernel, tr.T("cli.inspect.range", i18n.A("min", a.Minimum), i18n.A("max", a.Maximum), i18n.A("flat", a.Flat)))
+			printf(out, "  %-14s %-22s %s\n", name, a.Kernel, tr.T("cli.inspect.range", i18n.A("min", a.Minimum), i18n.A("max", a.Maximum), i18n.A("flat", a.Flat)))
 		}
 	}
 
@@ -116,6 +129,10 @@ func printDevice(out io.Writer, tr *i18n.Translator, d contracts.DeviceDetails) 
 		}
 		names := make([]string, 0, len(g.list))
 		for _, c := range g.list {
+			if c.Label != "" {
+				names = append(names, fmt.Sprintf("{%s}=%s", c.Label, c.Kernel))
+				continue
+			}
 			names = append(names, c.Kernel)
 		}
 		printf(out, "\n%s\n", tr.T(g.key))
@@ -135,5 +152,47 @@ func printWrapped(out io.Writer, words []string) {
 	}
 	if line != " " {
 		printf(out, "%s\n", line)
+	}
+}
+
+// newDevicesAutoIDsCmd создаёт команду `mkey devices auto-ids [режим]`: каким устройствам давать
+// автоматические имена UnKey (FR-DEV-2). Без режима — показывает текущий и варианты.
+func newDevicesAutoIDsCmd(tr *i18n.Translator) *cobra.Command {
+	return &cobra.Command{
+		Use:   "auto-ids [smart|all|unusual]",
+		Short: tr.T("cli.autoids.short"),
+		Long:  tr.T("cli.autoids.long"),
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemonClient(cmd, tr)
+			if err != nil {
+				return err
+			}
+			var resp struct {
+				AutoIDs string `json:"auto_ids"`
+			}
+
+			// Без режима — текущий режим и что значит каждый.
+			out := cmd.OutOrStdout()
+			if len(args) == 0 {
+				if err := c.do(cmd.Context(), "GET", "/api/v1/settings/devices", nil, &resp); err != nil {
+					return userError(formatAPIError(tr, err, ""))
+				}
+				printf(out, "%s\n\n", tr.T("cli.autoids.current", i18n.A("mode", resp.AutoIDs), i18n.A("text", tr.T("cli.autoids.mode."+resp.AutoIDs))))
+				for _, mode := range []string{"smart", "all", "unusual"} {
+					printf(out, "  %-8s %s\n", mode, tr.T("cli.autoids.mode."+mode))
+				}
+				printf(out, "\n%s\n", tr.T("cli.autoids.hint"))
+				return nil
+			}
+
+			// Смена режима.
+			req := map[string]string{"auto_ids": args[0]}
+			if err := c.do(cmd.Context(), "PUT", "/api/v1/settings/devices", req, &resp); err != nil {
+				return userError(formatAPIError(tr, err, ""))
+			}
+			printf(out, "%s\n", tr.T("cli.autoids.set", i18n.A("mode", resp.AutoIDs), i18n.A("text", tr.T("cli.autoids.mode."+resp.AutoIDs))))
+			return nil
+		},
 	}
 }

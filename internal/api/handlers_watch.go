@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"mkey/internal/contracts"
@@ -90,6 +91,7 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 			if !show {
 				continue
 			}
+			m.labelEntry(&entry, e)
 			data, err := json.Marshal(entry)
 			if err != nil {
 				continue
@@ -97,6 +99,17 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 			_, _ = fmt.Fprintf(w, "event: input\ndata: %s\n\n", data)
 			flusher.Flush()
 		}
+	}
+}
+
+// labelEntry подставляет авто-ID устройства (UnKey001, FR-DEV-2) вместо «#код» у кнопки или оси
+// без стандартного имени, если инспектор его выдал.
+func (m *Module) labelEntry(entry *watchEntry, e contracts.InputEvent) {
+	if !strings.HasPrefix(entry.Name, "#") || m.svc.inspect == nil {
+		return
+	}
+	if l := m.svc.inspect.Label(e.Device, e.Event.Type, e.Event.Code); l != "" {
+		entry.Name = l
 	}
 }
 

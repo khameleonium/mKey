@@ -12,7 +12,22 @@ type Inspector interface {
 	// постоянное имя by-id/by-path — точно, иначе часть названия (без учёта регистра).
 	// Точное совпадение пути или имени файла даёт одно устройство; иначе — все подходящие.
 	Find(ref string) []DeviceDetails
+	// Label возвращает имя для макросов кнопки или оси без стандартного имени
+	// ("UnKey001", "UnKey2.001", "UnKey.Axis01", FR-DEV-2); "" — у неё нет авто-ID.
+	Label(path string, typ, code uint16) string
+	// AutoIDMode возвращает режим авто-ID: "smart", "all" или "unusual".
+	AutoIDMode() string
+	// SetAutoIDMode меняет режим (сразу раздаёт имена подходящим устройствам); уже выданные
+	// имена не отбираются. Ошибка — неизвестный режим.
+	SetAutoIDMode(mode string) error
 }
+
+// TopicAutoIDsChanged — инспектор выдал устройствам новые авто-ID или узнал их снова
+// (окно обновляет список устройств); Payload: nil.
+const TopicAutoIDsChanged = "inspector.auto_ids_changed"
+
+// PlaceDevices — файл devices.yaml с авто-ID устройств и кнопок (место «Где что лежит»).
+const PlaceDevices = "devices"
 
 // DeviceDetails — устройство ввода со всеми подробностями.
 type DeviceDetails struct {
@@ -21,6 +36,8 @@ type DeviceDetails struct {
 	evdev.Links
 	// Bus — шина подключения словом ("USB", "Bluetooth", "i8042").
 	Bus string `json:"bus"`
+	// AutoID — авто-ID устройства (UnKey, UnKey2…, FR-DEV-2); пусто — устройство его не получило.
+	AutoID string `json:"auto_id,omitempty"`
 	// Keys — клавиши и кнопки (EV_KEY); Rel — относительные оси (мышь, колесо);
 	// Axes — абсолютные оси с диапазонами (стики, курки, крестовины, тачпад).
 	Keys []DeviceControl `json:"keys,omitempty"`
@@ -40,8 +57,11 @@ type DeviceControl struct {
 	Code   uint16 `json:"code"`
 	Kernel string `json:"kernel"`
 	// Name — имя для макросов ("A", "Mouse0", "South", "LX"); пусто — у mKey имени нет
-	// (такие кнопки получат авто-ID вида UnKey.001, FR-DEV-2).
+	// (такие кнопки получают авто-ID, FR-DEV-2).
 	Name string `json:"name,omitempty"`
+	// Label — авто-ID кнопки или оси без стандартного имени для макросов ("UnKey001",
+	// "UnKey2.001", "UnKey.Axis01"); пусто — у неё есть Name или устройство без авто-ID.
+	Label string `json:"label,omitempty"`
 }
 
 // DeviceAxis — абсолютная ось с параметрами (struct input_absinfo).

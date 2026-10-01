@@ -19,6 +19,9 @@
   /** opened — устройства, у которых раскрыто «Подробнее» (подробности загружаются только для них). */
   let opened = $state<Record<string, boolean>>({});
   let denied = $state<string[]>([]);
+  /** autoIds — авто-ID устройств по пути (UnKey…); mode — режим раздачи авто-ID. */
+  let autoIds = $state<Record<string, string>>({});
+  let mode = $state("");
   /** Запись журнала монитора (как её присылает GET /api/v1/input/watch). */
   interface WatchEntry {
     time: string;
@@ -108,20 +111,46 @@
   /** load перечитывает устройства. */
   async function load(): Promise<void> {
     try {
-      const r = (await api.devices()) as { devices: InputDevice[]; status?: { denied?: string[] } };
+      const r = await api.devices();
       devices = r.devices;
       denied = r.status?.denied ?? [];
+      autoIds = r.auto_ids ?? {};
     } catch (e) {
       toast(errorText(e), "error");
     }
   }
 
-  // Загрузка при открытии и при подключении/отключении устройств.
+  /** loadMode читает режим авто-ID (без инспектора — выбор не показывается). */
+  async function loadMode(): Promise<void> {
+    try {
+      mode = (await api.deviceSettings()).auto_ids;
+    } catch {
+      mode = "";
+    }
+  }
+
+  /** saveMode меняет режим авто-ID: подходящие устройства сразу получают имена. */
+  async function saveMode(next: string): Promise<void> {
+    try {
+      mode = (await api.setDeviceSettings(next)).auto_ids;
+      toast(t("devices.auto_saved"));
+      await load();
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
+  // Загрузка при открытии и при подключении/отключении устройств и раздаче авто-ID.
   $effect(() => {
     void load();
-    const offs = ["input.device_added", "input.device_removed", "input.access_changed"].map(
-      (topic) => onTopic(topic, () => void load()),
-    );
+    void loadMode();
+    const topics = [
+      "input.device_added",
+      "input.device_removed",
+      "input.access_changed",
+      "inspector.auto_ids_changed",
+    ];
+    const offs = topics.map((topic) => onTopic(topic, () => void load()));
     return () => offs.forEach((off) => off());
   });
 </script>
@@ -157,6 +186,24 @@
   {/if}
 </div>
 
+<!-- Автоматические имена для кнопок без стандартного имени (FR-DEV-2) -->
+{#if mode}
+  <div class="card auto-ids">
+    <div class="grow">
+      <h2>{t("devices.auto_title")}</h2>
+      <p class="muted">{t("devices.auto_hint")}</p>
+    </div>
+    <label class="field">
+      {t("devices.auto_mode")}
+      <select value={mode} onchange={(e) => void saveMode(e.currentTarget.value)}>
+        {#each ["smart", "all", "unusual"] as m (m)}
+          <option value={m}>{t("devices.auto_mode." + m)}</option>
+        {/each}
+      </select>
+    </label>
+  </div>
+{/if}
+
 {#if denied.length}
   <div class="note warn">{t("devices.denied", { n: denied.length })}</div>
 {/if}
@@ -168,6 +215,9 @@
       <b>{d.info.name}</b>
       <span class="kinds">
         {#each d.kinds as k (k)}<span class="tag">{t("devices.kind." + k)}</span>{/each}
+        {#if autoIds[d.info.path]}<span class="tag auto" title={t("devices.auto_tag_hint")}
+            >{autoIds[d.info.path]}</span
+          >{/if}
       </span>
       <details ontoggle={(e) => (opened[d.info.path] = e.currentTarget.open)}>
         <summary class="muted">{t("common.more")}</summary>
@@ -253,6 +303,22 @@
     padding: 1px 8px;
     border-radius: 10px;
     background: var(--accent-soft);
+  }
+  /* Авто-ID устройства — моноширинным, как в макросах. */
+  .tag.auto {
+    font-family: var(--mono);
+    background: var(--surface-2);
+  }
+  .auto-ids {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .auto-ids h2,
+  .auto-ids p {
+    margin: 0;
   }
   summary {
     cursor: pointer;

@@ -110,7 +110,7 @@ paths:
         "200": { description: Выполнено }
   /api/v1/devices:
     get:
-      summary: Физические устройства ввода
+      summary: "Физические устройства ввода; auto_ids — авто-ID устройств (UnKey…) по пути, если работает инспектор"
       responses:
         "200":
           description: Устройства и доступ к ним
@@ -124,13 +124,20 @@ paths:
         "503": { $ref: "#/components/responses/Error" }
   /api/v1/devices/inspect:
     get:
-      summary: "Подробности устройства (?ref= путь, eventN, постоянное имя by-id/by-path или часть названия): {device: DeviceDetails} — постоянные имена, шина, кнопки с именами mKey и ядра, оси с диапазонами, колёса, переключатели, индикаторы, отдача, свойства"
+      summary: "Подробности устройства (?ref= путь, eventN, постоянное имя by-id/by-path или часть названия): {device: DeviceDetails} — постоянные имена, шина, авто-ID устройства (auto_id) и кнопок (label: UnKey001), кнопки с именами mKey и ядра, оси с диапазонами, колёса, переключатели, индикаторы, отдача, свойства"
       parameters: [ { name: ref, in: query, required: true, schema: { type: string } } ]
       responses:
         "200": { description: "{device}" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { description: "api.device_ambiguous: подходит несколько устройств; details.candidates — [{path, name}]" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/v1/settings/devices:
+    get:
+      summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"
+      responses: { "200": { description: "{auto_ids}" }, "503": { $ref: "#/components/responses/Error" } }
+    put:
+      summary: "Сменить режим авто-ID ({auto_ids}): применяется сразу и сохраняется в config.yaml; неизвестный режим — 400 api.auto_ids_bad"
+      responses: { "200": { description: "{auto_ids}" }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/doctor:
     get:
       summary: Диагностика окружения (сообщения на языке клиента)

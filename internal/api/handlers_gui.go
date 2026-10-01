@@ -38,6 +38,7 @@ var streamTopics = map[string]bool{
 	contracts.TopicInputAccessChanged: true,
 	contracts.TopicRecordingStarted:   true,
 	contracts.TopicRecordingStopped:   true,
+	contracts.TopicAutoIDsChanged:     true,
 }
 
 // registerGUIRoutes добавляет маршруты веб-интерфейса.

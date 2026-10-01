@@ -185,6 +185,8 @@ export interface DeviceControl {
   code: number;
   kernel: string;
   name?: string;
+  /** Авто-ID кнопки или оси без стандартного имени ("UnKey001", "UnKey2.001", "UnKey.Axis01"). */
+  label?: string;
 }
 
 /** Абсолютная ось с диапазоном. */
@@ -202,6 +204,8 @@ export interface DeviceDetails extends InputDevice {
   by_id?: string;
   by_path?: string;
   bus: string;
+  /** Авто-ID устройства (UnKey, UnKey2…); нет — устройство его не получило. */
+  auto_id?: string;
   keys?: DeviceControl[];
   rel?: DeviceControl[];
   axes?: DeviceAxis[];

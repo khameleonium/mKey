@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"mkey/internal/bus"
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/devmap"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/registry"
 )
@@ -145,5 +147,85 @@ func TestFind(t *testing.T) {
 	// Без модуля input — пусто, без паники.
 	if (&Module{}).Find("event6") != nil || (&Module{}).Devices() != nil {
 		t.Error("expected nothing without input")
+	}
+}
+
+// autoModule — инспектор с файлом авто-ID в папке dir и заданными устройствами, уже «запущенный»
+// (файл прочитан, имена розданы), как после Start.
+func autoModule(t *testing.T, dir string, devs ...contracts.InputDevice) *Module {
+	t.Helper()
+	m := &Module{
+		log:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		cfg:   Config{InputDir: dir, DevicesFile: filepath.Join(dir, "devices.yaml")},
+		input: fakeInput{devs: devs}, mode: "smart", bound: map[string]string{},
+	}
+	f, err := devmap.Load(m.cfg.DevicesFile)
+	m.file, m.fileOK = f, err == nil
+	m.assignAll()
+	return m
+}
+
+// TestAutoIDs проверяет раздачу авто-ID: кому (режим smart), имена кнопок для макросов, файл,
+// узнавание после перезапуска при другом eventN, смену режима и испорченный файл.
+func TestAutoIDs(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dev := func(event, name string, vid uint16, codes map[uint16][]uint16, kinds ...ev.Kind) contracts.InputDevice {
+		return contracts.InputDevice{Info: ev.Info{Path: "/dev/input/" + event, Name: name, ID: ev.ID{Vendor: vid, Product: 1}, Caps: ev.Capabilities{Codes: codes}}, Kinds: kinds}
+	}
+	joy := dev("event9", "Sega Joystick", 0x79, map[uint16][]uint16{ev.EvKey: {ev.BtnTrigger, ev.BtnThumb}, ev.EvAbs: {ev.AbsThrottle}}, ev.KindJoystick)
+	kbd := dev("event3", "AT Keyboard", 0x01, map[uint16][]uint16{ev.EvKey: {ev.KeyA, ev.KeyCalc}}, ev.KindKeyboard)
+	power := dev("event2", "Power Button", 0x02, map[uint16][]uint16{ev.EvKey: {ev.KeyPower}}, ev.KindOther)
+	mouse := dev("event6", "Mouse", 0x03, map[uint16][]uint16{ev.EvKey: {ev.BtnLeft}}, ev.KindMouse)
+
+	// Режим smart: клавиатура (event3) и джойстик (event9) — да, по номеру устройства, а не по
+	// порядку списка; кнопка питания и мышь — нет.
+	m := autoModule(t, dir, joy, kbd, power, mouse)
+	got := map[string]contracts.DeviceDetails{}
+	for _, d := range m.Devices() {
+		got[d.Info.Name] = d
+	}
+	if got["AT Keyboard"].AutoID != "UnKey" || got["Sega Joystick"].AutoID != "UnKey2" || got["Power Button"].AutoID != "" || got["Mouse"].AutoID != "" {
+		t.Fatalf("auto ids: joy=%q kbd=%q power=%q mouse=%q", got["Sega Joystick"].AutoID, got["AT Keyboard"].AutoID, got["Power Button"].AutoID, got["Mouse"].AutoID)
+	}
+
+	// Имена для макросов: у UnKey — слитно, у UnKey2 и у осей — через точку; у {A} авто-ID нет.
+	j, k := got["Sega Joystick"], got["AT Keyboard"]
+	if j.Keys[0].Label != "UnKey2.001" || j.Keys[1].Label != "UnKey2.002" || j.Axes[0].Label != "UnKey2.Axis01" {
+		t.Errorf("joystick labels: %+v %+v", j.Keys, j.Axes)
+	}
+	if k.Keys[0].Label != "" || k.Keys[1].Label != "UnKey001" || m.Label("/dev/input/event3", ev.EvKey, ev.KeyCalc) != "UnKey001" {
+		t.Errorf("keyboard labels: %+v", k.Keys)
+	}
+
+	// Файл записан; после перезапуска устройства узнаются, даже если сменился eventN.
+	data, err := os.ReadFile(filepath.Join(dir, "devices.yaml"))
+	if err != nil || !strings.Contains(string(data), "auto_id: UnKey2") {
+		t.Fatalf("file: %v\n%s", err, data)
+	}
+	joy.Info.Path, kbd.Info.Path = "/dev/input/event20", "/dev/input/event21"
+	m2 := autoModule(t, dir, kbd, joy, power)
+	if m2.Label("/dev/input/event20", ev.EvKey, ev.BtnTrigger) != "UnKey2.001" || m2.Label("/dev/input/event21", ev.EvKey, ev.KeyCalc) != "UnKey001" {
+		t.Errorf("after restart: %v", m2.bound)
+	}
+
+	// Режим all: кнопка питания получает следующий авто-ID; неизвестный режим — ошибка.
+	if err := m2.SetAutoIDMode("all"); err != nil || m2.Label("/dev/input/event2", ev.EvKey, ev.KeyPower) != "UnKey3.001" {
+		t.Errorf("mode all: %v %q", err, m2.Label("/dev/input/event2", ev.EvKey, ev.KeyPower))
+	}
+	if err := m2.SetAutoIDMode("some"); err == nil || m2.AutoIDMode() != "all" {
+		t.Errorf("bad mode: %v %s", err, m2.AutoIDMode())
+	}
+
+	// Испорченный файл: имена не раздаются, файл не перезаписывается.
+	bad := t.TempDir()
+	path := filepath.Join(bad, "devices.yaml")
+	_ = os.WriteFile(path, []byte("devices: [oops"), 0o600)
+	m3 := autoModule(t, bad, joy)
+	if m3.fileOK || m3.Label(joy.Info.Path, ev.EvKey, ev.BtnTrigger) != "" {
+		t.Error("broken file: auto-ids assigned")
+	}
+	if data, _ := os.ReadFile(path); string(data) != "devices: [oops" {
+		t.Errorf("broken file overwritten: %s", data)
 	}
 }

@@ -81,7 +81,15 @@ export const api = {
   doctor: () => request<{ checks: DoctorCheck[] }>("GET", "/doctor"),
   doctorFix: () =>
     request<{ ok?: boolean; method?: string; manual_command?: string }>("POST", "/doctor/fix", {}),
-  devices: () => request<{ devices: InputDevice[] }>("GET", "/devices"),
+  devices: () =>
+    request<{
+      devices: InputDevice[];
+      status?: { denied?: string[] };
+      auto_ids?: Record<string, string>;
+    }>("GET", "/devices"),
+  deviceSettings: () => request<{ auto_ids: string }>("GET", "/settings/devices"),
+  setDeviceSettings: (autoIds: string) =>
+    request<{ auto_ids: string }>("PUT", "/settings/devices", { auto_ids: autoIds }),
   inspectDevice: (ref: string) =>
     request<{ device: DeviceDetails }>("GET", `/devices/inspect?ref=${enc(ref)}`),
   registry: () => request<Registry>("GET", "/registry"),

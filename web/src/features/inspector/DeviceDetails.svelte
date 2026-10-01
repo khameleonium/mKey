@@ -27,9 +27,10 @@
       .catch((e: unknown) => (error = errorText(e)));
   });
 
-  /** Кнопки с именем для макросов и без него. */
+  /** Кнопки: с именем для макросов, с авто-ID (UnKey001) и без того и другого. */
   const named = $derived((d?.keys ?? []).filter((k) => k.name));
-  const unnamed = $derived((d?.keys ?? []).filter((k) => !k.name));
+  const labeled = $derived((d?.keys ?? []).filter((k) => !k.name && k.label));
+  const unnamed = $derived((d?.keys ?? []).filter((k) => !k.name && !k.label));
 
   /** Прочие группы: заголовок и коды (показываются именами ядра). */
   const groups = $derived(
@@ -56,6 +57,8 @@
 {:else}
   <!-- Общие сведения -->
   <dl class="facts">
+    {#if d.auto_id}<dt>{t("inspector.auto_id")}</dt>
+      <dd><code>{d.auto_id}</code></dd>{/if}
     <dt>{t("inspector.file")}</dt>
     <dd><code>{d.info.path}</code></dd>
     {#if d.by_id}<dt>{t("inspector.by_id")}</dt>
@@ -87,6 +90,14 @@
         >{/each}
     </div>
   {/if}
+  {#if labeled.length}
+    <h4>{t("inspector.labeled", { count: labeled.length })}</h4>
+    <div class="chips">
+      {#each labeled as k (k.code)}<code title={`${k.kernel} (0x${k.code.toString(16)})`}
+          >{"{" + k.label + "}"}</code
+        >{/each}
+    </div>
+  {/if}
   {#if unnamed.length}
     <h4>{t("inspector.unnamed", { count: unnamed.length })}</h4>
     <p class="muted hint">{t("inspector.unnamed_hint")}</p>
@@ -110,7 +121,7 @@
       <tbody>
         {#each d.axes as a (a.code)}
           <tr>
-            <td>{a.name ?? "—"}</td>
+            <td>{a.name ?? (a.label ? "{" + a.label + "}" : "—")}</td>
             <td><code>{a.kernel}</code></td>
             <td>{a.min} … {a.max}</td>
             <td>{a.flat}</td>
@@ -124,7 +135,9 @@
   {#each groups as [key, list] (key)}
     <h4>{t(key)}</h4>
     <div class="chips">
-      {#each list ?? [] as c (c.code)}<code class="muted">{c.kernel}</code>{/each}
+      {#each list ?? [] as c (c.code)}<code class:muted={!c.label} title={c.kernel}
+          >{c.label ? "{" + c.label + "}" : c.kernel}</code
+        >{/each}
     </div>
   {/each}
 {/if}

@@ -247,7 +247,7 @@ func newDevicesCmd(tr *i18n.Translator) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, tr.T("cli.flag.json"))
-	cmd.AddCommand(newDevicesWatchCmd(tr), newDevicesInspectCmd(tr))
+	cmd.AddCommand(newDevicesWatchCmd(tr), newDevicesInspectCmd(tr), newDevicesAutoIDsCmd(tr))
 	return cmd
 }
 

@@ -1,15 +1,22 @@
 package inspector
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/devmap"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
+	"mkey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.
@@ -19,6 +26,11 @@ const ModuleID = "inspector"
 type Config struct {
 	// InputDir — папка устройств ввода с подпапками by-id и by-path ("" — /dev/input; для тестов).
 	InputDir string `json:"input_dir"`
+	// AutoIDs — каким устройствам давать авто-ID (FR-DEV-2): smart (по умолчанию — всем,
+	// кроме служебных), all или unusual. Меняется в окне («Устройства») и через API.
+	AutoIDs string `json:"auto_ids"`
+	// DevicesFile — файл авто-ID ("" — ~/.config/mkey/devices.yaml).
+	DevicesFile string `json:"devices_file"`
 }
 
 // Module — инспектор устройств (contracts.Inspector).
@@ -28,6 +40,21 @@ type Module struct {
 	cfg Config
 	// input — источник устройств (nil — модуль input отключён: список пуст).
 	input contracts.InputSource
+	// bus — шина (подключение и отключение устройств); events и unsub — подписка на них.
+	bus    contracts.Bus
+	events <-chan contracts.Event
+	unsub  func()
+	done   chan struct{}
+
+	// mu защищает поля ниже.
+	mu sync.Mutex
+	// mode — режим авто-ID; file — содержимое devices.yaml; fileOK — файл прочитан без ошибок
+	// (испорченный файл не перезаписывается, чтобы не потерять правки человека).
+	mode   devmap.Mode
+	file   *devmap.File
+	fileOK bool
+	// bound — авто-ID подключённых устройств по пути ("/dev/input/event9" → "UnKey").
+	bound map[string]string
 }
 
 // New создаёт модуль. Зависимости модуль получает в Init, а не в конструкторе.
@@ -48,17 +75,203 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if m.cfg.InputDir == "" {
 		m.cfg.InputDir = "/dev/input"
 	}
+	if m.cfg.DevicesFile == "" {
+		m.cfg.DevicesFile = filepath.Join(paths.Config(os.Getenv), devmap.FileName)
+	}
 
-	// Источник устройств (без модуля input инспектору нечего показывать, но он не мешает другим).
+	// Режим авто-ID: неверное значение в настройках — по умолчанию и предупреждение в журнале.
+	mode, err := devmap.ParseMode(m.cfg.AutoIDs)
+	if err != nil {
+		m.log.Warn("bad auto_ids setting, using smart", "err", err)
+		mode = devmap.ModeSmart
+	}
+	m.mode, m.bound = mode, map[string]string{}
+
+	// Источник устройств (без модуля input инспектору нечего показывать, но он не мешает другим)
+	// и подписка на подключение и отключение — до Start, чтобы не пропустить устройства.
 	m.input, _ = contracts.LookupService[contracts.InputSource](host.Services())
+	m.bus = host.Bus()
+	m.events, m.unsub = m.bus.Subscribe("input.*")
+
+	// Файл devices.yaml — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceDevices, NameKey: "place.devices", DescriptionKey: "place.devices.description", Provider: ModuleID},
+		P: m.cfg.DevicesFile, N: 25,
+	}); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.Inspector](host.Services(), m)
 }
 
-// Start ничего не делает: сведения собираются по запросу.
-func (m *Module) Start(context.Context) error { return nil }
+// Start читает devices.yaml, раздаёт авто-ID подключённым устройствам и дальше следит
+// за подключениями. Испорченный файл не мешает работе: авто-ID тогда не выдаются и не сохраняются.
+func (m *Module) Start(context.Context) error {
+	// Файл авто-ID.
+	f, err := devmap.Load(m.cfg.DevicesFile)
+	m.mu.Lock()
+	if err != nil {
+		m.log.Warn("devices file is broken: auto-ids are paused until it is fixed", "file", m.cfg.DevicesFile, "err", err)
+		m.file, m.fileOK = &devmap.File{Version: devmap.Version}, false
+	} else {
+		m.file, m.fileOK = f, true
+	}
+	m.mu.Unlock()
 
-// Stop ничего не делает.
-func (m *Module) Stop(context.Context) error { return nil }
+	// Уже подключённые устройства и дальнейшие подключения.
+	m.assignAll()
+	m.done = make(chan struct{})
+	go m.watch()
+	return nil
+}
+
+// Stop прекращает следить за подключениями.
+func (m *Module) Stop(context.Context) error {
+	if m.unsub != nil {
+		m.unsub()
+	}
+	if m.done != nil {
+		<-m.done
+	}
+	return nil
+}
+
+// watch раздаёт авто-ID новым устройствам и забывает отключённые, пока подписка не закрыта.
+func (m *Module) watch() {
+	defer close(m.done)
+	for e := range m.events {
+		d, ok := e.Payload.(contracts.InputDevice)
+		if !ok {
+			continue
+		}
+		switch e.Topic {
+		case contracts.TopicInputDeviceAdded:
+			m.assign([]contracts.InputDevice{d})
+		case contracts.TopicInputDeviceRemoved:
+			m.mu.Lock()
+			delete(m.bound, d.Info.Path)
+			m.mu.Unlock()
+		}
+	}
+}
+
+// assignAll раздаёт авто-ID всем подключённым устройствам.
+func (m *Module) assignAll() {
+	if m.input != nil {
+		m.assign(m.input.Devices())
+	}
+}
+
+// assign узнаёт устройства по devices.yaml (FR-DEV-6) или выдаёт новые авто-ID подходящим
+// под режим (FR-DEV-2) и сохраняет файл, если он изменился.
+func (m *Module) assign(devs []contracts.InputDevice) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.fileOK {
+		return
+	}
+	links := ev.ReadLinks(m.cfg.InputDir)
+
+	// Занятые записи — уже узнанные подключённые устройства.
+	busy := map[string]bool{}
+	for _, id := range m.bound {
+		busy[id] = true
+	}
+
+	// Порядок — по номеру устройства (event3 раньше event10): первые имена — первым устройствам.
+	devs = slices.Clone(devs)
+	slices.SortStableFunc(devs, func(a, b contracts.InputDevice) int {
+		return cmp.Or(cmp.Compare(eventNumber(a.Info.Path), eventNumber(b.Info.Path)), cmp.Compare(a.Info.Path, b.Info.Path))
+	})
+
+	changed, bound := false, false
+	for _, d := range devs {
+		if m.bound[d.Info.Path] != "" {
+			continue
+		}
+		match := devmap.MatchOf(d.Info, links[d.Info.Path])
+
+		// Знакомое устройство: новые кнопки — следующими номерами, порт — текущий.
+		if rec := m.file.Find(match, busy); rec != nil {
+			if rec.Update(d.Info, d.Kinds) || rec.Match != match {
+				rec.Match = match
+				changed = true
+			}
+			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
+			bound = true
+			continue
+		}
+
+		// Новое устройство, подходящее под режим, — очередной авто-ID.
+		if devmap.Qualifies(m.mode, d.Info.Caps, d.Kinds) {
+			rec := m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
+			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
+			m.log.Info("auto-id assigned", "device", d.Info.Name, "path", d.Info.Path, "id", rec.AutoID)
+			changed, bound = true, true
+		}
+	}
+
+	// Сохраняем изменения и сообщаем окну, что у устройств появились имена.
+	if changed {
+		if err := devmap.Save(m.cfg.DevicesFile, m.file); err != nil {
+			m.log.Warn("cannot save devices file", "file", m.cfg.DevicesFile, "err", err)
+		}
+	}
+	if bound && m.bus != nil {
+		m.bus.Publish(contracts.TopicAutoIDsChanged, nil)
+	}
+}
+
+// eventNumber возвращает номер N из пути ".../eventN" (-1 — путь другого вида).
+func eventNumber(path string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(filepath.Base(path), "event"))
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+// Label возвращает авто-ID кнопки или оси для макросов (contracts.Inspector).
+func (m *Module) Label(path string, typ, code uint16) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.labelLocked(path, typ, code)
+}
+
+// labelLocked — Label под удерживаемым m.mu.
+func (m *Module) labelLocked(path string, typ, code uint16) string {
+	id := m.bound[path]
+	if id == "" || m.file == nil {
+		return ""
+	}
+	rec := m.file.Lookup(id)
+	if rec == nil {
+		return ""
+	}
+	if n := rec.Label(typ, code); n != "" {
+		return devmap.Ref(id, n)
+	}
+	return ""
+}
+
+// AutoIDMode возвращает режим авто-ID (contracts.Inspector).
+func (m *Module) AutoIDMode() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return string(m.mode)
+}
+
+// SetAutoIDMode меняет режим и сразу раздаёт имена подходящим устройствам (contracts.Inspector).
+func (m *Module) SetAutoIDMode(mode string) error {
+	md, err := devmap.ParseMode(mode)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.mode = md
+	m.mu.Unlock()
+	m.assignAll()
+	return nil
+}
 
 // Devices возвращает сведения обо всех открытых устройствах (contracts.Inspector).
 func (m *Module) Devices() []contracts.DeviceDetails {
@@ -68,8 +281,27 @@ func (m *Module) Devices() []contracts.DeviceDetails {
 	links := ev.ReadLinks(m.cfg.InputDir)
 	devs := m.input.Devices()
 	out := make([]contracts.DeviceDetails, 0, len(devs))
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, d := range devs {
-		out = append(out, details(d, links[d.Info.Path]))
+		dd := details(d, links[d.Info.Path])
+
+		// Авто-ID устройства и его кнопок и осей без стандартного имени.
+		dd.AutoID = m.bound[d.Info.Path]
+		if dd.AutoID != "" {
+			for _, list := range []struct {
+				typ uint16
+				c   []contracts.DeviceControl
+			}{{ev.EvKey, dd.Keys}, {ev.EvRel, dd.Rel}} {
+				for i := range list.c {
+					list.c[i].Label = m.labelLocked(d.Info.Path, list.typ, list.c[i].Code)
+				}
+			}
+			for i := range dd.Axes {
+				dd.Axes[i].Label = m.labelLocked(d.Info.Path, ev.EvAbs, dd.Axes[i].Code)
+			}
+		}
+		out = append(out, dd)
 	}
 	return out
 }

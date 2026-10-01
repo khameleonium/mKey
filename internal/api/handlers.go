@@ -27,6 +27,8 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("GET /api/v1/status", m.handleStatus)
 	mux.HandleFunc("GET /api/v1/devices", m.handleDevices)
 	mux.HandleFunc("GET /api/v1/devices/inspect", m.handleDeviceInspect)
+	mux.HandleFunc("GET /api/v1/settings/devices", m.handleDeviceSettingsGet)
+	mux.HandleFunc("PUT /api/v1/settings/devices", m.handleDeviceSettingsPut)
 	mux.HandleFunc("GET /api/v1/doctor", m.handleDoctor)
 	mux.HandleFunc("GET /api/v1/layouts", m.handleLayouts)
 
@@ -119,13 +121,25 @@ func (m *Module) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// handleDevices возвращает физические устройства ввода.
+// handleDevices возвращает физические устройства ввода и их авто-ID (если работает инспектор).
 func (m *Module) handleDevices(w http.ResponseWriter, r *http.Request) {
 	if m.svc.input == nil {
 		m.unavailable(w, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.input.Devices(), "status": m.svc.input.Status()})
+	resp := map[string]any{"devices": m.svc.input.Devices(), "status": m.svc.input.Status()}
+
+	// Авто-ID устройств (UnKey…, FR-DEV-2) по пути — если инспектор работает.
+	if m.svc.inspect != nil {
+		ids := map[string]string{}
+		for _, d := range m.svc.inspect.Devices() {
+			if d.AutoID != "" {
+				ids[d.Info.Path] = d.AutoID
+			}
+		}
+		resp["auto_ids"] = ids
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleDeviceInspect возвращает подробности устройства (?ref= путь, event6, постоянное имя

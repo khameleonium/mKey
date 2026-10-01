@@ -92,6 +92,21 @@ func TestNames(t *testing.T) {
 		t.Errorf("CodeName(EV_SND 0x50) = %q", got)
 	}
 
+	// Разбор имён: каноническое имя, отдача, шестнадцатеричный код; неизвестное — нет.
+	for _, c := range []struct {
+		t    uint16
+		name string
+		code uint16
+		ok   bool
+	}{
+		{EvKey, "KEY_CALC", 0x8c, true}, {EvKey, "BTN_TRIGGER_HAPPY3", 0x2c2, true}, {EvFf, "FF_RUMBLE", 0x50, true},
+		{EvAbs, "ABS_X", 0, true}, {EvKey, "0x2c2", 0x2c2, true}, {EvKey, "KEY_NOPE", 0, false}, {EvKey, "0xzz", 0, false},
+	} {
+		if code, ok := ParseCode(c.t, c.name); code != c.code || ok != c.ok {
+			t.Errorf("ParseCode(%q) = %#x, %v", c.name, code, ok)
+		}
+	}
+
 	// Шины: известные — словом, неизвестные — кодом.
 	if BusName(0x03) != "USB" || BusName(0x11) != "i8042" || BusName(0x42) != "0x42" {
 		t.Errorf("BusName = %q %q %q", BusName(0x03), BusName(0x11), BusName(0x42))
