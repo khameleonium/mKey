@@ -180,7 +180,37 @@ export interface InputDevice {
   kinds: string[];
 }
 
-/** Запись ввода (GET /recordings). */
+/** Кнопка, ось или индикатор устройства: код, имя ядра, имя для макросов (если есть). */
+export interface DeviceControl {
+  code: number;
+  kernel: string;
+  name?: string;
+}
+
+/** Абсолютная ось с диапазоном. */
+export interface DeviceAxis extends DeviceControl {
+  min: number;
+  max: number;
+  fuzz: number;
+  flat: number;
+  resolution: number;
+}
+
+/** Подробности устройства (GET /devices/inspect, FR-DEV-1). */
+export interface DeviceDetails extends InputDevice {
+  info: InputDevice["info"] & { uniq?: string };
+  by_id?: string;
+  by_path?: string;
+  bus: string;
+  keys?: DeviceControl[];
+  rel?: DeviceControl[];
+  axes?: DeviceAxis[];
+  switches?: DeviceControl[];
+  leds?: DeviceControl[];
+  ff?: DeviceControl[];
+  props?: string[];
+}
+
 /** Место на диске, где mKey хранит файлы пользователя (GET /places, «Где что лежит»). */
 export interface PlaceInfo {
   /** Идентификатор: config, projects, recordings, lua_scripts, shell_scripts, log…;
@@ -198,6 +228,7 @@ export interface PlaceInfo {
   exists: boolean;
 }
 
+/** Запись ввода (GET /recordings). */
 export interface RecordingInfo {
   name: string;
   path: string;

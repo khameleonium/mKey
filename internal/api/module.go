@@ -96,6 +96,7 @@ type services struct {
 	convert  contracts.ActionConverter
 	recorder contracts.Recorder
 	player   contracts.Player
+	inspect  contracts.Inspector
 	ext      contracts.ExtensionRegistry
 }
 
@@ -140,6 +141,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		convert:  lookup[contracts.ActionConverter](s),
 		recorder: lookup[contracts.Recorder](s),
 		player:   lookup[contracts.Player](s),
+		inspect:  lookup[contracts.Inspector](s),
 		ext:      host.Extensions(),
 	}
 

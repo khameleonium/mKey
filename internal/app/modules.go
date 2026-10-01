@@ -6,6 +6,7 @@ import (
 	"mkey/internal/engine"
 	"mkey/internal/hotkeys"
 	"mkey/internal/input"
+	"mkey/internal/inspector"
 	"mkey/internal/output"
 	"mkey/internal/platform"
 	"mkey/internal/recorder"
@@ -49,9 +50,12 @@ func Modules() []registry.Entry {
 		{Module: recorder.New(), Core: false},
 		// Диагностика и настройка.
 		{Module: setup.New(), Core: false},
+		// Инспектор устройств: подробные сведения об устройствах ввода (нужен input).
+		{Module: inspector.New(), Core: false},
+		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой
+		// (до API: API получает сервисы модулей при запуске).
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.
 		{Module: api.New(webFS()), Core: true},
-		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой.
 	}
 	return append(list, guiModules()...)
 }

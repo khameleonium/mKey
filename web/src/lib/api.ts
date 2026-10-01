@@ -6,6 +6,7 @@ import type {
   Action,
   ApiErrorBody,
   CapturedKey,
+  DeviceDetails,
   PlaceInfo,
   RecordingInfo,
   DoctorCheck,
@@ -81,6 +82,8 @@ export const api = {
   doctorFix: () =>
     request<{ ok?: boolean; method?: string; manual_command?: string }>("POST", "/doctor/fix", {}),
   devices: () => request<{ devices: InputDevice[] }>("GET", "/devices"),
+  inspectDevice: (ref: string) =>
+    request<{ device: DeviceDetails }>("GET", `/devices/inspect?ref=${enc(ref)}`),
   registry: () => request<Registry>("GET", "/registry"),
   places: () => request<{ places: PlaceInfo[] }>("GET", "/places"),
   logs: (lines: number) => request<{ lines: string[] }>("GET", `/logs?lines=${lines}`),

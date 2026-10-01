@@ -83,6 +83,19 @@ func TestNames(t *testing.T) {
 	if got := PropName(InputPropDirect); got != "INPUT_PROP_DIRECT" {
 		t.Errorf("PropName = %q", got)
 	}
+
+	// Отдача — по своей таблице (её нет в input-event-codes.h); тот же код другого типа — не отдача.
+	if got := CodeName(EvFf, 0x50); got != "FF_RUMBLE" {
+		t.Errorf("CodeName(FF_RUMBLE) = %q", got)
+	}
+	if got := CodeName(EvSnd, 0x50); got == "FF_RUMBLE" {
+		t.Errorf("CodeName(EV_SND 0x50) = %q", got)
+	}
+
+	// Шины: известные — словом, неизвестные — кодом.
+	if BusName(0x03) != "USB" || BusName(0x11) != "i8042" || BusName(0x42) != "0x42" {
+		t.Errorf("BusName = %q %q %q", BusName(0x03), BusName(0x11), BusName(0x42))
+	}
 }
 
 // TestBitsToCodes проверяет разбор битовой маски ядра.

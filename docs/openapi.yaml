@@ -122,6 +122,15 @@ paths:
                   devices: { type: array, items: { type: object } }
                   status: { $ref: "#/components/schemas/InputStatus" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/v1/devices/inspect:
+    get:
+      summary: "Подробности устройства (?ref= путь, eventN, постоянное имя by-id/by-path или часть названия): {device: DeviceDetails} — постоянные имена, шина, кнопки с именами mKey и ядра, оси с диапазонами, колёса, переключатели, индикаторы, отдача, свойства"
+      parameters: [ { name: ref, in: query, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: "{device}" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { description: "api.device_ambiguous: подходит несколько устройств; details.candidates — [{path, name}]" }
+        "503": { $ref: "#/components/responses/Error" }
   /api/v1/doctor:
     get:
       summary: Диагностика окружения (сообщения на языке клиента)

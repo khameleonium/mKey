@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +26,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 	// Состояние и сведения.
 	mux.HandleFunc("GET /api/v1/status", m.handleStatus)
 	mux.HandleFunc("GET /api/v1/devices", m.handleDevices)
+	mux.HandleFunc("GET /api/v1/devices/inspect", m.handleDeviceInspect)
 	mux.HandleFunc("GET /api/v1/doctor", m.handleDoctor)
 	mux.HandleFunc("GET /api/v1/layouts", m.handleLayouts)
 
@@ -123,6 +126,47 @@ func (m *Module) handleDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.input.Devices(), "status": m.svc.input.Status()})
+}
+
+// handleDeviceInspect возвращает подробности устройства (?ref= путь, event6, постоянное имя
+// или часть названия, FR-DEV-1): {device}. Не нашлось — 404 api.device_not_found;
+// подходит несколько — 409 api.device_ambiguous со списком {path, name} в details.candidates.
+func (m *Module) handleDeviceInspect(w http.ResponseWriter, r *http.Request) {
+	if m.svc.inspect == nil {
+		m.unavailable(w, r)
+		return
+	}
+	ref := r.URL.Query().Get("ref")
+	found := m.svc.inspect.Find(ref)
+	switch len(found) {
+	case 0:
+		m.writeError(w, r, http.StatusNotFound, "api.device_not_found", map[string]string{"ref": ref})
+	case 1:
+		writeJSON(w, http.StatusOK, map[string]any{"device": found[0]})
+	default:
+		// Несколько: перечисляем, чтобы человек выбрал точнее.
+		type candidate struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		tr := m.translator(r)
+		list := make([]candidate, 0, len(found))
+		lines := make([]string, 0, len(found))
+		for _, d := range found {
+			list = append(list, candidate{Path: d.Info.Path, Name: d.Info.Name})
+			kinds := make([]string, 0, len(d.Kinds))
+			for _, k := range d.Kinds {
+				kinds = append(kinds, tr.T("device.kind."+string(k)))
+			}
+			line := fmt.Sprintf("  %-8s %s", filepath.Base(d.Info.Path), d.Info.Name)
+			if len(kinds) > 0 {
+				line += " (" + strings.Join(kinds, ", ") + ")"
+			}
+			lines = append(lines, line)
+		}
+		m.writeErrorDetails(w, r, http.StatusConflict, "api.device_ambiguous",
+			map[string]string{"ref": ref, "list": strings.Join(lines, "\n")}, map[string]any{"candidates": list})
+	}
 }
 
 // doctorCheck — проверка с уже переведённым сообщением.

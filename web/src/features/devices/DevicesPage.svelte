@@ -12,9 +12,12 @@
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
   import type { InputDevice } from "../../lib/types";
+  import DeviceDetails from "../inspector/DeviceDetails.svelte";
 
   /** Данные страницы. */
   let devices = $state<InputDevice[]>([]);
+  /** opened — устройства, у которых раскрыто «Подробнее» (подробности загружаются только для них). */
+  let opened = $state<Record<string, boolean>>({});
   let denied = $state<string[]>([]);
   /** Запись журнала монитора (как её присылает GET /api/v1/input/watch). */
   interface WatchEntry {
@@ -121,11 +124,6 @@
     );
     return () => offs.forEach((off) => off());
   });
-
-  /** hex4 записывает число как 4 шестнадцатеричные цифры (VID:PID). */
-  function hex4(n: number): string {
-    return n.toString(16).padStart(4, "0");
-  }
 </script>
 
 <h1>{t("devices.title")}</h1>
@@ -166,17 +164,16 @@
 <!-- Список устройств -->
 <div class="list">
   {#each devices as d (d.info.path)}
-    <div class="card dev">
+    <div class="card device" class:wide={opened[d.info.path]}>
       <b>{d.info.name}</b>
       <span class="kinds">
         {#each d.kinds as k (k)}<span class="tag">{t("devices.kind." + k)}</span>{/each}
       </span>
-      <details>
+      <details ontoggle={(e) => (opened[d.info.path] = e.currentTarget.open)}>
         <summary class="muted">{t("common.more")}</summary>
-        <div class="muted small">
-          {d.info.path} · VID:PID {hex4(d.info.id.vendor)}:{hex4(d.info.id.product)}
-          {#if d.info.phys}· {d.info.phys}{/if}
-        </div>
+        {#if opened[d.info.path]}
+          <DeviceDetails path={d.info.path} />
+        {/if}
       </details>
     </div>
   {/each}
@@ -235,11 +232,16 @@
     gap: 10px;
     margin-top: 12px;
   }
-  .dev {
+  .device {
     display: flex;
     flex-direction: column;
     gap: 6px;
     padding: 12px;
+    min-width: 0;
+  }
+  /* Раскрытые подробности занимают всю ширину: в них много кнопок и таблица осей. */
+  .device.wide {
+    grid-column: 1 / -1;
   }
   .kinds {
     display: flex;
@@ -251,10 +253,6 @@
     padding: 1px 8px;
     border-radius: 10px;
     background: var(--accent-soft);
-  }
-  .small {
-    font-size: 0.82rem;
-    word-break: break-all;
   }
   summary {
     cursor: pointer;

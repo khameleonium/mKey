@@ -107,7 +107,33 @@ func CodeName(t, code uint16) string {
 	if n, ok := codeNames[typeGroups[t]][code]; ok {
 		return n
 	}
+	if n, ok := ffNames[code]; ok && t == EvFf {
+		return n
+	}
 	return fmt.Sprintf("0x%x", code)
+}
+
+// ffNames — виды отдачи (force feedback) из linux/input.h: их нет в input-event-codes.h,
+// по которому генерируется таблица codeNames.
+var ffNames = map[uint16]string{
+	0x50: "FF_RUMBLE", 0x51: "FF_PERIODIC", 0x52: "FF_CONSTANT", 0x53: "FF_SPRING", 0x54: "FF_FRICTION",
+	0x55: "FF_DAMPER", 0x56: "FF_INERTIA", 0x57: "FF_RAMP", 0x58: "FF_SQUARE", 0x59: "FF_TRIANGLE",
+	0x5a: "FF_SINE", 0x5b: "FF_SAW_UP", 0x5c: "FF_SAW_DOWN", 0x5d: "FF_CUSTOM", 0x60: "FF_GAIN", 0x61: "FF_AUTOCENTER",
+}
+
+// busNames — шины подключения устройств (BUS_* из linux/input.h), коротко и понятно.
+var busNames = map[uint16]string{
+	0x01: "PCI", 0x03: "USB", 0x05: "Bluetooth", 0x06: "virtual", 0x10: "ISA", 0x11: "i8042",
+	0x18: "I2C", 0x19: "host", 0x1c: "SPI",
+}
+
+// BusName возвращает название шины подключения ("USB", "Bluetooth", "i8042" — встроенная
+// клавиатура ноутбука) или шестнадцатеричный код, если шина неизвестна.
+func BusName(b uint16) string {
+	if n, ok := busNames[b]; ok {
+		return n
+	}
+	return fmt.Sprintf("0x%02x", b)
 }
 
 // PropName возвращает имя свойства устройства INPUT_PROP_*.
