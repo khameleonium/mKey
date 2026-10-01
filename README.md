@@ -1,24 +1,24 @@
 # mKey
 
-**Макросы клавиатуры и мыши для Linux — как AutoHotKey, но для X11 и Wayland.**
+**Макросы клавиатуры и мыши для Linux.**
 
 mKey нажимает клавиши и кнопки за вас: по горячей клавише, по таймеру, по набранному слову
 или по другому событию. Умеет записывать ваши действия (например, в игре) и повторять их
-одной командой. Работает в любом окружении — KDE, GNOME, Sway, Hyprland, X11 — потому что
-общается с устройствами ввода напрямую, через ядро Linux (evdev/uinput).
+одной командой. Работает в любой графической среде Linux, потому что общается с устройствами
+ввода напрямую, через ядро Linux (evdev/uinput).
 
 > Проект в активной разработке. Готовы этапы 0–6 из плана ([SPEC.md](SPEC.md) §13):
 > ядро ввода/вывода, язык макросов, горячие клавиши и события, установка, окно программы
-> с конструктором, запись и воспроизведение. Проверено на Linux Mint 22.3 (KDE, Wayland).
+> с конструктором, запись и воспроизведение.
 
-*English summary: mKey is an input macro tool for Linux (an AutoHotKey analogue) that works on
-X11 and Wayland via evdev/uinput. Hotkeys, hotstrings, timers, a macro language, Lua and bash
+*English summary: mKey is a keyboard and mouse macro tool for Linux that works in any graphical
+session via evdev/uinput. Hotkeys, hotstrings, timers, a macro language, Lua and bash
 actions, a web GUI with a drag-and-drop event builder, and input recording/playback. Single
 static Go binary, MIT license. Documentation is in Russian.*
 
 ## Что умеет
 
-- **Горячие клавиши и события** в духе Construct 3: «Когда …» → «Делать …». Триггеры:
+- **Горячие клавиши и события**: «Когда …» → «Делать …». Триггеры:
   сочетание клавиш (нажатие, удержание, двойное нажатие, переключатель), последовательность
   клавиш, набранное слово с заменой, таймер, подключение устройства, запуск вручную.
 - **Язык макросов** с явными именами клавиш:
@@ -34,8 +34,8 @@ static Go binary, MIT license. Documentation is in Russian.*
 - **Безопасность**: экстренная остановка **Esc + Backspace + Enter** одновременно останавливает
   всё и отпускает все клавиши; сторожевой таймер снимает перехват клавиатуры при зависании.
 - **Установка одной командой** с объяснением каждого шага и **удаление без следов**
-  (`mkey uninstall`, с сохранением настроек или полностью). Поддерживаются системы
-  без systemd (Void, Alpine, Artix, Devuan…).
+  (`mkey uninstall`, с сохранением настроек или полностью). Работает с любой системой
+  запуска служб.
 - **Две версии**: полная `mkey` (с окном и значком в трее) и консольная `mkey-cli`
   (только терминал).
 
