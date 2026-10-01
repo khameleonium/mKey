@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"go.yaml.in/yaml/v3"
 
@@ -70,8 +71,9 @@ func ParseMode(s string) (Mode, error) {
 
 // File — содержимое devices.yaml.
 type File struct {
-	Version int      `yaml:"version"`
-	Devices []Device `yaml:"devices"`
+	Version int `yaml:"version"`
+	// Devices — указатели: ссылки на устройства (из Add, Find, Lookup) не устаревают при добавлении новых.
+	Devices []*Device `yaml:"devices"`
 }
 
 // Device — устройство с авто-ID.
@@ -111,6 +113,150 @@ const fileHeader = `# Устройства mKey: автоматические и
 # В макросах: {UnKey001} — кнопка 001 устройства UnKey, {UnKey2.001} — устройства UnKey2.
 # Файл ведёт mKey; имена, которые здесь есть, работают всегда (и после переименования).
 `
+
+// Виды ошибок в имени (NameError.Code): по ним API пишет понятное сообщение.
+const (
+	// NameChars — имя не по правилам: буквы, цифры и «_», начинается с буквы.
+	NameChars = "chars"
+	// NameKey — имя совпадает со стандартным именем клавиши ({Enter} — это клавиша, а не устройство).
+	NameKey = "key"
+	// NameAuto — имя похоже на авто-ID (UnKey5): его легко спутать с другим устройством.
+	NameAuto = "auto"
+	// NameTaken — имя уже занято другим устройством или другой кнопкой этого устройства (Other).
+	NameTaken = "taken"
+	// NameUnknown — нет такого устройства или такой кнопки (Name).
+	NameUnknown = "unknown"
+	// NameAmbiguous — под описание подходит несколько устройств (Other — их список).
+	NameAmbiguous = "ambiguous"
+)
+
+// NameError — имя нельзя дать: Code — вид ошибки, Name — имя, Other — кем занято.
+type NameError struct {
+	Code  string
+	Name  string
+	Other string
+}
+
+// Error описывает ошибку по-английски (для журнала).
+func (e *NameError) Error() string {
+	msg := "name " + strconv.Quote(e.Name) + ": " + e.Code
+	if e.Other != "" {
+		msg += " (" + e.Other + ")"
+	}
+	return msg
+}
+
+// autoLikeRe — имена, похожие на авто-ID: UnKey, UnKey2… (без учёта регистра).
+var autoLikeRe = regexp.MustCompile(`(?i)^unkey[0-9]*$`)
+
+// checkName проверяет имя по правилам (FR-DEV-3): буквы (любого алфавита), цифры и «_»,
+// начинается с буквы.
+func checkName(name string) error {
+	for i, r := range name {
+		ok := unicode.IsLetter(r) || r == '_' || (i > 0 && unicode.IsDigit(r))
+		if !ok || (i == 0 && r == '_') {
+			return &NameError{Code: NameChars, Name: name}
+		}
+	}
+	if name == "" {
+		return &NameError{Code: NameChars, Name: name}
+	}
+	return nil
+}
+
+// SetDeviceName даёт устройству autoID имя name ("" — убрать имя; авто-ID работает всегда).
+// Имя не должно совпадать со стандартной клавишей, походить на авто-ID и быть занятым другим
+// устройством (без учёта регистра). Ошибка — *NameError.
+func (f *File) SetDeviceName(autoID, name string) error {
+	d := f.Lookup(autoID)
+	if d == nil {
+		return &NameError{Code: NameUnknown, Name: autoID}
+	}
+	if name == "" {
+		d.Name = ""
+		return nil
+	}
+
+	// Правила имени.
+	if err := checkName(name); err != nil {
+		return err
+	}
+	if _, ok := keys.Lookup(name); ok {
+		return &NameError{Code: NameKey, Name: name}
+	}
+	if autoLikeRe.MatchString(name) {
+		return &NameError{Code: NameAuto, Name: name}
+	}
+
+	// Не занято другим устройством (ни именем, ни авто-ID).
+	if other := f.Lookup(name); other != nil && other != d {
+		return &NameError{Code: NameTaken, Name: name, Other: other.AutoID}
+	}
+	d.Name = name
+	return nil
+}
+
+// SetButtonName даёт кнопке или оси устройства имя name ("" — убрать имя; номер работает всегда).
+// control — номер ("001", "Axis01") или текущее имя. Имя уникально в пределах устройства.
+// Ошибка — *NameError.
+func (d *Device) SetButtonName(control, name string) error {
+	// Кнопка или ось — по номеру или имени.
+	m, key := d.findControl(control)
+	if m == nil {
+		return &NameError{Code: NameUnknown, Name: control}
+	}
+	c := m[key]
+	if name == "" {
+		c.Name = ""
+		m[key] = c
+		return nil
+	}
+
+	// Правила имени и уникальность в устройстве.
+	if err := checkName(name); err != nil {
+		return err
+	}
+	for _, mm := range []map[string]Control{d.Buttons, d.Axes} {
+		for k, other := range mm {
+			if k != key && strings.EqualFold(other.Name, name) {
+				return &NameError{Code: NameTaken, Name: name, Other: k}
+			}
+		}
+	}
+	c.Name = name
+	m[key] = c
+	return nil
+}
+
+// findControl ищет кнопку или ось по номеру или имени (без учёта регистра): карта и ключ в ней.
+func (d *Device) findControl(control string) (map[string]Control, string) {
+	for _, m := range []map[string]Control{d.Buttons, d.Axes} {
+		for k, c := range m {
+			if strings.EqualFold(k, control) || (c.Name != "" && strings.EqualFold(c.Name, control)) {
+				return m, k
+			}
+		}
+	}
+	return nil, ""
+}
+
+// Display — имя устройства для показа и макросов: имя человека, иначе авто-ID.
+func (d *Device) Display() string {
+	if d.Name != "" {
+		return d.Name
+	}
+	return d.AutoID
+}
+
+// ControlDisplay — имя кнопки или оси key для показа: имя человека, иначе номер.
+func (d *Device) ControlDisplay(key string) string {
+	for _, m := range []map[string]Control{d.Buttons, d.Axes} {
+		if c, ok := m[key]; ok && c.Name != "" {
+			return c.Name
+		}
+	}
+	return key
+}
 
 // Ref — имя кнопки или оси для макросов (без фигурных скобок): у первого устройства (UnKey)
 // кнопка пишется слитно — UnKey001; у остальных и у осей — через точку: UnKey2.001, UnKey.Axis01.
@@ -217,8 +363,7 @@ func MatchOf(info ev.Info, links ev.Links) Match {
 func (f *File) Find(m Match, busy map[string]bool) *Device {
 	// Кандидаты: та же модель, версия и название, запись не занята другим устройством.
 	var cands []*Device
-	for i := range f.Devices {
-		d := &f.Devices[i]
+	for _, d := range f.Devices {
 		dm := d.Match
 		if dm.Vid == m.Vid && dm.Pid == m.Pid && dm.Name == m.Name && (dm.Version == "" || dm.Version == m.Version) && !busy[d.AutoID] {
 			cands = append(cands, d)
@@ -254,8 +399,7 @@ func (f *File) Find(m Match, busy map[string]bool) *Device {
 
 // Lookup ищет устройство по авто-ID или имени (без учёта регистра).
 func (f *File) Lookup(name string) *Device {
-	for i := range f.Devices {
-		d := &f.Devices[i]
+	for _, d := range f.Devices {
 		if strings.EqualFold(d.AutoID, name) || (d.Name != "" && strings.EqualFold(d.Name, name)) {
 			return d
 		}
@@ -265,8 +409,8 @@ func (f *File) Lookup(name string) *Device {
 
 // Add добавляет новое устройство с очередным авто-ID и номерами его кнопок и осей.
 func (f *File) Add(info ev.Info, kinds []ev.Kind, links ev.Links) *Device {
-	f.Devices = append(f.Devices, Device{AutoID: f.nextAutoID(), Match: MatchOf(info, links)})
-	d := &f.Devices[len(f.Devices)-1]
+	d := &Device{AutoID: f.nextAutoID(), Match: MatchOf(info, links)}
+	f.Devices = append(f.Devices, d)
 	d.Update(info, kinds)
 	return d
 }

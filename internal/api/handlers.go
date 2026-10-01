@@ -27,6 +27,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("GET /api/v1/status", m.handleStatus)
 	mux.HandleFunc("GET /api/v1/devices", m.handleDevices)
 	mux.HandleFunc("GET /api/v1/devices/inspect", m.handleDeviceInspect)
+	mux.HandleFunc("POST /api/v1/devices/rename", m.handleDeviceRename)
 	mux.HandleFunc("GET /api/v1/settings/devices", m.handleDeviceSettingsGet)
 	mux.HandleFunc("PUT /api/v1/settings/devices", m.handleDeviceSettingsPut)
 	mux.HandleFunc("GET /api/v1/doctor", m.handleDoctor)
@@ -129,11 +130,15 @@ func (m *Module) handleDevices(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := map[string]any{"devices": m.svc.input.Devices(), "status": m.svc.input.Status()}
 
-	// Авто-ID устройств (UnKey…, FR-DEV-2) по пути — если инспектор работает.
+	// Имена устройств для макросов по пути — имя человека или авто-ID (UnKey…, FR-DEV-2, -3),
+	// если инспектор работает.
 	if m.svc.inspect != nil {
 		ids := map[string]string{}
 		for _, d := range m.svc.inspect.Devices() {
-			if d.AutoID != "" {
+			switch {
+			case d.DeviceName != "":
+				ids[d.Info.Path] = d.DeviceName
+			case d.AutoID != "":
 				ids[d.Info.Path] = d.AutoID
 			}
 		}

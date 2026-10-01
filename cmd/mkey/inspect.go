@@ -67,6 +67,7 @@ func printDevice(out io.Writer, tr *i18n.Translator, d contracts.DeviceDetails) 
 		kinds = append(kinds, tr.T("device.kind."+string(k)))
 	}
 	field("cli.inspect.kind", strings.Join(kinds, ", "))
+	field("cli.inspect.name", d.DeviceName)
 	field("cli.inspect.auto_id", d.AutoID)
 	field("cli.inspect.file", d.Info.Path)
 	field("cli.inspect.by_id", d.ByID)
@@ -195,4 +196,51 @@ func newDevicesAutoIDsCmd(tr *i18n.Translator) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newDevicesRenameCmd создаёт команду `mkey devices rename <устройство> <имя> [--button N] [--clear]`:
+// имя устройства или его кнопки для макросов (FR-DEV-3). Старые имена (UnKey001) работают всегда.
+func newDevicesRenameCmd(tr *i18n.Translator) *cobra.Command {
+	var button string
+	var clear bool
+	cmd := &cobra.Command{
+		Use:   "rename <устройство> [имя]",
+		Short: tr.T("cli.rename.short"),
+		Long:  tr.T("cli.rename.long"),
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Новое имя или его сброс (--clear) — что-то одно.
+			name := ""
+			switch {
+			case clear && len(args) == 2, !clear && len(args) == 1:
+				return userError(tr.T("cli.rename.need_name"))
+			case !clear:
+				name = args[1]
+			}
+
+			// Переименование у демона.
+			c, err := daemonClient(cmd, tr)
+			if err != nil {
+				return err
+			}
+			req := map[string]string{"device": args[0], "control": button, "name": name}
+			if err := c.do(cmd.Context(), "POST", "/api/v1/devices/rename", req, nil); err != nil {
+				return userError(formatAPIError(tr, err, ""))
+			}
+
+			// Итог: как теперь писать в макросах.
+			key := "cli.rename.device_done"
+			if button != "" {
+				key = "cli.rename.button_done"
+			}
+			if clear {
+				key += "_clear"
+			}
+			printf(cmd.OutOrStdout(), "%s\n", tr.T(key, i18n.A("device", args[0]), i18n.A("button", button), i18n.A("name", name)))
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&button, "button", "", tr.T("cli.rename.flag.button"))
+	cmd.Flags().BoolVar(&clear, "clear", false, tr.T("cli.rename.flag.clear"))
+	return cmd
 }

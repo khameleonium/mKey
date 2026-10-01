@@ -246,14 +246,14 @@ func (m *Module) ResolveKey(device, button string) (contracts.DeviceKey, error) 
 		return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownDevice, "device", device)
 	}
 	key := func(code uint16, name string) contracts.DeviceKey {
-		return contracts.DeviceKey{Key: keys.Key{Name: devmap.Ref(rec.AutoID, name), Type: ev.EvKey, Code: code}, Device: rec.AutoID}
+		return contracts.DeviceKey{Key: keys.Key{Name: devmap.Ref(rec.Display(), name), Type: ev.EvKey, Code: code}, Device: rec.AutoID}
 	}
 
 	// Номер кнопки или её имя, данное человеком.
 	for num, c := range rec.Buttons {
 		if num == button || (c.Name != "" && strings.EqualFold(c.Name, button)) {
 			if code, ok := ev.ParseCode(ev.EvKey, c.Code); ok {
-				return key(code, num), nil
+				return key(code, rec.ControlDisplay(num)), nil
 			}
 		}
 	}
@@ -281,20 +281,95 @@ func (m *Module) Label(path string, typ, code uint16) string {
 	return m.labelLocked(path, typ, code)
 }
 
-// labelLocked — Label под удерживаемым m.mu.
-func (m *Module) labelLocked(path string, typ, code uint16) string {
+// fillControl дописывает кнопке или оси номер, имя человека и имя для макросов из записи устройства.
+func fillControl(c *contracts.DeviceControl, rec *devmap.Device, typ uint16, label string) {
+	c.Number = rec.Label(typ, c.Code)
+	if c.Number != "" {
+		if name := rec.ControlDisplay(c.Number); name != c.Number {
+			c.CustomName = name
+		}
+	}
+	c.Label = label
+}
+
+// recordLocked — запись devices.yaml подключённого устройства (nil — у него нет авто-ID); под m.mu.
+func (m *Module) recordLocked(path string) *devmap.Device {
 	id := m.bound[path]
 	if id == "" || m.file == nil {
-		return ""
+		return nil
 	}
-	rec := m.file.Lookup(id)
+	return m.file.Lookup(id)
+}
+
+// labelLocked — Label под удерживаемым m.mu: имя устройства и кнопки, если их дал человек
+// ({Sega.Start}), иначе авто-ID и номер ({UnKey001}).
+func (m *Module) labelLocked(path string, typ, code uint16) string {
+	rec := m.recordLocked(path)
 	if rec == nil {
 		return ""
 	}
 	if n := rec.Label(typ, code); n != "" {
-		return devmap.Ref(id, n)
+		return devmap.Ref(rec.Display(), rec.ControlDisplay(n))
 	}
 	return ""
+}
+
+// Rename даёт имя устройству или его кнопке и сохраняет devices.yaml (contracts.Inspector).
+func (m *Module) Rename(device, control, name string) error {
+	name = strings.TrimSpace(name)
+
+	// Подключённое устройство по пути, eventN или части названия (сведения — до блокировки).
+	found := m.Find(device)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.fileOK {
+		return fmt.Errorf("devices file is broken: %s", m.cfg.DevicesFile)
+	}
+
+	// Запись: по авто-ID или имени; иначе — подключённое устройство (без авто-ID — выдаём его).
+	rec := m.file.Lookup(device)
+	if rec == nil {
+		switch len(found) {
+		case 0:
+			return &devmap.NameError{Code: devmap.NameUnknown, Name: device}
+		case 1:
+		default:
+			names := make([]string, 0, len(found))
+			for _, d := range found {
+				names = append(names, filepath.Base(d.Info.Path)+" "+d.Info.Name)
+			}
+			return &devmap.NameError{Code: devmap.NameAmbiguous, Name: device, Other: strings.Join(names, "; ")}
+		}
+		d := found[0]
+		if id := m.bound[d.Info.Path]; id != "" {
+			rec = m.file.Lookup(id)
+		} else {
+			links := ev.ReadLinks(m.cfg.InputDir)
+			rec = m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
+			m.bound[d.Info.Path] = rec.AutoID
+		}
+	}
+
+	// Имя устройства или кнопки.
+	var err error
+	if control == "" {
+		err = m.file.SetDeviceName(rec.AutoID, name)
+	} else {
+		err = rec.SetButtonName(control, name)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Сохранение; окно обновит список устройств.
+	if err := devmap.Save(m.cfg.DevicesFile, m.file); err != nil {
+		return err
+	}
+	m.log.Info("device renamed", "device", rec.AutoID, "control", control, "name", name)
+	if m.bus != nil {
+		m.bus.Publish(contracts.TopicAutoIDsChanged, nil)
+	}
+	return nil
 }
 
 // AutoIDMode возвращает режим авто-ID (contracts.Inspector).
@@ -330,19 +405,20 @@ func (m *Module) Devices() []contracts.DeviceDetails {
 	for _, d := range devs {
 		dd := details(d, links[d.Info.Path])
 
-		// Авто-ID устройства и его кнопок и осей без стандартного имени.
+		// Авто-ID и имя устройства, имена и номера его кнопок и осей без стандартного имени.
 		dd.AutoID = m.bound[d.Info.Path]
-		if dd.AutoID != "" {
+		if rec := m.recordLocked(d.Info.Path); rec != nil {
+			dd.DeviceName = rec.Name
 			for _, list := range []struct {
 				typ uint16
 				c   []contracts.DeviceControl
 			}{{ev.EvKey, dd.Keys}, {ev.EvRel, dd.Rel}} {
 				for i := range list.c {
-					list.c[i].Label = m.labelLocked(d.Info.Path, list.typ, list.c[i].Code)
+					fillControl(&list.c[i], rec, list.typ, m.labelLocked(d.Info.Path, list.typ, list.c[i].Code))
 				}
 			}
 			for i := range dd.Axes {
-				dd.Axes[i].Label = m.labelLocked(d.Info.Path, ev.EvAbs, dd.Axes[i].Code)
+				fillControl(&dd.Axes[i].DeviceControl, rec, ev.EvAbs, m.labelLocked(d.Info.Path, ev.EvAbs, dd.Axes[i].Code))
 			}
 		}
 		out = append(out, dd)

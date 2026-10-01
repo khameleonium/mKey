@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/devmap"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 )
@@ -36,6 +37,14 @@ func (f fakeInspector) ResolveKey(device, button string) (contracts.DeviceKey, e
 		return contracts.DeviceKey{Key: keys.Key{Name: "UnKey002", Type: ev.EvKey, Code: ev.KeyCalc}, Device: "UnKey"}, nil
 	}
 	return contracts.DeviceKey{}, errors.New("unknown")
+}
+
+// Rename отказывает имени «Enter» (имя клавиши), остальные принимает.
+func (f fakeInspector) Rename(_, _, name string) error {
+	if name == "Enter" {
+		return &devmap.NameError{Code: devmap.NameKey, Name: name}
+	}
+	return nil
 }
 
 // DeviceOf — авто-ID только у event9.
@@ -185,5 +194,22 @@ func TestDryRunDeviceKey(t *testing.T) {
 	code, out = call(t, m.routes(true), "POST", "/api/v1/send", `{"sequence":"{UnKey001}","dry_run":true}`, nil)
 	if e, _ := out["error"].(map[string]any); code != 400 || e["code"] != "dsl.unknown_device" {
 		t.Errorf("no inspector: %d %v", code, out)
+	}
+}
+
+// TestDeviceRename проверяет переименование через API: успех и понятная ошибка имени.
+func TestDeviceRename(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	mode := "smart"
+	m.svc.inspect = fakeInspector{mode: &mode}
+	h := m.routes(true)
+	if code, out := call(t, h, "POST", "/api/v1/devices/rename", `{"device":"UnKey","name":"Sega"}`, nil); code != 200 || out["ok"] != true {
+		t.Fatalf("rename: %d %v", code, out)
+	}
+	code, out := call(t, h, "POST", "/api/v1/devices/rename", `{"device":"UnKey","name":"Enter"}`, map[string]string{"Accept-Language": "ru"})
+	e, _ := out["error"].(map[string]any)
+	if msg, _ := e["message"].(string); code != 400 || e["code"] != "api.rename_key" || !strings.Contains(msg, "«Enter» — это имя клавиши") {
+		t.Errorf("bad name: %d %v", code, out)
 	}
 }

@@ -144,7 +144,7 @@ func TestFind(t *testing.T) {
 	m := func(uniq, port string) Match {
 		return Match{Vid: "0079", Pid: "0011", Version: "0110", Name: "USB Gamepad", Uniq: uniq, ByPath: port}
 	}
-	f := &File{Devices: []Device{
+	f := &File{Devices: []*Device{
 		{AutoID: "UnKey", Match: m("", "port-1")},
 		{AutoID: "UnKey2", Match: m("", "port-2")},
 		{AutoID: "UnKey3", Match: m("SN42", "port-9")},
@@ -176,7 +176,7 @@ func TestFind(t *testing.T) {
 
 	// Поиск по имени: авто-ID и имя человека, без учёта регистра.
 	f.Devices[1].Name = "Sega"
-	if f.Lookup("unkey2") != &f.Devices[1] || f.Lookup("SEGA") != &f.Devices[1] || f.Lookup("UnKey9") != nil {
+	if f.Lookup("unkey2") != f.Devices[1] || f.Lookup("SEGA") != f.Devices[1] || f.Lookup("UnKey9") != nil {
 		t.Error("Lookup")
 	}
 }
@@ -241,5 +241,59 @@ func TestRefs(t *testing.T) {
 		if dev != c.dev || btn != c.btn || ok != c.ok {
 			t.Errorf("SplitJoined(%q) = %q %q %v", c.in, dev, btn, ok)
 		}
+	}
+}
+
+// TestRename проверяет имена устройств и кнопок (FR-DEV-3): правила, занятость, сброс, показ.
+func TestRename(t *testing.T) {
+	t.Parallel()
+	f := &File{Version: Version}
+	joy := f.Add(ev.Info{Name: "Joy", Caps: joystick}, []ev.Kind{ev.KindJoystick}, ev.Links{})
+	f.Add(ev.Info{Name: "Kbd", Caps: keyboard}, []ev.Kind{ev.KindKeyboard}, ev.Links{})
+
+	// Хорошие имена: кириллица, латиница, цифры и «_» после первой буквы.
+	if err := f.SetDeviceName("UnKey", "Sega"); err != nil || f.Lookup("sega") == nil || f.Lookup("UnKey") == nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if err := f.SetDeviceName("unkey2", "Клава_2"); err != nil {
+		t.Fatalf("cyrillic: %v", err)
+	}
+
+	// Ошибки устройства: правила, клавиша, похоже на авто-ID, занято, нет устройства.
+	for _, c := range []struct{ id, name, code string }{
+		{"UnKey", "2pad", NameChars}, {"UnKey", "_x", NameChars}, {"UnKey", "a-b", NameChars}, {"UnKey", "a b", NameChars},
+		{"UnKey", "Enter", NameKey}, {"UnKey", "unkey7", NameAuto}, {"UnKey", "клава_2", NameTaken}, {"UnKey", "UnKey2", NameAuto},
+		{"UnKey9", "Pad", NameUnknown},
+	} {
+		var ne *NameError
+		if err := f.SetDeviceName(c.id, c.name); !errors.As(err, &ne) || ne.Code != c.code {
+			t.Errorf("SetDeviceName(%q, %q) = %v, want %s", c.id, c.name, err, c.code)
+		}
+	}
+
+	// Кнопки: по номеру и по имени, уникальность в устройстве, ось, сброс.
+	if err := joy.SetButtonName("001", "Start"); err != nil {
+		t.Fatal(err)
+	}
+	if err := joy.SetButtonName("start", "Старт"); err != nil || joy.Buttons["001"].Name != "Старт" {
+		t.Fatalf("rename by name: %v %+v", err, joy.Buttons["001"])
+	}
+	var ne *NameError
+	if err := joy.SetButtonName("002", "СТАРТ"); !errors.As(err, &ne) || ne.Code != NameTaken || ne.Other != "001" {
+		t.Errorf("taken: %v", err)
+	}
+	if err := joy.SetButtonName("099", "X"); !errors.As(err, &ne) || ne.Code != NameUnknown {
+		t.Errorf("unknown: %v", err)
+	}
+	if err := joy.SetButtonName("Axis01", "Газ"); err != nil || joy.ControlDisplay("Axis01") != "Газ" {
+		t.Errorf("axis: %v", err)
+	}
+
+	// Показ: имя человека, иначе авто-ID и номер; сброс имени возвращает авто-ID.
+	if joy.Display() != "Sega" || joy.ControlDisplay("001") != "Старт" || joy.ControlDisplay("002") != "002" {
+		t.Errorf("display: %s %s", joy.Display(), joy.ControlDisplay("001"))
+	}
+	if err := f.SetDeviceName("Sega", ""); err != nil || joy.Display() != "UnKey" {
+		t.Errorf("reset: %v %s", err, joy.Display())
 	}
 }

@@ -185,8 +185,11 @@ export interface DeviceControl {
   code: number;
   kernel: string;
   name?: string;
-  /** Авто-ID кнопки или оси без стандартного имени ("UnKey001", "UnKey2.001", "UnKey.Axis01"). */
+  /** Имя кнопки или оси без стандартного имени для макросов ("UnKey001", "UnKey2.001", "Sega.Start"). */
   label?: string;
+  /** Номер в devices.yaml ("001", "Axis01") — для переименования; имя, данное человеком. */
+  number?: string;
+  custom_name?: string;
 }
 
 /** Абсолютная ось с диапазоном. */
@@ -206,6 +209,8 @@ export interface DeviceDetails extends InputDevice {
   bus: string;
   /** Авто-ID устройства (UnKey, UnKey2…); нет — устройство его не получило. */
   auto_id?: string;
+  /** Имя устройства, данное человеком (FR-DEV-3). */
+  device_name?: string;
   keys?: DeviceControl[];
   rel?: DeviceControl[];
   axes?: DeviceAxis[];

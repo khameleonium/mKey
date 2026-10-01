@@ -30,6 +30,11 @@ type Inspector interface {
 	ResolveKey(device, button string) (DeviceKey, error)
 	// DeviceOf возвращает авто-ID подключённого устройства по пути ("" — у него нет авто-ID).
 	DeviceOf(path string) string
+	// Rename даёт имя устройству (control == "") или его кнопке или оси (FR-DEV-3): device —
+	// авто-ID, имя, путь, eventN или часть названия; control — номер ("001", "Axis01") или
+	// текущее имя; name == "" — убрать имя. Авто-ID и номера остаются рабочими навсегда.
+	// Устройству без авто-ID он выдаётся. Ошибка — *devmap.NameError.
+	Rename(device, control, name string) error
 	// Label возвращает имя для макросов кнопки или оси без стандартного имени
 	// ("UnKey001", "UnKey2.001", "UnKey.Axis01", FR-DEV-2); "" — у неё нет авто-ID.
 	Label(path string, typ, code uint16) string
@@ -56,6 +61,8 @@ type DeviceDetails struct {
 	Bus string `json:"bus"`
 	// AutoID — авто-ID устройства (UnKey, UnKey2…, FR-DEV-2); пусто — устройство его не получило.
 	AutoID string `json:"auto_id,omitempty"`
+	// DeviceName — имя устройства, данное человеком (FR-DEV-3); пусто — нет.
+	DeviceName string `json:"device_name,omitempty"`
 	// Keys — клавиши и кнопки (EV_KEY); Rel — относительные оси (мышь, колесо);
 	// Axes — абсолютные оси с диапазонами (стики, курки, крестовины, тачпад).
 	Keys []DeviceControl `json:"keys,omitempty"`
@@ -77,9 +84,14 @@ type DeviceControl struct {
 	// Name — имя для макросов ("A", "Mouse0", "South", "LX"); пусто — у mKey имени нет
 	// (такие кнопки получают авто-ID, FR-DEV-2).
 	Name string `json:"name,omitempty"`
-	// Label — авто-ID кнопки или оси без стандартного имени для макросов ("UnKey001",
-	// "UnKey2.001", "UnKey.Axis01"); пусто — у неё есть Name или устройство без авто-ID.
+	// Label — имя кнопки или оси без стандартного имени для макросов ("UnKey001",
+	// "UnKey2.001", "UnKey.Axis01", после переименования — "Sega.Start"); пусто — у неё есть
+	// Name или устройство без авто-ID.
 	Label string `json:"label,omitempty"`
+	// Number — номер кнопки или оси в devices.yaml ("001", "Axis01"; для переименования);
+	// CustomName — имя, данное ей человеком ("Start"; пусто — нет).
+	Number     string `json:"number,omitempty"`
+	CustomName string `json:"custom_name,omitempty"`
 }
 
 // DeviceAxis — абсолютная ось с параметрами (struct input_absinfo).

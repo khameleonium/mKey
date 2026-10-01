@@ -87,6 +87,8 @@ export const api = {
       status?: { denied?: string[] };
       auto_ids?: Record<string, string>;
     }>("GET", "/devices"),
+  renameDevice: (device: string, control: string, name: string) =>
+    request<{ ok: boolean }>("POST", "/devices/rename", { device, control, name }),
   deviceSettings: () => request<{ auto_ids: string }>("GET", "/settings/devices"),
   setDeviceSettings: (autoIds: string) =>
     request<{ auto_ids: string }>("PUT", "/settings/devices", { auto_ids: autoIds }),

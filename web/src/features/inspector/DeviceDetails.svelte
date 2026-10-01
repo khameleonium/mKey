@@ -1,13 +1,15 @@
 <!--
   DeviceDetails — всё об одном устройстве ввода (модуль inspector, FR-DEV-1): постоянные имена,
   модель и подключение, кнопки с именами для макросов (без имени — именами ядра), оси с
-  диапазонами, колёса, переключатели, индикаторы, отдача.
+  диапазонами, колёса, переключатели, индикаторы, отдача. Устройство и его кнопки без
+  стандартного имени можно переименовать (FR-DEV-3): {UnKey001} → {Sega.Start}.
   Props: path — путь устройства ("/dev/input/event6"); сведения загружаются при показе.
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
+  import Modal from "../../lib/components/Modal.svelte";
   import { t } from "../../lib/i18n/index.svelte";
-  import { errorText } from "../../lib/toast.svelte";
+  import { errorText, toast } from "../../lib/toast.svelte";
   import type { DeviceControl, DeviceDetails } from "../../lib/types";
 
   let { path }: { path: string } = $props();
@@ -16,16 +18,44 @@
   let d = $state<DeviceDetails | null>(null);
   let error = $state("");
 
-  // Загрузка подробностей (и повторно, если сменилось устройство).
+  /** reload — счётчик перезагрузок (после переименования). */
+  let reload = $state(0);
+
+  // Загрузка подробностей (и повторно, если сменилось устройство или его переименовали).
   $effect(() => {
     const ref = path;
-    d = null;
+    void reload;
     error = "";
     api
       .inspectDevice(ref)
       .then((r) => (d = r.device))
       .catch((e: unknown) => (error = errorText(e)));
   });
+
+  /** renaming — что переименовываем: устройство (control пусто) или кнопку; текущее имя. */
+  let renaming = $state<{ control: string; title: string; current: string } | null>(null);
+  let newName = $state("");
+  let renameError = $state("");
+
+  /** openRename открывает окно переименования устройства (control "") или кнопки. */
+  function openRename(control: string, title: string, current: string): void {
+    renaming = { control, title, current };
+    newName = current;
+    renameError = "";
+  }
+
+  /** rename сохраняет новое имя ("" — убрать имя) и перечитывает подробности. */
+  async function rename(name: string): Promise<void> {
+    if (!renaming || !d) return;
+    try {
+      await api.renameDevice(d.auto_id || d.info.path, renaming.control, name.trim());
+      renaming = null;
+      toast(t("inspector.renamed"));
+      reload++;
+    } catch (e) {
+      renameError = errorText(e);
+    }
+  }
 
   /** Кнопки: с именем для макросов, с авто-ID (UnKey001) и без того и другого. */
   const named = $derived((d?.keys ?? []).filter((k) => k.name));
@@ -57,6 +87,17 @@
 {:else}
   <!-- Общие сведения -->
   <dl class="facts">
+    <dt>{t("inspector.device_name")}</dt>
+    <dd class="row">
+      {#if d.device_name}<code>{d.device_name}</code>{:else}<span class="muted"
+          >{t("inspector.no_name")}</span
+        >{/if}
+      <button
+        class="small ghost"
+        onclick={() => openRename("", d?.info.name ?? "", d?.device_name ?? "")}
+        >✎ {t("inspector.rename")}</button
+      >
+    </dd>
     {#if d.auto_id}<dt>{t("inspector.auto_id")}</dt>
       <dd><code>{d.auto_id}</code></dd>{/if}
     <dt>{t("inspector.file")}</dt>
@@ -92,9 +133,13 @@
   {/if}
   {#if labeled.length}
     <h4>{t("inspector.labeled", { count: labeled.length })}</h4>
+    <p class="muted hint">{t("inspector.labeled_hint")}</p>
     <div class="chips">
-      {#each labeled as k (k.code)}<code title={`${k.kernel} (0x${k.code.toString(16)})`}
-          >{"{" + k.label + "}"}</code
+      {#each labeled as k (k.code)}<button
+          class="chip"
+          title={`${k.kernel} (0x${k.code.toString(16)}) — ${t("inspector.rename")}`}
+          onclick={() => openRename(k.number ?? "", `{${k.label}}`, k.custom_name ?? "")}
+          >{"{" + k.label + "}"}</button
         >{/each}
     </div>
   {/if}
@@ -142,7 +187,49 @@
   {/each}
 {/if}
 
+{#if renaming}
+  <Modal
+    title={t("inspector.rename_title", { what: renaming.title })}
+    onclose={() => (renaming = null)}
+  >
+    <p class="muted">
+      {t(renaming.control ? "inspector.rename_button_hint" : "inspector.rename_device_hint")}
+    </p>
+    <label class="field">
+      {t("inspector.new_name")}
+      <!-- svelte-ignore a11y_autofocus -->
+      <input
+        bind:value={newName}
+        autofocus
+        onkeydown={(e) => e.key === "Enter" && void rename(newName)}
+      />
+    </label>
+    {#if renameError}<div class="note error">{renameError}</div>{/if}
+    {#snippet footer()}
+      {#if renaming?.current}
+        <button class="ghost" onclick={() => void rename("")}>{t("inspector.clear_name")}</button>
+      {/if}
+      <button onclick={() => (renaming = null)}>{t("common.cancel")}</button>
+      <button class="primary" disabled={!newName.trim()} onclick={() => void rename(newName)}
+        >{t("common.save")}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
+
 <style>
+  .chip {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .chip:hover {
+    border-color: var(--accent);
+  }
   .facts {
     display: grid;
     grid-template-columns: max-content 1fr;

@@ -131,6 +131,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { description: "api.device_ambiguous: подходит несколько устройств; details.candidates — [{path, name}]" }
         "503": { $ref: "#/components/responses/Error" }
+  /api/v1/devices/rename:
+    post:
+      summary: "Дать имя устройству или его кнопке (FR-DEV-3): {device, control, name}; control пусто — устройство; name пусто — убрать имя. Ошибка имени — 400 api.rename_chars|key|auto|taken|unknown|ambiguous"
+      responses: { "200": { description: "{ok}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
   /api/v1/settings/devices:
     get:
       summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"

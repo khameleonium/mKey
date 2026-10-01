@@ -248,8 +248,8 @@ func TestResolveKey(t *testing.T) {
 		name     string
 	}{
 		{"UnKey", "001", ev.BtnTrigger, "UnKey001"},
-		{"unkey", "002", ev.BtnThumb, "UnKey002"},
-		{"UnKey", "start", ev.BtnThumb, "UnKey002"},
+		{"unkey", "002", ev.BtnThumb, "UnKey.Start"}, // у кнопки есть имя — показывается оно
+		{"UnKey", "start", ev.BtnThumb, "UnKey.Start"},
 		{"UnKey", "A", ev.KeyA, "UnKey.A"},
 	}
 	for _, c := range cases {
@@ -277,5 +277,60 @@ func TestResolveKey(t *testing.T) {
 	delete(m.bound, "/dev/input/event9")
 	if _, err := m.ResolveKey("UnKey", "001"); err != nil {
 		t.Errorf("disconnected: %v", err)
+	}
+}
+
+// TestRename проверяет переименование: устройство и кнопка, старые имена работают, имена в
+// подробностях и мониторе, сохранение в файл, выдача авто-ID устройству без него, ошибки.
+func TestRename(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	joy := contracts.InputDevice{Info: ev.Info{Path: "/dev/input/event9", Name: "Sega Joystick", ID: ev.ID{Vendor: 0x79},
+		Caps: ev.Capabilities{Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnTrigger, ev.BtnThumb}}}}, Kinds: []ev.Kind{ev.KindJoystick}}
+	mouse := contracts.InputDevice{Info: ev.Info{Path: "/dev/input/event6", Name: "USB Mouse", ID: ev.ID{Vendor: 0x46d},
+		Caps: ev.Capabilities{Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnLeft}}}}, Kinds: []ev.Kind{ev.KindMouse}}
+	m := autoModule(t, dir, joy, mouse)
+
+	// Устройство (по eventN) и кнопка (по номеру): новые имена и старые авто-ID работают.
+	if err := m.Rename("event9", "", "Sega"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Rename("sega", "001", "Start"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range [][2]string{{"Sega", "Start"}, {"UnKey", "001"}, {"sega", "start"}} {
+		if k, err := m.ResolveKey(c[0], c[1]); err != nil || k.Code != ev.BtnTrigger || k.Name != "Sega.Start" || k.Device != "UnKey" {
+			t.Errorf("ResolveKey(%q, %q) = %+v, %v", c[0], c[1], k, err)
+		}
+	}
+	if l := m.Label(joy.Info.Path, ev.EvKey, ev.BtnTrigger); l != "Sega.Start" {
+		t.Errorf("label = %q", l)
+	}
+	d := m.Find("event9")[0]
+	if d.DeviceName != "Sega" || d.Keys[0].Label != "Sega.Start" || d.Keys[0].Number != "001" || d.Keys[0].CustomName != "Start" ||
+		d.Keys[1].Label != "Sega.002" || d.Keys[1].CustomName != "" {
+		t.Errorf("details: %+v", d)
+	}
+
+	// Сохранено в файл.
+	data, _ := os.ReadFile(filepath.Join(dir, "devices.yaml"))
+	if !strings.Contains(string(data), "name: Sega") || !strings.Contains(string(data), "name: Start") {
+		t.Errorf("file:\n%s", data)
+	}
+
+	// Устройство без авто-ID (мышь) получает его при переименовании.
+	if err := m.Rename("USB Mouse", "", "Мышка"); err != nil || m.DeviceOf(mouse.Info.Path) != "UnKey2" {
+		t.Errorf("mouse: %v %q", err, m.DeviceOf(mouse.Info.Path))
+	}
+
+	// Ошибки: нет устройства, имя занято, неверное имя, нет кнопки.
+	for _, c := range []struct{ dev, ctl, name, code string }{
+		{"event42", "", "X", devmap.NameUnknown}, {"Мышка", "", "sega", devmap.NameTaken},
+		{"Sega", "", "1x", devmap.NameChars}, {"Sega", "099", "X", devmap.NameUnknown},
+	} {
+		var ne *devmap.NameError
+		if err := m.Rename(c.dev, c.ctl, c.name); !errors.As(err, &ne) || ne.Code != c.code {
+			t.Errorf("Rename(%q, %q, %q) = %v, want %s", c.dev, c.ctl, c.name, err, c.code)
+		}
 	}
 }

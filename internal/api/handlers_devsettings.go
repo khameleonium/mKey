@@ -1,9 +1,11 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"mkey/internal/lib/config"
+	"mkey/internal/lib/devmap"
 	"mkey/internal/lib/dsl"
 )
 
@@ -57,4 +59,34 @@ func (m *Module) handleDeviceSettingsPut(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, deviceSettings{AutoIDs: m.svc.inspect.AutoIDMode()})
+}
+
+// handleDeviceRename даёт имя устройству или его кнопке (FR-DEV-3): {device, control, name}.
+// control пусто — устройство; name пусто — убрать имя (авто-ID и номера работают всегда).
+// Ошибка имени — 400 api.rename_<вид> с понятным текстом.
+func (m *Module) handleDeviceRename(w http.ResponseWriter, r *http.Request) {
+	if m.svc.inspect == nil {
+		m.unavailable(w, r)
+		return
+	}
+	var req struct {
+		Device  string `json:"device"`
+		Control string `json:"control"`
+		Name    string `json:"name"`
+	}
+	if !m.readJSON(w, r, &req) {
+		return
+	}
+
+	// Переименование; ошибки имени — понятным текстом.
+	err := m.svc.inspect.Rename(req.Device, req.Control, req.Name)
+	var ne *devmap.NameError
+	switch {
+	case errors.As(err, &ne):
+		m.writeError(w, r, http.StatusBadRequest, "api.rename_"+ne.Code, map[string]string{"name": ne.Name, "other": ne.Other})
+	case err != nil:
+		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
 }
