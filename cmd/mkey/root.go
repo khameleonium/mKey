@@ -54,6 +54,7 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		newLogsCmd(tr),
 		newPathsCmd(tr),
 		newPluginCmd(tr),
+		newUpdateCmd(tr),
 		newVersionCmd(tr),
 		newPrivilegedCmd(tr),
 		newDebugCmd(tr),

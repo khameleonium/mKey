@@ -410,6 +410,25 @@ paths:
     get:
       summary: "Журнал плагина (stderr): ?lines=N (200) → {lines}"
       responses: { "200": { description: "{lines}" } }
+  /api/v1/update:
+    get:
+      summary: "Версии mKey (ADR-0030): {current, latest?, available, url?, can_apply, reason? (package|dev), check} — без обращения к сети"
+      responses: { "200": { description: UpdateInfo }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/update/check:
+    post:
+      summary: "Спросить последний выпуск на GitHub (по просьбе человека)"
+      responses: { "200": { description: UpdateInfo }, "502": { $ref: "#/components/responses/Error" } }
+  /api/v1/update/apply:
+    post:
+      summary: "Установить новую версию: скачать, сверить sha256, заменить программу, перезапустить mKey; нельзя (пакет, dev) — 400 api.update_cannot"
+      responses:
+        "200": { description: UpdateInfo }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /api/v1/settings/update:
+    put:
+      summary: "Проверять обновления раз в сутки: {check} — сохраняется в config.yaml (modules.update.check)"
+      responses: { "200": { description: UpdateInfo } }
   /api/v1/shutdown:
     post:
       summary: Корректно завершить демон

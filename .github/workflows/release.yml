@@ -1,0 +1,51 @@
+# Выпуск mKey (T10.1, ADR-0030): по тегу v* — проверки, сборка goreleaser (бинарники amd64/arm64,
+# архивы, deb/rpm/apk/archlinux, checksums.txt), выпуск на GitHub и подпись: аттестация
+# происхождения сборки (Sigstore, без ключей) для всех файлов выпуска.
+# Проверить подпись: gh attestation verify <файл> --repo khameleonium/mKey
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # Те же проверки, что и в ci: выпуск не собирается из сломанного кода.
+      - run: make web-deps
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Подпись: аттестация происхождения для архивов, пакетов и checksums.txt.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/*.pkg.tar.zst
+            dist/checksums.txt

@@ -1,0 +1,104 @@
+# Сборка релизов mKey (T10.1, T10.2, ADR-0030): статические бинарники amd64/arm64 (полная `mkey`
+# и консольная `mkey-cli`), архивы, контрольные суммы, пакеты deb/rpm/apk/archlinux.
+# Запуск — в CI по тегу v* (.github/workflows/release.yml); проверка у себя:
+#   goreleaser release --snapshot --clean
+version: 2
+project_name: mkey
+
+before:
+  hooks:
+    # Окно программы встраивается в бинарник: фронтенд собирается один раз до сборки Go.
+    - make web
+
+builds:
+  - id: mkey
+    main: ./cmd/mkey
+    binary: mkey
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X mkey/internal/lib/buildinfo.Version={{ .Version }}
+      - -X mkey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
+      - -X mkey/internal/lib/buildinfo.Date={{ .Date }}
+  - id: mkey-cli
+    main: ./cmd/mkey
+    binary: mkey-cli
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    tags: [nogui]
+    ldflags:
+      - -s -w
+      - -X mkey/internal/lib/buildinfo.Version={{ .Version }}
+      - -X mkey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
+      - -X mkey/internal/lib/buildinfo.Date={{ .Date }}
+
+archives:
+  # Основной способ поставки (FR-INST-1.1): архив с программой; первый запуск сам установит её.
+  - id: mkey
+    ids: [mkey]
+    formats: [tar.gz]
+    name_template: "mkey_{{ .Version }}_linux_{{ .Arch }}"
+    files: [README.md, README.en.md, LICENSE]
+  - id: mkey-cli
+    ids: [mkey-cli]
+    formats: [tar.gz]
+    name_template: "mkey-cli_{{ .Version }}_linux_{{ .Arch }}"
+    files: [README.md, README.en.md, LICENSE]
+
+checksum:
+  # По этому файлу `mkey update` проверяет скачанный архив (T10.3).
+  name_template: checksums.txt
+  algorithm: sha256
+
+nfpms:
+  # Пакеты не включают правила udev и автозапуск: их ставит мастер с согласия человека (T10.2).
+  - id: packages
+    ids: [mkey]
+    package_name: mkey
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: mKey
+    homepage: https://github.com/khameleonium/mKey
+    maintainer: mKey <siriusx666@gmail.com>
+    description: |-
+      Keyboard and mouse macros for Linux
+      Hotkeys, a macro language, recording and replay, virtual gamepads and bindings,
+      a visual event builder and plugins. Works on X11 and Wayland via evdev/uinput.
+    license: MIT
+    section: utils
+    formats: [deb, rpm, apk, archlinux]
+    bindir: /usr/bin
+    contents:
+      - src: packaging/mkey.desktop
+        file_info: { mode: 0644 }
+        dst: /usr/share/applications/mkey.desktop
+      - src: packaging/mkey.svg
+        file_info: { mode: 0644 }
+        dst: /usr/share/icons/hicolor/scalable/apps/mkey.svg
+      - src: README.md
+        file_info: { mode: 0644 }
+        dst: /usr/share/doc/mkey/README.md
+      - src: LICENSE
+        file_info: { mode: 0644 }
+        dst: /usr/share/doc/mkey/LICENSE
+    scripts:
+      postinstall: packaging/postinstall.sh
+      preremove: packaging/preremove.sh
+    archlinux:
+      packager: mKey <siriusx666@gmail.com>
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
+
+release:
+  github:
+    owner: khameleonium
+    name: mKey
+  # Первые выпуски — «предварительные», пока проект не дошёл до версии 1.0.
+  prerelease: auto

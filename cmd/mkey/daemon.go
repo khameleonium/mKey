@@ -95,6 +95,13 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	// чтобы не работать с неожиданными настройками).
 	cfgPath := filepath.Join(paths.Config(os.Getenv), config.FileName)
 
+	// Старая версия схемы настроек (после обновления mKey) — перевести, сохранив копию (ADR-0030).
+	if backup, err := config.Migrate(cfgPath); err != nil {
+		return fmt.Errorf("%s: %w", cfgPath, err)
+	} else if backup != "" {
+		logger.Info("config migrated", "path", cfgPath, "backup", backup)
+	}
+
 	// Файл настроек дополняется шаблоном: в нём всегда видны все настройки с пояснениями
 	// (нет файла — создаётся; значения пользователя не меняются). Ошибку в файле покажет Load.
 	if changed, err := config.Complete(cfgPath, app.ConfigTemplate); err != nil {
@@ -146,7 +153,18 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	logger.Info("daemon stopping")
 	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return a.Stop(sctx)
+	stopErr := a.Stop(sctx)
+
+	// Перезапуск после обновления: процесс заменяется новой программой с теми же аргументами
+	// (блокировка демона и сокет закрыты при остановке — файлы открыты с O_CLOEXEC).
+	if exe := life.restartExe(); exe != "" {
+		logger.Info("daemon restarting", "exe", exe)
+		args := append([]string{exe}, os.Args[1:]...)
+		if err := syscall.Exec(exe, args, os.Environ()); err != nil {
+			return fmt.Errorf("restart %s: %w", exe, err)
+		}
+	}
+	return stopErr
 }
 
 // acquireLock берёт блокировку демона. Если её держит демон, который как раз завершается
@@ -200,10 +218,28 @@ type lifecycle struct {
 	started time.Time
 	once    sync.Once
 	done    chan struct{}
+	// restart — программа, которую запустить вместо демона после остановки ("" — просто выйти).
+	mu      sync.Mutex
+	restart string
 }
 
 // Shutdown просит демон завершиться (повторные вызовы безопасны).
 func (l *lifecycle) Shutdown() { l.once.Do(func() { close(l.done) }) }
+
+// Restart просит демон завершиться и запустить вместо себя программу exe.
+func (l *lifecycle) Restart(exe string) {
+	l.mu.Lock()
+	l.restart = exe
+	l.mu.Unlock()
+	l.Shutdown()
+}
+
+// restartExe возвращает программу для перезапуска ("" — не перезапускать).
+func (l *lifecycle) restartExe() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.restart
+}
 
 // StartedAt возвращает время запуска демона.
 func (l *lifecycle) StartedAt() time.Time { return l.started }

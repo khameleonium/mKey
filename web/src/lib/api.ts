@@ -11,6 +11,7 @@ import type {
   PluginInfo,
   RecordingInfo,
   RecordSettings,
+  UpdateInfo,
   VirtualDeviceInfo,
   VirtualTemplateInfo,
   DoctorCheck,
@@ -129,6 +130,12 @@ export const api = {
   registry: () => request<Registry>("GET", "/registry"),
   places: () => request<{ places: PlaceInfo[] }>("GET", "/places"),
   logs: (lines: number) => request<{ lines: string[] }>("GET", `/logs?lines=${lines}`),
+
+  // Обновления.
+  updateInfo: () => request<UpdateInfo>("GET", "/update"),
+  checkUpdate: () => request<UpdateInfo>("POST", "/update/check", {}),
+  applyUpdate: () => request<UpdateInfo>("POST", "/update/apply", {}),
+  setUpdateCheck: (check: boolean) => request<UpdateInfo>("PUT", "/settings/update", { check }),
 
   // Плагины.
   plugins: () => request<{ plugins: PluginInfo[]; dir: string }>("GET", "/plugins"),

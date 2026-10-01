@@ -172,6 +172,14 @@
   {:else}
     <h2>{t("setup.done")}</h2>
     <p>{t("setup.done_text")}</p>
+    <!-- Проверка обновлений — только с согласия (ADR-0030); по умолчанию выключена. -->
+    <label class="update"
+      ><input
+        type="checkbox"
+        onchange={(e) => void api.setUpdateCheck(e.currentTarget.checked).catch(() => undefined)}
+      />
+      <span>{t("update.auto")}<br /><span class="muted">{t("update.auto_hint")}</span></span></label
+    >
     <div class="row">
       <button class="primary" onclick={() => finish("projects")}>{t("setup.go_projects")}</button>
       <button onclick={() => finish("home")}>{t("setup.go_home")}</button>
@@ -183,6 +191,15 @@
 <p class="muted"><a href={href("home")} onclick={() => finish("home")}>{t("setup.skip")}</a></p>
 
 <style>
+  .update {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 10px 0;
+  }
+  .update input {
+    margin-top: 4px;
+  }
   .steps {
     display: flex;
     gap: 8px;

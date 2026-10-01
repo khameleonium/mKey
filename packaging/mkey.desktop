@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=mKey
+GenericName=Input macros
+GenericName[ru]=Макросы ввода
+Comment=Keyboard and mouse macros for Linux
+Comment[ru]=Макросы клавиатуры и мыши для Linux
+Exec=mkey gui
+Icon=mkey
+Terminal=false
+Categories=Utility;
+Keywords=macro;hotkey;autoclicker;keyboard;mouse;gamepad;

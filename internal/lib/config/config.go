@@ -50,7 +50,10 @@ func Load(path string) (Config, error) {
 }
 
 // Parse разбирает содержимое config.yaml.
-func Parse(data []byte) (Config, error) {
+func Parse(data []byte) (Config, error) { return parseUpTo(data, CurrentVersion) }
+
+// parseUpTo разбирает config.yaml, допуская версии схемы до max.
+func parseUpTo(data []byte, max int) (Config, error) {
 	// Строгий разбор: неизвестные ключи — ошибка; пустой файл (io.EOF) — настройки по умолчанию.
 	var c Config
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -63,8 +66,8 @@ func Parse(data []byte) (Config, error) {
 	if c.Version == 0 {
 		c.Version = CurrentVersion
 	}
-	if c.Version > CurrentVersion {
-		return Config{}, fmt.Errorf("config: version %d is newer than supported %d", c.Version, CurrentVersion)
+	if c.Version > max {
+		return Config{}, fmt.Errorf("config: version %d is newer than supported %d", c.Version, max)
 	}
 	return c, nil
 }

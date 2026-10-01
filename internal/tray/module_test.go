@@ -90,6 +90,7 @@ func (f *fakeServices) Suspended() bool {
 	return f.suspended
 }
 func (f *fakeServices) Shutdown()            { f.mu.Lock(); f.shutdown = true; f.mu.Unlock() }
+func (f *fakeServices) Restart(string)       {}
 func (f *fakeServices) StartedAt() time.Time { return time.Time{} }
 
 // newTestModule создаёт модуль с фейковыми сервисами и значком.

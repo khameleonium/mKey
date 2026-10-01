@@ -17,6 +17,7 @@ import (
 	"mkey/internal/session"
 	"mkey/internal/setup"
 	"mkey/internal/store"
+	"mkey/internal/update"
 	// mkey:imports — генератор `make new-module` добавляет импорты модулей над этой строкой.
 )
 
@@ -56,6 +57,7 @@ func Modules() []registry.Entry {
 		{Module: setup.New(), Core: false},
 		// Плагины: добавляют виды действий, условий и триггеров (после модулей со встроенными видами).
 		{Module: pluginhost.New(), Core: false},
+		{Module: update.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой
 		// (до API: API получает сервисы модулей при запуске).
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.

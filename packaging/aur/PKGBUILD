@@ -1,0 +1,28 @@
+# PKGBUILD пакета mkey-bin для AUR (T10.2): готовая программа из релизов GitHub.
+# Версию и контрольные суммы подставляет packaging/aur/update.sh <версия> (из checksums.txt
+# релиза); публикация в AUR — вручную владельцем (нужен аккаунт AUR).
+# Пакет не ставит правила udev и автозапуск: их настраивает мастер mKey с согласия человека.
+pkgname=mkey-bin
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Keyboard and mouse macros for Linux (hotkeys, macro language, recording, virtual gamepads)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/khameleonium/mKey"
+license=('MIT')
+provides=('mkey')
+conflicts=('mkey')
+install=mkey.install
+source=("mkey.desktop" "mkey.svg")
+source_x86_64=("https://github.com/khameleonium/mKey/releases/download/v${pkgver}/mkey_${pkgver}_linux_amd64.tar.gz")
+source_aarch64=("https://github.com/khameleonium/mKey/releases/download/v${pkgver}/mkey_${pkgver}_linux_arm64.tar.gz")
+sha256sums=('SKIP' 'SKIP')
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -Dm755 mkey "${pkgdir}/usr/bin/mkey"
+  install -Dm644 mkey.desktop "${pkgdir}/usr/share/applications/mkey.desktop"
+  install -Dm644 mkey.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/mkey.svg"
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

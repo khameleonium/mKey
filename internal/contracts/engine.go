@@ -61,4 +61,7 @@ type Lifecycle interface {
 	Shutdown()
 	// StartedAt возвращает время запуска демона.
 	StartedAt() time.Time
+	// Restart корректно завершает демон (модули останавливаются, клавиши отпускаются) и запускает
+	// вместо него программу exe с теми же аргументами (после обновления mKey, ADR-0030).
+	Restart(exe string)
 }

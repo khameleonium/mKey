@@ -345,3 +345,16 @@ export interface PluginInfo {
   triggers?: string[];
   templates?: string[];
 }
+
+/** UpdateInfo — версии mKey (GET /update, ADR-0030). */
+export interface UpdateInfo {
+  current: string;
+  latest?: string;
+  available: boolean;
+  url?: string;
+  /** can_apply — mKey может обновиться сам; иначе reason — "package" или "dev". */
+  can_apply: boolean;
+  reason?: string;
+  /** check — проверка раз в сутки включена. */
+  check: boolean;
+}

@@ -182,7 +182,8 @@ internal/contracts   интерфейсы между модулями           
 internal/registry    реестр модулей, сервисов, точек расширения
 internal/bus         шина событий
 internal/platform/*  init-системы, повышение прав, доступ к устройствам, пакетные менеджеры → docs/platforms.md
-internal/pluginhost  внешние плагины                      → docs/plugins.md
+internal/pluginhost  модуль plugins: внешние плагины      → docs/plugins.md
+internal/update      проверка и установка новых версий (ADR-0030)
 internal/inspector   инспектор устройств, авто-ID UnKey, метки
 internal/store       проекты *.mkey.yaml: загрузка, горячая перезагрузка, включение → docs/projects.md
 internal/hotkeys     горячие клавиши, последовательности, hotstrings, переназначения, состояние клавиш
@@ -211,7 +212,7 @@ web/                 GUI (Svelte), фичи в web/src/features/<module>/; web/e
 pkg/pluginsdk        публичный Go SDK для плагинов
 examples/plugins/    примеры плагинов (Go, Lua, Python)
 extensions/          GNOME Shell extension, KWin script
-packaging/           udev, systemd, .desktop, пакеты
+packaging/           .desktop, иконка, скрипты пакетов, AUR (сборка — .goreleaser.yaml, ADR-0030)
 docs/adr/            архитектурные решения
 ```
 

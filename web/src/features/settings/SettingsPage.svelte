@@ -14,6 +14,7 @@
   import { LANGS, type Lang } from "../../lib/i18n/translate";
   import { setTheme, theme, type Theme } from "../../lib/theme.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
+  import UpdateCard from "../update/UpdateCard.svelte";
   import type { RecordSettings } from "../../lib/types";
 
   /** KINDS — устройства, которые можно записывать (порядок — как в списке). */
@@ -221,6 +222,9 @@
   {#if recError}<div class="note error">{recError}</div>{/if}
   {#if rec}<button class="primary" onclick={saveRecord}>{t("common.save")}</button>{/if}
 </div>
+
+<!-- Обновления (модуль update) -->
+<UpdateCard />
 
 <!-- Где что лежит: папки и файлы mKey -->
 <div class="card places">

@@ -1,0 +1,10 @@
+# Подсказка после установки mkey-bin: настройка доступа — в мастере mKey, с согласием.
+post_install() {
+  echo "mKey установлен. Запустите: mkey — мастер настроит доступ к клавиатуре и автозапуск."
+  echo "mKey is installed. Run: mkey — the wizard sets up keyboard access and autostart."
+}
+
+pre_remove() {
+  echo "Чтобы убрать и настройки mKey, перед удалением выполните от своего имени: mkey uninstall"
+  echo "To also remove mKey's setup, run as your user before removing: mkey uninstall"
+}

@@ -103,6 +103,7 @@ type services struct {
 	inspect  contracts.Inspector
 	vdevs    contracts.VirtualDeviceManager
 	plugins  contracts.Plugins
+	updater  contracts.Updater
 	ext      contracts.ExtensionRegistry
 }
 
@@ -150,6 +151,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		inspect:  lookup[contracts.Inspector](s),
 		vdevs:    lookup[contracts.VirtualDeviceManager](s),
 		plugins:  lookup[contracts.Plugins](s),
+		updater:  lookup[contracts.Updater](s),
 		ext:      host.Extensions(),
 	}
 

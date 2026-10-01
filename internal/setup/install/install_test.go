@@ -15,7 +15,10 @@ import (
 func newTestEnv(t *testing.T) Env {
 	t.Helper()
 	home := t.TempDir()
-	exe := filepath.Join(t.TempDir(), "mkey")
+	exe := filepath.Join(home, "Загрузки", "mkey")
+	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(exe, []byte("#!binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -56,6 +59,28 @@ func TestInstallAndUndo(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("%s remains", p)
 		}
+	}
+}
+
+// TestSystemInstall проверяет установку пакетом: программа вне домашней папки не копируется,
+// программой считается сам запущенный файл.
+func TestSystemInstall(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	env := map[string]string{"HOME": home}
+	e := NewEnv(func(k string) string { return env[k] }, filepath.Join(home, "run"), "/usr/bin/mkey")
+	if !e.System() || e.BinPath() != "/usr/bin/mkey" {
+		t.Fatalf("system = %v, bin = %s", e.System(), e.BinPath())
+	}
+	if newTestEnv(t).System() {
+		t.Fatal("a file in the home folder is not a system install")
+	}
+	m, _ := manifest.Load(e.ManifestPath())
+	if err := Files(e, manifest.Writer{M: m, Owner: "install"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".local", "bin", "mkey")); !os.IsNotExist(err) {
+		t.Fatal("program copied into ~/.local/bin")
 	}
 }
 

@@ -266,6 +266,13 @@ func runSetup(cmd *cobra.Command, tr *i18n.Translator, yes bool) error {
 	}
 	d.say("cli.setup.done.start")
 
+	// Проверка обновлений раз в сутки — только с согласия (ADR-0030; по умолчанию нет).
+	if d.ask("cli.setup.ask.update", false) {
+		if err := c.do(ctx, http.MethodPut, "/api/v1/settings/update", map[string]bool{"check": true}, nil); err != nil {
+			d.say("cli.setup.autostart.failed", i18n.A("error", err))
+		}
+	}
+
 	// Шаг 5: проверка, что mKey видит и нажимает клавиши (только в интерактивном режиме).
 	if interactive && !yes {
 		setupCheck(ctx, d, c)
@@ -389,7 +396,10 @@ func runUninstall(cmd *cobra.Command, tr *i18n.Translator, keepConfig *bool, yes
 		problems = append(problems, err.Error())
 	}
 
-	// Итог.
+	// Итог; программу, установленную пакетом, удаляет менеджер пакетов.
+	if ienv.System() {
+		d.say("cli.uninstall.package_note", i18n.A("bin", ienv.BinPath()))
+	}
 	if len(problems) == 0 {
 		if keep {
 			d.say("cli.uninstall.done_keep", i18n.A("config", ienv.Config))

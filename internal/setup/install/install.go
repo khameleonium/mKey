@@ -2,7 +2,9 @@
 // (T4.1, T4.5, FR-INST-1, FR-INST-5).
 //
 // Что устанавливается (всё записывается через манифест, см. internal/setup/manifest):
-//   - программа: ~/.local/bin/mkey (копия запущенного файла);
+//   - программа: ~/.local/bin/mkey (копия запущенного файла). Если mKey установлен в систему
+//     (пакетом .deb/.rpm/AUR или вручную в /usr/bin — запущенный файл вне домашней папки), копия
+//     не делается: программой считается системный файл, его обновляет и удаляет менеджер пакетов;
 //   - ярлык в меню приложений: ~/.local/share/applications/mkey.desktop;
 //   - иконка: ~/.local/share/icons/hicolor/scalable/apps/mkey.svg.
 //
@@ -69,8 +71,28 @@ func NewEnv(getenv func(string) string, runtime, exe string) Env {
 	}
 }
 
-// BinPath возвращает путь установленной программы.
-func (e Env) BinPath() string { return filepath.Join(e.Home, ".local", "bin", "mkey") }
+// SystemDesktopFile — ярлык, который ставят пакеты mKey (packaging/): если он есть, свой ярлык
+// в меню не создаётся (иначе в меню было бы два mKey).
+const SystemDesktopFile = "/usr/share/applications/mkey.desktop"
+
+// System сообщает, что mKey установлен в систему: запущенный файл лежит вне домашней папки
+// (/usr/bin/mkey из пакета). Тогда программа не копируется в ~/.local/bin.
+func (e Env) System() bool {
+	if e.Exe == "" || e.Home == "" {
+		return false
+	}
+	rel, err := filepath.Rel(e.Home, e.Exe)
+	return err != nil || rel == ".." || len(rel) > 2 && rel[:3] == ".."+string(filepath.Separator)
+}
+
+// BinPath возвращает путь установленной программы: ~/.local/bin/mkey или, при установке
+// в систему, сам запущенный файл.
+func (e Env) BinPath() string {
+	if e.System() {
+		return e.Exe
+	}
+	return filepath.Join(e.Home, ".local", "bin", "mkey")
+}
 
 // ManifestPath возвращает путь манифеста установки.
 func (e Env) ManifestPath() string { return filepath.Join(e.Data, manifest.FileName) }
@@ -85,7 +107,7 @@ func (e Env) IconPath() string {
 	return filepath.Join(e.DataHome, "icons", "hicolor", "scalable", "apps", "mkey.svg")
 }
 
-// Installed сообщает, установлен ли mKey (есть программа в ~/.local/bin и манифест).
+// Installed сообщает, установлен ли mKey (есть программа — в ~/.local/bin или в системе — и манифест).
 func (e Env) Installed() bool {
 	_, errBin := os.Stat(e.BinPath())
 	_, errMan := os.Stat(e.ManifestPath())
@@ -101,8 +123,9 @@ func (e Env) RunningInstalled() bool {
 
 // Files копирует программу в ~/.local/bin (если запущена не она) и добавляет ярлык и иконку в меню.
 func Files(e Env, w contracts.FileWriter) error {
-	// Программа: копия запущенного файла (обновление заменяет старую копию).
-	if !e.RunningInstalled() {
+	// Программа: копия запущенного файла (обновление заменяет старую копию); установленную
+	// в систему не копируем.
+	if !e.System() && !e.RunningInstalled() {
 		data, err := readFile(e.Exe)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", e.Exe, err)
@@ -112,8 +135,12 @@ func Files(e Env, w contracts.FileWriter) error {
 		}
 	}
 
-	// Иконка и ярлык в меню приложений: открывают интерфейс mKey (в консольной сборке окна нет).
+	// Иконка и ярлык в меню приложений: открывают интерфейс mKey (в консольной сборке окна нет;
+	// у установки пакетом ярлык уже есть).
 	if !buildinfo.GUI {
+		return nil
+	}
+	if _, err := os.Stat(SystemDesktopFile); err == nil && e.System() {
 		return nil
 	}
 	if err := w.WriteFile(e.IconPath(), icon, 0o644); err != nil {
