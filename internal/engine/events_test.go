@@ -490,3 +490,23 @@ func TestValidateProject(t *testing.T) {
 		}
 	}
 }
+
+// TestVarAddConcurrent проверяет, что одновременные прибавления к переменной не теряются.
+func TestVarAddConcurrent(t *testing.T) {
+	t.Parallel()
+	r := newEventRig(t)
+	r.load(t, "p", "variables: { n: { type: int, value: 0 } }\nevents: []\n")
+	vars := r.m.Vars("p")
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Go(func() {
+			for range 20 {
+				_ = vars.Add("n", 1)
+			}
+		})
+	}
+	wg.Wait()
+	if v, _ := vars.Get("n"); v != int64(1000) {
+		t.Fatalf("n = %v, want 1000", v)
+	}
+}

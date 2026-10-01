@@ -61,20 +61,12 @@ func (s *varStore) Get(name string) (any, bool) {
 
 // Set задаёт значение; для объявленной переменной приводит его к её типу.
 func (s *varStore) Set(name string, value any) error {
-	// Объявленная переменная — приводим к типу; необъявленная — храним как есть.
 	s.mu.Lock()
-	d, declared := s.decl[name]
-	if declared {
-		v, err := convert(d.Type, value)
-		if err != nil {
-			s.mu.Unlock()
-			return fmt.Errorf("variable %q: %w", name, err)
-		}
-		value = v
-	}
-	s.values[name] = value
-	persist := declared && d.Persist
+	persist, err := s.setLocked(name, value)
 	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
 
 	// Сохраняемые переменные записываются сразу.
 	if persist && s.onPersist != nil {
@@ -83,19 +75,43 @@ func (s *varStore) Set(name string, value any) error {
 	return nil
 }
 
-// Add прибавляет delta к числовой переменной (необъявленная начинается с 0).
+// setLocked задаёт значение под s.mu: объявленная переменная приводится к своему типу,
+// необъявленная хранится как есть. true — переменную нужно сохранить на диск.
+func (s *varStore) setLocked(name string, value any) (bool, error) {
+	d, declared := s.decl[name]
+	if declared {
+		v, err := convert(d.Type, value)
+		if err != nil {
+			return false, fmt.Errorf("variable %q: %w", name, err)
+		}
+		value = v
+	}
+	s.values[name] = value
+	return declared && d.Persist, nil
+}
+
+// Add прибавляет delta к числовой переменной (необъявленная начинается с 0). Чтение и запись —
+// под одной блокировкой: одновременные прибавления из параллельных выполнений не теряются.
 func (s *varStore) Add(name string, delta float64) error {
 	s.mu.Lock()
 	cur, ok := s.values[name]
-	s.mu.Unlock()
 	if !ok {
 		cur = 0.0
 	}
 	f, err := toFloat(cur)
 	if err != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("variable %q is not a number", name)
 	}
-	return s.Set(name, f+delta)
+	persist, err := s.setLocked(name, f+delta)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if persist && s.onPersist != nil {
+		s.onPersist()
+	}
+	return nil
 }
 
 // All возвращает копию всех переменных.
