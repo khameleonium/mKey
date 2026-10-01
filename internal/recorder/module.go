@@ -41,6 +41,11 @@ type Module struct {
 	// input и devs — ввод и вывод (любой может быть nil, если модуль отключён).
 	input contracts.InputSource
 	devs  contracts.VirtualDevices
+	// projects и events — хранилище проектов и движок (для превращения записи в блоки; любой может быть nil);
+	// tr — переводчик названий созданного проекта.
+	projects contracts.Projects
+	events   contracts.Events
+	tr       contracts.Translator
 
 	// mu защищает sess, plays и chord.
 	mu sync.Mutex
@@ -74,6 +79,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	// Логгер, шина и секция конфига.
 	m.log = host.Logger()
 	m.bus = host.Bus()
+	m.tr = host.I18n()
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
@@ -94,12 +100,17 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	s := host.Services()
 	m.input, _ = contracts.LookupService[contracts.InputSource](s)
 	m.devs, _ = contracts.LookupService[contracts.VirtualDevices](s)
+	m.projects, _ = contracts.LookupService[contracts.Projects](s)
+	m.events, _ = contracts.LookupService[contracts.Events](s)
 
 	// Сервисы и действие play.
 	if err := contracts.ProvideService[contracts.Recorder](s, m); err != nil {
 		return err
 	}
 	if err := contracts.ProvideService[contracts.Player](s, m); err != nil {
+		return err
+	}
+	if err := host.Extensions().Register(contracts.PointAction, centerAction{m: m}); err != nil {
 		return err
 	}
 	return host.Extensions().Register(contracts.PointAction, playAction{m: m})

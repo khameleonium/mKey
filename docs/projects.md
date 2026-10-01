@@ -89,6 +89,7 @@ remaps:                                             # переназначени
 | `mouse_move` | `{dx, dy}` (относительно) | `mouse_move: { dx: 10, dy: -5 }` |
 | `mouse_click` | кнопка (`Left` по умолчанию) | `mouse_click: Right` |
 | `wheel` | `{direction, count}` | `wheel: { direction: Down, count: 3 }` |
+| `pointer_center` | — | `pointer_center: {}` — курсор в центр экрана (калибровка, docs/recording.md) |
 | `repeat` | ровно одно из `times`, `while` (`toggled`, `held`, `forever`), `conditions`; `do` | см. пример выше |
 | `if` | `{conditions, then, else}` | |
 | `set_var` | `{name, value}` или `{name, add}` | `set_var: { name: clicks, add: 1 }` |

@@ -293,6 +293,14 @@ paths:
       summary: Удалить запись
       parameters: [ { name: name, in: path, required: true, schema: { type: string } } ]
       responses: { "200": { description: Удалено }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/recordings/{name}/convert:
+    post:
+      summary: "Превратить запись в блоки конструктора ({simplify}: упростить движения мыши) — новый выключенный проект; ответ {project}; 400 api.recording_empty — нечего превращать"
+      parameters: [ { name: name, in: path, required: true, schema: { type: string } } ]
+      responses:
+        "200": { description: "{project: ID нового проекта}" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/recordings/status:
     get:
       summary: "Идущая запись: {recording, info}"

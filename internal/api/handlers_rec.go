@@ -19,6 +19,7 @@ func (m *Module) registerRecRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/recordings/stop", m.handleRecordingStop)
 	mux.HandleFunc("POST /api/v1/recordings/wait", m.handleRecordingWait)
 	mux.HandleFunc("POST /api/v1/play", m.handlePlay)
+	mux.HandleFunc("POST /api/v1/recordings/{name}/convert", m.handleRecordingConvert)
 	mux.HandleFunc("GET /api/v1/settings/hotkeys", m.handleHotkeysGet)
 	mux.HandleFunc("PUT /api/v1/settings/hotkeys", m.handleHotkeysPut)
 }
@@ -116,6 +117,24 @@ func (m *Module) handleRecordingDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleRecordingConvert превращает запись в блоки: {simplify} → {project} (ID нового выключенного проекта).
+func (m *Module) handleRecordingConvert(w http.ResponseWriter, r *http.Request) {
+	if m.svc.recorder == nil {
+		m.unavailable(w, r)
+		return
+	}
+	var req contracts.ConvertOptions
+	if !m.readJSON(w, r, &req) {
+		return
+	}
+	id, err := m.svc.recorder.ConvertRecording(r.PathValue("name"), req)
+	if err != nil {
+		m.writeRecError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": id})
+}
+
 // handlePlay воспроизводит запись и ждёт окончания: {name, speed, repeat, skip_moves}.
 // Разрыв соединения (Ctrl+C в терминале) останавливает воспроизведение.
 func (m *Module) handlePlay(w http.ResponseWriter, r *http.Request) {
@@ -142,6 +161,8 @@ func (m *Module) writeRecError(w http.ResponseWriter, r *http.Request, err error
 	switch {
 	case errors.Is(err, contracts.ErrRecordingNotFound):
 		m.writeError(w, r, http.StatusNotFound, "api.recording_not_found", nil)
+	case errors.Is(err, contracts.ErrRecordingEmpty):
+		m.writeError(w, r, http.StatusBadRequest, "api.recording_empty", nil)
 	case errors.Is(err, contracts.ErrAlreadyRecording):
 		m.writeError(w, r, http.StatusConflict, "api.already_recording", nil)
 	case errors.Is(err, contracts.ErrNotRecording):

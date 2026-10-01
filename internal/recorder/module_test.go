@@ -3,6 +3,7 @@ package recorder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"mkey/internal/lib/clock"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/mkrec"
+	"mkey/internal/lib/project"
 	"mkey/internal/registry"
 )
 
@@ -371,5 +373,72 @@ func TestLifecycle(t *testing.T) {
 	}
 	if err := mgr.Stop(context.Background()); err != nil {
 		t.Fatalf("Stop: %v", err)
+	}
+}
+
+// memProjects — хранилище проектов в памяти: запоминает созданный проект.
+type memProjects struct {
+	contracts.Projects
+	id   string
+	data []byte
+}
+
+func (p *memProjects) Create(id string, data []byte) (string, error) {
+	p.id, p.data = id, data
+	return id, nil
+}
+
+// checkEvents — движок, который проверяет только, что виды действий известны.
+type checkEvents struct {
+	contracts.Events
+	checked bool
+}
+
+func (e *checkEvents) ValidateProject(p project.Project) error {
+	e.checked = true
+	for _, a := range p.Events[0].Actions {
+		switch a.Type {
+		case "pointer_center", "tap", "pause", "mouse_move", "mouse_click", "key_down", "key_up", "hold", "wheel":
+		default:
+			return fmt.Errorf("unknown action %q", a.Type)
+		}
+	}
+	return nil
+}
+
+// TestConvertRecording проверяет превращение записи в выключенный проект с одним событием.
+func TestConvertRecording(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newTestModule(t)
+	cat, err := i18n.LoadCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tr = i18n.New(cat, "ru")
+	store, engine := &memProjects{}, &checkEvents{}
+	m.projects, m.events = store, engine
+	writeRecording(t, m.cfg.Dir, "игра", "pointer center\n0.000 0 ^{A}\n0.080 0 ~{A}\n0.500 1 move +5 +0\n0.600 1 ^{Mouse0}\n0.650 1 ~{Mouse0}\n1.000 end\n")
+	writeRecording(t, m.cfg.Dir, "пусто", "pointer center\n0.100 2 ^{South}\n0.200 2 ~{South}\n")
+
+	// Проект создан, выключен, проверен движком, начинается с калибровки.
+	id, err := m.ConvertRecording("игра", contracts.ConvertOptions{Simplify: true})
+	if err != nil || id != "rec-игра" || !engine.checked {
+		t.Fatalf("convert: %q %v checked=%v", id, err, engine.checked)
+	}
+	p, err := project.Parse(store.data, id)
+	if err != nil {
+		t.Fatalf("parse: %v\n%s", err, store.data)
+	}
+	ev := p.Events[0]
+	if p.IsEnabled() || p.Name != "Из записи «игра»" || ev.Trigger.Type != "manual" || ev.Actions[0].Type != "pointer_center" || len(ev.Actions) != 6 {
+		t.Fatalf("project = %+v\n%s", p, store.data)
+	}
+
+	// Пустая запись (только геймпад) и нет записи — понятные ошибки.
+	if _, err := m.ConvertRecording("пусто", contracts.ConvertOptions{}); !errors.Is(err, contracts.ErrRecordingEmpty) {
+		t.Fatalf("empty: %v", err)
+	}
+	if _, err := m.ConvertRecording("нет", contracts.ConvertOptions{}); !errors.Is(err, contracts.ErrRecordingNotFound) {
+		t.Fatalf("missing: %v", err)
 	}
 }

@@ -486,6 +486,8 @@ func validName(name string) bool {
 var (
 	// errNoInput — модуль ввода отключён или недоступен.
 	errNoInput = errors.New("input devices are unavailable")
+	// errNoProjects — модуль проектов отключён: превращать запись некуда.
+	errNoProjects = errors.New("projects module is disabled")
 	// errBadName — имя записи содержит недопустимые символы.
 	errBadName = errors.New("invalid recording name (use letters, digits, spaces, _ - . ( ))")
 )

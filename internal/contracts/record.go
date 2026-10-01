@@ -70,7 +70,20 @@ type Recorder interface {
 	RecordHotkey() string
 	// SetRecordHotkey меняет сочетание записи сразу ("" — выключить).
 	SetRecordHotkey(combo string) error
+	// ConvertRecording превращает запись в блоки конструктора (FR-REC-6): создаёт выключенный
+	// проект с одним событием (запуск вручную) и возвращает его ID. ErrRecordingNotFound — нет записи;
+	// ErrRecordingEmpty — в записи нет действий, которые можно превратить.
+	ConvertRecording(name string, opts ConvertOptions) (string, error)
 }
+
+// ConvertOptions — параметры превращения записи в блоки.
+type ConvertOptions struct {
+	// Simplify — упрощать движения мыши: меньше блоков, путь почти тот же.
+	Simplify bool `json:"simplify"`
+}
+
+// ErrRecordingEmpty — в записи нет действий клавиатуры и мыши, которые можно превратить в блоки.
+var ErrRecordingEmpty = errors.New("recording has no convertible actions")
 
 // PlayOptions — параметры воспроизведения.
 type PlayOptions struct {

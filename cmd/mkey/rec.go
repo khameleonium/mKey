@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -108,7 +109,47 @@ func newRecCmd(tr *i18n.Translator) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(list, stop, del)
+	// mkey rec convert <имя> — превратить запись в блоки конструктора (новый выключенный проект).
+	var simplify, noSimplify bool
+	conv := &cobra.Command{
+		Use: "convert <имя>", Short: tr.T("cli.rec.convert.short"), Long: tr.T("cli.rec.convert.long"), Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Флаги взаимоисключающие (проверяем сами, чтобы ошибка была на языке пользователя).
+			if simplify && noSimplify {
+				return userError(tr.T("cli.rec.convert.flags_conflict"))
+			}
+			c, err := daemonClient(cmd, tr)
+			if err != nil {
+				return err
+			}
+
+			// Упрощать ли движения мыши: из флага, иначе спрашиваем (без терминала — упрощаем).
+			simple := true
+			switch {
+			case simplify:
+			case noSimplify:
+				simple = false
+			default:
+				d := dialog{cmd: cmd, tr: tr, yes: !isTerminal(os.Stdin)}
+				simple = d.ask("cli.rec.convert.ask_simplify", true)
+			}
+
+			// Превращение; новый проект выключен — его нужно проверить и включить.
+			var resp struct {
+				Project string `json:"project"`
+			}
+			path := "/api/v1/recordings/" + url.PathEscape(args[0]) + "/convert"
+			if err := c.do(cmd.Context(), "POST", path, contracts.ConvertOptions{Simplify: simple}, &resp); err != nil {
+				return userError(formatAPIError(tr, err, ""))
+			}
+			printf(cmd.OutOrStdout(), "%s\n", tr.T(guiKey("cli.rec.converted"), i18n.A("name", args[0]), i18n.A("project", resp.Project)))
+			return nil
+		},
+	}
+	conv.Flags().BoolVar(&simplify, "simplify", false, tr.T("cli.rec.convert.flag.simplify"))
+	conv.Flags().BoolVar(&noSimplify, "no-simplify", false, tr.T("cli.rec.convert.flag.no_simplify"))
+
+	cmd.AddCommand(list, stop, del, conv)
 	return cmd
 }
 

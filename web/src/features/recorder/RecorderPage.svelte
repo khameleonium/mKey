@@ -1,10 +1,13 @@
 <!--
-  RecorderPage — раздел «Записи» (FR-REC-2, FR-REC-4, T6.5): начать и закончить запись ввода,
-  список сохранённых записей, воспроизведение (с отсчётом, скоростью и повторами) и удаление.
+  RecorderPage — раздел «Записи» (FR-REC-2, FR-REC-4, FR-REC-6, T6.5): начать и закончить запись
+  ввода, список сохранённых записей, воспроизведение (с отсчётом, скоростью и повторами),
+  превращение записи в блоки конструктора («Сделать событие») и удаление.
   То же умеют команды `mkey rec` и `mkey play`. Props: нет.
 -->
 <script lang="ts">
   import { api, ApiError } from "../../lib/api";
+  import Modal from "../../lib/components/Modal.svelte";
+  import { navigate } from "../../lib/router.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
@@ -92,6 +95,33 @@
     abort?.abort();
   }
 
+  /** converting — запись, которую превращаем в блоки (открыто окно); simplify — упростить движения мыши. */
+  let converting = $state<RecordingInfo | null>(null);
+  let simplify = $state(true);
+  let convertBusy = $state(false);
+
+  /** openConvert открывает окно превращения; упрощение каждый раз включено по умолчанию. */
+  function openConvert(r: RecordingInfo): void {
+    simplify = true;
+    converting = r;
+  }
+
+  /** convert превращает запись в новый проект и открывает его в редакторе. */
+  async function convert(): Promise<void> {
+    if (!converting) return;
+    convertBusy = true;
+    try {
+      const { project } = await api.convertRecording(converting.name, simplify);
+      converting = null;
+      toast(t("rec.converted"));
+      navigate("editor", project);
+    } catch (e) {
+      toast(errorText(e), "error");
+    } finally {
+      convertBusy = false;
+    }
+  }
+
   /** remove удаляет запись после подтверждения. */
   async function remove(r: RecordingInfo): Promise<void> {
     if (!confirm(t("rec.delete_confirm", { name: r.name }))) return;
@@ -161,11 +191,32 @@
       <button class="primary" disabled={playing !== "" || current !== null} onclick={() => play(r)}>
         ▶ {t("rec.play")}
       </button>
+      <button title={t("rec.convert_hint")} onclick={() => openConvert(r)}
+        >⧉ {t("rec.convert")}</button
+      >
       <button class="ghost" title={t("common.delete")} onclick={() => remove(r)}>✕</button>
     </div>
   {/each}
 </div>
 <p class="muted small">{t("rec.cli_hint")}</p>
+
+{#if converting}
+  <Modal
+    title={t("rec.convert_title", { name: converting.name })}
+    onclose={() => (converting = null)}
+  >
+    <p>{t("rec.convert_text")}</p>
+    <label class="row"
+      ><input type="checkbox" bind:checked={simplify} /> {t("rec.convert_simplify")}</label
+    >
+    <p class="muted">{t(simplify ? "rec.convert_simplify_on" : "rec.convert_simplify_off")}</p>
+    {#snippet footer()}
+      <button onclick={() => (converting = null)}>{t("common.cancel")}</button>
+      <button class="primary" disabled={convertBusy} onclick={convert}>{t("rec.convert_go")}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
   .rec {

@@ -120,6 +120,8 @@ export const api = {
     request<{ recordings: RecordingInfo[]; current?: RecordingInfo }>("GET", "/recordings"),
   startRecording: (name: string) => request<RecordingInfo>("POST", "/recordings/start", { name }),
   stopRecording: () => request<RecordingInfo>("POST", "/recordings/stop", {}),
+  convertRecording: (name: string, simplify: boolean) =>
+    request<{ project: string }>("POST", `/recordings/${enc(name)}/convert`, { simplify }),
   deleteRecording: (name: string) => request<{ ok: boolean }>("DELETE", `/recordings/${enc(name)}`),
   play: (name: string, speed: number, repeat: number, signal?: AbortSignal) =>
     request<{ ok: boolean }>("POST", "/play", { name, speed, repeat }, signal),

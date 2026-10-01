@@ -16,6 +16,7 @@ type fakeRecorder struct {
 	played    string
 	opts      contracts.PlayOptions
 	stopped   int
+	converted contracts.ConvertOptions
 }
 
 func (f *fakeRecorder) StartRecording(o contracts.RecordOptions) (contracts.RecordingInfo, error) {
@@ -54,7 +55,17 @@ func (f *fakeRecorder) Play(_ context.Context, name string, o contracts.PlayOpti
 	f.played, f.opts = name, o
 	return nil
 }
-func (f *fakeRecorder) StopPlayback() int            { f.stopped++; return 1 }
+func (f *fakeRecorder) StopPlayback() int { f.stopped++; return 1 }
+func (f *fakeRecorder) ConvertRecording(name string, o contracts.ConvertOptions) (string, error) {
+	switch {
+	case name == "пусто":
+		return "", contracts.ErrRecordingEmpty
+	case name != "игра":
+		return "", contracts.ErrRecordingNotFound
+	}
+	f.converted = o
+	return "rec-игра", nil
+}
 func (f *fakeRecorder) RecordHotkey() string         { return "^{Ctrl}^{Alt}{R}" }
 func (f *fakeRecorder) SetRecordHotkey(string) error { return nil }
 func (f *fakeRecorder) Playing() int                 { return 0 }
@@ -93,6 +104,17 @@ func TestRecordingEndpoints(t *testing.T) {
 	}
 	if code, _ := call(t, h, "POST", "/api/v1/stop", ``, nil); code != 200 || rec.stopped != 1 {
 		t.Fatalf("stop playback: %d %d", code, rec.stopped)
+	}
+
+	// Превращение в блоки: проект создан; пустая запись и нет записи — понятные ошибки.
+	if code, out := call(t, h, "POST", "/api/v1/recordings/%D0%B8%D0%B3%D1%80%D0%B0/convert", `{"simplify":true}`, nil); code != 200 || out["project"] != "rec-игра" || !rec.converted.Simplify {
+		t.Fatalf("convert: %d %v", code, out)
+	}
+	if code, out := call(t, h, "POST", "/api/v1/recordings/%D0%BF%D1%83%D1%81%D1%82%D0%BE/convert", `{}`, nil); code != 400 || out["error"].(map[string]any)["code"] != "api.recording_empty" {
+		t.Fatalf("convert empty: %d %v", code, out)
+	}
+	if code, _ := call(t, h, "POST", "/api/v1/recordings/x/convert", `{}`, nil); code != 404 {
+		t.Fatalf("convert missing: %d", code)
 	}
 
 	// Удаление.
