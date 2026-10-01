@@ -30,6 +30,8 @@ import (
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"mkey/internal/lib/devmap"
 )
 
 // CurrentVersion — текущая версия схемы файла проекта.
@@ -67,6 +69,10 @@ type Project struct {
 	Events []Event `yaml:"events" json:"events"`
 	// Remaps — переназначения клавиш 1:1 (FR-HK-4), работают прямо в потоке ввода.
 	Remaps []Remap `yaml:"remaps,omitempty" json:"remaps,omitempty"`
+	// Devices — имена кнопок устройств, которые встречаются в событиях ({Геймпад.Старт},
+	// ADR-0027): mKey дописывает их при сохранении проекта в файл, а при загрузке проекта такое
+	// же устройство получает эти имена.
+	Devices []devmap.Names `yaml:"devices,omitempty" json:"devices,omitempty"`
 }
 
 // Remap — переназначение клавиши: нажатие From система видит как To.
@@ -284,6 +290,13 @@ func Check(p Project) error {
 		case "", "auto", "always", "never":
 		default:
 			errs = append(errs, fmt.Errorf("event %q: unknown release_modifiers %q", e.ID, e.ReleaseModifiers))
+		}
+	}
+
+	// Имена кнопок устройств: модель и имена по правилам.
+	for i, n := range p.Devices {
+		if err := n.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("devices #%d: %w", i+1, err))
 		}
 	}
 

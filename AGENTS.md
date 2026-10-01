@@ -210,7 +210,6 @@ internal/api         HTTP/WS                             → docs/openapi.yaml
 web/                 GUI (Svelte), фичи в web/src/features/<module>/; web/embed.go — встраивание в бинарник
 pkg/pluginsdk        публичный Go SDK для плагинов
 examples/plugins/    примеры плагинов (Go, Lua, Python)
-profiles/devices/    профили известных устройств
 extensions/          GNOME Shell extension, KWin script
 packaging/           udev, systemd, .desktop, пакеты
 docs/adr/            архитектурные решения

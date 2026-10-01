@@ -29,7 +29,8 @@ const (
 	PointDesktopAdapter ExtensionPoint = "desktop_adapter"
 	// PointDeviceTemplate — шаблоны виртуальных устройств (xbox360, touchscreen…).
 	PointDeviceTemplate ExtensionPoint = "device_template"
-	// PointDeviceProfile — профили известных физических устройств (имена кнопок).
+	// PointDeviceProfile — профили известных физических устройств (зарезервировано: имена кнопок
+	// сейчас переносят проекты, раздел devices, ADR-0027).
 	PointDeviceProfile ExtensionPoint = "device_profile"
 	// PointInitSystem — бэкенды init-систем и автозапуска (systemd, openrc, runit…).
 	PointInitSystem ExtensionPoint = "init_system"

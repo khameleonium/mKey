@@ -18,7 +18,6 @@ import (
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/paths"
-	"mkey/profiles"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.
@@ -33,8 +32,6 @@ type Config struct {
 	AutoIDs string `json:"auto_ids"`
 	// DevicesFile — файл авто-ID ("" — ~/.config/mkey/devices.yaml).
 	DevicesFile string `json:"devices_file"`
-	// ProfilesDir — папка профилей устройств человека ("" — ~/.config/mkey/profiles).
-	ProfilesDir string `json:"profiles_dir"`
 }
 
 // Module — инспектор устройств (contracts.Inspector).
@@ -44,8 +41,8 @@ type Module struct {
 	cfg Config
 	// input — источник устройств (nil — модуль input отключён: список пуст).
 	input contracts.InputSource
-	// ext — реестр расширений (профили устройств других модулей и плагинов).
-	ext contracts.ExtensionRegistry
+	// projects — проекты: имена кнопок устройств из их раздела devices (nil — модуль store отключён).
+	projects contracts.Projects
 	// bus — шина (подключение и отключение устройств); events и unsub — подписка на них.
 	bus    contracts.Bus
 	events <-chan contracts.Event
@@ -61,8 +58,6 @@ type Module struct {
 	fileOK bool
 	// bound — авто-ID подключённых устройств по пути ("/dev/input/event9" → "UnKey").
 	bound map[string]string
-	// badProfiles — испорченные профили человека, о которых уже предупредили в журнале.
-	badProfiles map[string]bool
 }
 
 // New создаёт модуль. Зависимости модуль получает в Init, а не в конструкторе.
@@ -86,9 +81,6 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if m.cfg.DevicesFile == "" {
 		m.cfg.DevicesFile = filepath.Join(paths.Config(os.Getenv), devmap.FileName)
 	}
-	if m.cfg.ProfilesDir == "" {
-		m.cfg.ProfilesDir = filepath.Join(paths.Config(os.Getenv), "profiles")
-	}
 
 	// Режим авто-ID: неверное значение в настройках — по умолчанию и предупреждение в журнале.
 	mode, err := devmap.ParseMode(m.cfg.AutoIDs)
@@ -96,35 +88,21 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		m.log.Warn("bad auto_ids setting, using smart", "err", err)
 		mode = devmap.ModeSmart
 	}
-	m.mode, m.bound, m.badProfiles = mode, map[string]string{}, map[string]bool{}
+	m.mode, m.bound = mode, map[string]string{}
 
 	// Источник устройств (без модуля input инспектору нечего показывать, но он не мешает другим)
 	// и подписка на подключение и отключение — до Start, чтобы не пропустить устройства.
 	m.input, _ = contracts.LookupService[contracts.InputSource](host.Services())
+	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
 	m.bus = host.Bus()
-	m.events, m.unsub = m.bus.Subscribe("input.*")
+	m.events, m.unsub = m.bus.Subscribe("*")
 
-	// Файл devices.yaml и папка профилей — в списке «Где что лежит».
-	m.ext = host.Extensions()
-	for _, p := range []contracts.StaticPlace{
-		{M: contracts.ExtensionMeta{ID: contracts.PlaceDevices, NameKey: "place.devices", DescriptionKey: "place.devices.description", Provider: ModuleID}, P: m.cfg.DevicesFile, N: 25},
-		{M: contracts.ExtensionMeta{ID: contracts.PlaceProfiles, NameKey: "place.profiles", DescriptionKey: "place.profiles.description", Provider: ModuleID}, P: m.cfg.ProfilesDir, Dir: true, N: 26},
-	} {
-		if err := m.ext.Register(contracts.PointPlace, p); err != nil {
-			return err
-		}
-	}
-
-	// Встроенные профили устройств (испорченный встроенный профиль — ошибка сборки, её ловит тест).
-	for name, data := range profiles.Devices() {
-		p, err := devmap.ParseProfile(data)
-		if err != nil {
-			return fmt.Errorf("%s: builtin profile %s: %w", ModuleID, name, err)
-		}
-		meta := contracts.ExtensionMeta{ID: "builtin/" + name, Provider: ModuleID}
-		if err := m.ext.Register(contracts.PointDeviceProfile, contracts.StaticProfile{M: meta, P: p}); err != nil {
-			return err
-		}
+	// Файл devices.yaml — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceDevices, NameKey: "place.devices", DescriptionKey: "place.devices.description", Provider: ModuleID},
+		P: m.cfg.DevicesFile, N: 25,
+	}); err != nil {
+		return err
 	}
 	return contracts.ProvideService[contracts.Inspector](host.Services(), m)
 }
@@ -165,6 +143,11 @@ func (m *Module) Stop(context.Context) error {
 func (m *Module) watch() {
 	defer close(m.done)
 	for e := range m.events {
+		// Проекты изменились: имена кнопок из их раздела devices — подключённым устройствам.
+		if e.Topic == contracts.TopicProjectsChanged {
+			m.applyProjectNames()
+			continue
+		}
 		d, ok := e.Payload.(contracts.InputDevice)
 		if !ok {
 			continue
@@ -190,6 +173,7 @@ func (m *Module) assignAll() {
 // assign узнаёт устройства по devices.yaml (FR-DEV-6) или выдаёт новые авто-ID подходящим
 // под режим (FR-DEV-2) и сохраняет файл, если он изменился.
 func (m *Module) assign(devs []contracts.InputDevice) {
+	names := m.projectNames()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.fileOK {
@@ -216,7 +200,7 @@ func (m *Module) assign(devs []contracts.InputDevice) {
 		}
 		match := devmap.MatchOf(d.Info, links[d.Info.Path])
 
-		profID, prof := m.findProfile(match)
+		named := matchingNames(names, match)
 
 		// Знакомое устройство: новые кнопки — следующими номерами, порт — текущий.
 		if rec := m.file.Find(match, busy); rec != nil {
@@ -224,18 +208,18 @@ func (m *Module) assign(devs []contracts.InputDevice) {
 				rec.Match = match
 				changed = true
 			}
-			changed = m.applyProfile(rec, profID, prof) || changed
+			changed = m.applyNames(rec, named) || changed
 			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
 			bound = true
 			continue
 		}
 
-		// Новое устройство, подходящее под режим или с профилем, — очередной авто-ID.
-		if prof != nil || devmap.Qualifies(m.mode, d.Info.Caps, d.Kinds) {
+		// Новое устройство, подходящее под режим или с именами из проекта, — очередной авто-ID.
+		if len(named) > 0 || devmap.Qualifies(m.mode, d.Info.Caps, d.Kinds) {
 			rec := m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
-			m.applyProfile(rec, profID, prof)
+			m.applyNames(rec, named)
 			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
-			m.log.Info("auto-id assigned", "device", d.Info.Name, "path", d.Info.Path, "id", rec.AutoID, "profile", profID)
+			m.log.Info("auto-id assigned", "device", d.Info.Name, "path", d.Info.Path, "id", rec.AutoID)
 			changed, bound = true, true
 		}
 	}
@@ -251,56 +235,90 @@ func (m *Module) assign(devs []contracts.InputDevice) {
 	}
 }
 
-// findProfile ищет профиль для устройства с приметами match (под m.mu): сначала в папке профилей
-// человека (по имени файла), затем среди зарегистрированных (встроенные, плагины). Испорченный
-// профиль человека пропускается с предупреждением в журнале (один раз).
-func (m *Module) findProfile(match devmap.Match) (string, *devmap.Profile) {
-	// Профили человека.
-	entries, _ := os.ReadDir(m.cfg.ProfilesDir)
-	for _, e := range entries {
-		ext := filepath.Ext(e.Name())
-		if e.IsDir() || (ext != ".yaml" && ext != ".yml") {
-			continue
-		}
-		path := filepath.Join(m.cfg.ProfilesDir, e.Name())
-		data, err := os.ReadFile(path)
-		var p *devmap.Profile
-		if err == nil {
-			p, err = devmap.ParseProfile(data)
-		}
-		if err != nil {
-			if !m.badProfiles[path] {
-				m.badProfiles[path] = true
-				m.log.Warn("device profile skipped", "file", path, "err", err)
-			}
-			continue
-		}
-		if p.Matches(match) {
-			return "user/" + e.Name(), p
-		}
-	}
-
-	// Зарегистрированные профили.
-	if m.ext != nil {
-		for _, ext := range m.ext.List(contracts.PointDeviceProfile) {
-			if dp, ok := ext.(contracts.DeviceProfile); ok && dp.Profile().Matches(match) {
-				return dp.Meta().ID, dp.Profile()
-			}
-		}
-	}
-	return "", nil
+// projectName — имена кнопок модели из раздела devices проекта.
+type projectName struct {
+	project string
+	names   devmap.Names
 }
 
-// applyProfile подставляет имена профиля в запись, если этот профиль к ней ещё не применялся
-// (под m.mu). Возвращает true, если запись изменилась.
-func (m *Module) applyProfile(rec *devmap.Device, id string, p *devmap.Profile) bool {
-	if p == nil || rec.Profile == id {
-		return false
+// projectNames собирает имена кнопок устройств из всех проектов (включённых и нет: загруженный
+// чужой проект выключен, а его события уже должны понимать {Геймпад.Старт}).
+func (m *Module) projectNames() []projectName {
+	if m.projects == nil {
+		return nil
 	}
-	p.Apply(m.file, rec)
-	rec.Profile = id
-	m.log.Info("device profile applied", "device", rec.AutoID, "profile", id)
-	return true
+	var out []projectName
+	for _, st := range m.projects.List() {
+		for _, n := range st.Project.Devices {
+			out = append(out, projectName{project: st.Project.ID, names: n})
+		}
+	}
+	return out
+}
+
+// matchingNames оставляет имена, подходящие устройству с приметами match.
+func matchingNames(all []projectName, match devmap.Match) []projectName {
+	var out []projectName
+	for _, n := range all {
+		if n.names.Matches(match) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// applyNames подставляет в запись имена из проектов, которые к ней ещё не применялись (под m.mu):
+// каждый проект — один раз, поэтому убранное человеком имя не возвращается. true — запись изменилась.
+func (m *Module) applyNames(rec *devmap.Device, named []projectName) bool {
+	changed := false
+	for _, n := range named {
+		if slices.Contains(rec.Applied, n.project) {
+			continue
+		}
+		n.names.Apply(m.file, rec)
+		rec.Applied = append(rec.Applied, n.project)
+		m.log.Info("device names applied from project", "device", rec.AutoID, "project", n.project)
+		changed = true
+	}
+	return changed
+}
+
+// applyProjectNames подставляет имена из проектов подключённым устройствам (после изменения
+// проектов); устройство без авто-ID с подходящими именами его получает.
+func (m *Module) applyProjectNames() {
+	if m.input == nil {
+		return
+	}
+	names := m.projectNames()
+	devs := m.input.Devices()
+	links := ev.ReadLinks(m.cfg.InputDir)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.fileOK || len(names) == 0 {
+		return
+	}
+	changed := false
+	for _, d := range devs {
+		named := matchingNames(names, devmap.MatchOf(d.Info, links[d.Info.Path]))
+		if len(named) == 0 {
+			continue
+		}
+		rec := m.recordLocked(d.Info.Path)
+		if rec == nil {
+			rec = m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
+			m.bound[d.Info.Path] = rec.AutoID
+			changed = true
+		}
+		changed = m.applyNames(rec, named) || changed
+	}
+	if changed {
+		if err := devmap.Save(m.cfg.DevicesFile, m.file); err != nil {
+			m.log.Warn("cannot save devices file", "file", m.cfg.DevicesFile, "err", err)
+		}
+		if m.bus != nil {
+			m.bus.Publish(contracts.TopicAutoIDsChanged, nil)
+		}
+	}
 }
 
 // eventNumber возвращает номер N из пути ".../eventN" (-1 — путь другого вида).
@@ -430,38 +448,28 @@ func (m *Module) recordFor(device string, found []contracts.DeviceDetails, creat
 	return rec, nil
 }
 
-// ExportProfile составляет профиль из имён устройства (contracts.Inspector): YAML и имя файла
-// по названию модели ("usb-gamepad.yaml").
-func (m *Module) ExportProfile(device string) ([]byte, string, error) {
-	found := m.Find(device)
+// NamesFor возвращает имена кнопок устройств devices (авто-ID или имена, без учёта регистра) для
+// раздела devices проекта (contracts.Inspector); неизвестные устройства и устройства без имён
+// пропускаются, каждое устройство — один раз.
+func (m *Module) NamesFor(devices []string) []devmap.Names {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	rec, err := m.recordFor(device, found, false)
-	if err != nil {
-		return nil, "", err
+	if m.file == nil {
+		return nil
 	}
-	data, err := devmap.MarshalProfile(devmap.ExportProfile(rec, rec.Match.Name))
-	return data, profileFileName(rec.Match.Name), err
-}
-
-// profileFileName — имя файла профиля из названия модели: латинские буквы и цифры, остальное — «-».
-func profileFileName(name string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(name) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			dash = false
-		} else if !dash && b.Len() > 0 {
-			b.WriteByte('-')
-			dash = true
+	var out []devmap.Names
+	seen := map[*devmap.Device]bool{}
+	for _, ref := range devices {
+		rec := m.file.Lookup(ref)
+		if rec == nil || seen[rec] {
+			continue
+		}
+		seen[rec] = true
+		if n, ok := devmap.NamesOf(rec); ok {
+			out = append(out, n)
 		}
 	}
-	base := strings.TrimSuffix(b.String(), "-")
-	if base == "" {
-		base = "device"
-	}
-	return base + ".yaml"
+	return out
 }
 
 // Rename даёт имя устройству или его кнопке и сохраняет devices.yaml (contracts.Inspector).
@@ -539,7 +547,7 @@ func (m *Module) Devices() []contracts.DeviceDetails {
 		// Авто-ID и имя устройства, имена и номера его кнопок и осей без стандартного имени.
 		dd.AutoID = m.bound[d.Info.Path]
 		if rec := m.recordLocked(d.Info.Path); rec != nil {
-			dd.DeviceName, dd.Profile = rec.Name, rec.Profile
+			dd.DeviceName = rec.Name
 			for _, list := range []struct {
 				typ uint16
 				c   []contracts.DeviceControl

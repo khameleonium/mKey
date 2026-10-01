@@ -475,7 +475,12 @@ func (m *Module) DeleteRecording(name string) error {
 	if err != nil {
 		return err
 	}
-	return os.Remove(path)
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	// В журнал — какая запись удалена (содержимое нажатий не пишется, NFR-8).
+	m.log.Info("recording deleted", "name", name)
+	return nil
 }
 
 // recordingPath возвращает путь существующей записи; ErrRecordingNotFound — нет такой.

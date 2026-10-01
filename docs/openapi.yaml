@@ -135,11 +135,6 @@ paths:
     post:
       summary: "Дать имя устройству или его кнопке (FR-DEV-3): {device, control, name}; control пусто — устройство; name пусто — убрать имя. Ошибка имени — 400 api.rename_chars|key|auto|taken|unknown|ambiguous"
       responses: { "200": { description: "{ok}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
-  /api/v1/devices/profile:
-    get:
-      summary: "Профиль из имён устройства (?ref=, FR-DEV-5, ADR-0027): файл YAML для скачивания (Content-Disposition); нет устройства — 400 api.rename_unknown|ambiguous"
-      parameters: [ { name: ref, in: query, required: true, schema: { type: string } } ]
-      responses: { "200": { description: "application/yaml" }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/settings/devices:
     get:
       summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"
@@ -240,6 +235,11 @@ paths:
         multiline, code, event, project, variable, device, time, value, actions, conditions),
         `x-lang` (lua, shell), `x-advanced` (поле под «Подробнее»). См. docs/modules.md.
       responses: { "200": { description: "{точка: [ExtensionMeta + name, description, category_name]}" } }
+  /api/v1/projects/{id}/export:
+    get:
+      summary: "Файл проекта для сохранения и обмена (ADR-0027): в раздел devices дописаны имена кнопок устройств, которые встречаются в проекте; комментарии сохраняются; нет проекта — 404"
+      parameters: [ { name: id, in: path, required: true, schema: { type: string } } ]
+      responses: { "200": { description: "application/yaml (Content-Disposition)" }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/{id}:
     get:
       summary: "Проект — структура и текст файла ({project, raw, path, error})"

@@ -11,8 +11,9 @@
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type { InputDevice } from "../../lib/types";
+  import type { InputDevice, WatchEntry } from "../../lib/types";
   import DeviceDetails from "../inspector/DeviceDetails.svelte";
+  import RenameDialog from "../inspector/RenameDialog.svelte";
 
   /** Данные страницы. */
   let devices = $state<InputDevice[]>([]);
@@ -22,18 +23,6 @@
   /** autoIds — авто-ID устройств по пути (UnKey…); mode — режим раздачи авто-ID. */
   let autoIds = $state<Record<string, string>>({});
   let mode = $state("");
-  /** Запись журнала монитора (как её присылает GET /api/v1/input/watch). */
-  interface WatchEntry {
-    time: string;
-    device_name: string;
-    device: string;
-    kind: "key" | "axis" | "wheel" | "move";
-    name: string;
-    kernel: string;
-    action?: "down" | "up";
-    value?: number;
-    dy?: number;
-  }
 
   /** watching — монитор включён; moves — показывать перемещения мыши; log — записи (новые сверху). */
   let watching = $state(false);
@@ -120,6 +109,31 @@
     }
   }
 
+  /** renaming — переименование кнопки из журнала монитора («Узнать кнопку», FR-DEV-4). */
+  let renaming = $state<{ device: string; control: string; title: string; current: string } | null>(
+    null,
+  );
+
+  /** renameFromLog открывает переименование кнопки, нажатой в журнале: номер и текущее имя —
+   * из подробностей её устройства. */
+  async function renameFromLog(e: WatchEntry): Promise<void> {
+    try {
+      const d = (await api.inspectDevice(e.device)).device;
+      const list =
+        e.kind === "axis" ? (d.axes ?? []) : e.kind === "wheel" ? (d.rel ?? []) : (d.keys ?? []);
+      const c = list.find((x) => x.code === e.code);
+      if (!c?.number) return;
+      renaming = {
+        device: d.auto_id ?? d.info.path,
+        control: c.number,
+        title: `{${e.name}}`,
+        current: c.custom_name ?? "",
+      };
+    } catch (err) {
+      toast(errorText(err), "error");
+    }
+  }
+
   /** loadMode читает режим авто-ID (без инспектора — выбор не показывается). */
   async function loadMode(): Promise<void> {
     try {
@@ -177,7 +191,15 @@
       {#each log as e (e.id)}
         <div class="line" class:up={e.action === "up"}>
           <span class="time">{clock(e.time)}</span>
-          <span class="what">{describe(e)}</span>
+          {#if e.labeled}
+            <button
+              class="what link"
+              title={t("devices.watch_rename_hint")}
+              onclick={() => void renameFromLog(e)}>{describe(e)} ✎</button
+            >
+          {:else}
+            <span class="what">{describe(e)}</span>
+          {/if}
           <span class="dev">{e.device_name || e.device}</span>
           <span class="kernel muted">{e.kernel}</span>
         </div>
@@ -232,6 +254,17 @@
   {/if}
 </div>
 
+{#if renaming}
+  <RenameDialog
+    device={renaming.device}
+    control={renaming.control}
+    title={renaming.title}
+    current={renaming.current}
+    onclose={() => (renaming = null)}
+    ondone={() => (renaming = null)}
+  />
+{/if}
+
 <style>
   .identify {
     display: flex;
@@ -268,6 +301,17 @@
     color: var(--muted);
   }
   .what {
+    font-weight: 600;
+  }
+  /* Кнопка с авто-именем в журнале — ссылка на переименование. */
+  .what.link {
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
     font-weight: 600;
   }
   .dev,

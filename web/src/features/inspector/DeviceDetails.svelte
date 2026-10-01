@@ -7,10 +7,11 @@
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
-  import Modal from "../../lib/components/Modal.svelte";
   import { t } from "../../lib/i18n/index.svelte";
-  import { errorText, toast } from "../../lib/toast.svelte";
+  import { errorText } from "../../lib/toast.svelte";
   import type { DeviceControl, DeviceDetails } from "../../lib/types";
+  import LabelWizard from "./LabelWizard.svelte";
+  import RenameDialog from "./RenameDialog.svelte";
 
   let { path }: { path: string } = $props();
 
@@ -34,27 +35,13 @@
 
   /** renaming — что переименовываем: устройство (control пусто) или кнопку; текущее имя. */
   let renaming = $state<{ control: string; title: string; current: string } | null>(null);
-  let newName = $state("");
-  let renameError = $state("");
+
+  /** wizard — открыт мастер разметки (FR-DEV-5). */
+  let wizard = $state(false);
 
   /** openRename открывает окно переименования устройства (control "") или кнопки. */
   function openRename(control: string, title: string, current: string): void {
     renaming = { control, title, current };
-    newName = current;
-    renameError = "";
-  }
-
-  /** rename сохраняет новое имя ("" — убрать имя) и перечитывает подробности. */
-  async function rename(name: string): Promise<void> {
-    if (!renaming || !d) return;
-    try {
-      await api.renameDevice(d.auto_id || d.info.path, renaming.control, name.trim());
-      renaming = null;
-      toast(t("inspector.renamed"));
-      reload++;
-    } catch (e) {
-      renameError = errorText(e);
-    }
   }
 
   /** Кнопки: с именем для макросов, с авто-ID (UnKey001) и без того и другого. */
@@ -99,21 +86,7 @@
       >
     </dd>
     {#if d.auto_id}<dt>{t("inspector.auto_id")}</dt>
-      <dd class="row">
-        <code>{d.auto_id}</code>
-        <a
-          class="btn small ghost"
-          href={`/api/v1/devices/profile?ref=${encodeURIComponent(d.auto_id)}`}
-          download
-          title={t("inspector.save_profile_hint")}>⇩ {t("inspector.save_profile")}</a
-        >
-      </dd>{/if}
-    {#if d.profile}<dt>{t("inspector.profile")}</dt>
-      <dd>
-        {t(d.profile.startsWith("user/") ? "inspector.profile_user" : "inspector.profile_builtin", {
-          file: d.profile.slice(d.profile.indexOf("/") + 1),
-        })}
-      </dd>{/if}
+      <dd><code>{d.auto_id}</code></dd>{/if}
     <dt>{t("inspector.file")}</dt>
     <dd><code>{d.info.path}</code></dd>
     {#if d.by_id}<dt>{t("inspector.by_id")}</dt>
@@ -147,7 +120,10 @@
   {/if}
   {#if labeled.length}
     <h4>{t("inspector.labeled", { count: labeled.length })}</h4>
-    <p class="muted hint">{t("inspector.labeled_hint")}</p>
+    <p class="muted hint row">
+      {t("inspector.labeled_hint")}
+      <button class="small" onclick={() => (wizard = true)}>⌨ {t("inspector.wizard")}</button>
+    </p>
     <div class="chips">
       {#each labeled as k (k.code)}<button
           class="chip"
@@ -201,34 +177,32 @@
   {/each}
 {/if}
 
-{#if renaming}
-  <Modal
-    title={t("inspector.rename_title", { what: renaming.title })}
+{#if wizard && d}
+  <LabelWizard
+    device={d}
+    onclose={() => {
+      wizard = false;
+      reload++;
+    }}
+    onsaved={() => {
+      wizard = false;
+      reload++;
+    }}
+  />
+{/if}
+
+{#if renaming && d}
+  <RenameDialog
+    device={d.auto_id || d.info.path}
+    control={renaming.control}
+    title={renaming.title}
+    current={renaming.current}
     onclose={() => (renaming = null)}
-  >
-    <p class="muted">
-      {t(renaming.control ? "inspector.rename_button_hint" : "inspector.rename_device_hint")}
-    </p>
-    <label class="field">
-      {t("inspector.new_name")}
-      <!-- svelte-ignore a11y_autofocus -->
-      <input
-        bind:value={newName}
-        autofocus
-        onkeydown={(e) => e.key === "Enter" && void rename(newName)}
-      />
-    </label>
-    {#if renameError}<div class="note error">{renameError}</div>{/if}
-    {#snippet footer()}
-      {#if renaming?.current}
-        <button class="ghost" onclick={() => void rename("")}>{t("inspector.clear_name")}</button>
-      {/if}
-      <button onclick={() => (renaming = null)}>{t("common.cancel")}</button>
-      <button class="primary" disabled={!newName.trim()} onclick={() => void rename(newName)}
-        >{t("common.save")}</button
-      >
-    {/snippet}
-  </Modal>
+    ondone={() => {
+      renaming = null;
+      reload++;
+    }}
+  />
 {/if}
 
 <style>

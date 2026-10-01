@@ -180,6 +180,23 @@ export interface InputDevice {
   kinds: string[];
 }
 
+/** Запись монитора нажатий (GET /api/v1/input/watch, поток «input»). */
+export interface WatchEntry {
+  time: string;
+  device_name: string;
+  device: string;
+  kind: "key" | "axis" | "wheel" | "move";
+  /** Имя для макросов: "A", "UnKey001", "Sega.Start"; "#код" — имени нет. */
+  name: string;
+  kernel: string;
+  code: number;
+  /** Имя — авто-ID или имя, данное человеком (кнопку можно переименовать). */
+  labeled?: boolean;
+  action?: "down" | "up";
+  value?: number;
+  dy?: number;
+}
+
 /** Кнопка, ось или индикатор устройства: код, имя ядра, имя для макросов (если есть). */
 export interface DeviceControl {
   code: number;
@@ -211,8 +228,6 @@ export interface DeviceDetails extends InputDevice {
   auto_id?: string;
   /** Имя устройства, данное человеком (FR-DEV-3). */
   device_name?: string;
-  /** Применённый профиль устройства ("builtin/…", "user/…"). */
-  profile?: string;
   keys?: DeviceControl[];
   rel?: DeviceControl[];
   axes?: DeviceAxis[];

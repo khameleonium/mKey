@@ -23,6 +23,11 @@ type MenuItem struct {
 	Separator bool
 	// Disabled — пункт виден, но не нажимается.
 	Disabled bool
+	// Checkable — пункт с галочкой (включён/выключен); Checked — галочка стоит.
+	Checkable bool
+	Checked   bool
+	// Children — вложенное меню (подменю); у такого пункта OnClick не вызывается.
+	Children []MenuItem
 	// OnClick вызывается при выборе пункта (в отдельной горутине).
 	OnClick func()
 }
@@ -48,7 +53,8 @@ type menuEvent struct {
 	Timestamp uint32
 }
 
-// menu — плоское меню значка. ID пункта — его номер в списке плюс 1 (0 — корень).
+// menu — меню значка (с подменю). ID пунктов — номера при обходе дерева в глубину, начиная с 1
+// (0 — корень); после замены пунктов (set) номера считаются заново, панель перечитывает меню.
 type menu struct {
 	conn *dbus.Conn
 	// mu защищает items и revision; revision растёт при каждой смене пунктов.
@@ -121,53 +127,88 @@ func (it MenuItem) props() map[string]dbus.Variant {
 	if it.Separator {
 		return map[string]dbus.Variant{"type": dbus.MakeVariant("separator")}
 	}
-	return map[string]dbus.Variant{
+	p := map[string]dbus.Variant{
 		"label":   dbus.MakeVariant(it.Label),
 		"enabled": dbus.MakeVariant(!it.Disabled),
 	}
+	if len(it.Children) > 0 {
+		p["children-display"] = dbus.MakeVariant("submenu")
+	}
+	if it.Checkable {
+		state := int32(0)
+		if it.Checked {
+			state = 1
+		}
+		p["toggle-type"] = dbus.MakeVariant("checkmark")
+		p["toggle-state"] = dbus.MakeVariant(state)
+	}
+	return p
 }
 
-// snapshot возвращает копию пунктов и номер версии меню.
-func (m *menu) snapshot() ([]MenuItem, uint32) {
+// tree — пункты меню по ID (обход в глубину с 1) и дети каждого (0 — корень).
+type tree struct {
+	items    map[int32]MenuItem
+	children map[int32][]int32
+}
+
+// flatten нумерует пункты дерева в глубину: пункт, затем его подменю.
+func flatten(items []MenuItem) tree {
+	t := tree{items: map[int32]MenuItem{}, children: map[int32][]int32{}}
+	next := int32(1)
+	var walk func(parent int32, list []MenuItem)
+	walk = func(parent int32, list []MenuItem) {
+		for _, it := range list {
+			id := next
+			next++
+			t.items[id] = it
+			t.children[parent] = append(t.children[parent], id)
+			walk(id, it.Children)
+		}
+	}
+	walk(0, items)
+	return t
+}
+
+// snapshot возвращает пронумерованные пункты и номер версии меню.
+func (m *menu) snapshot() (tree, uint32) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]MenuItem(nil), m.items...), m.revision
+	return flatten(m.items), m.revision
 }
 
-// buildLayout строит дерево меню: корень (ID 0) с пунктами-детьми.
-func buildLayout(items []MenuItem) layout {
-	root := layout{ID: 0, Props: map[string]dbus.Variant{"children-display": dbus.MakeVariant("submenu")}}
-	for i, it := range items {
-		root.Children = append(root.Children, dbus.MakeVariant(layout{ID: int32(i + 1), Props: it.props(), Children: []dbus.Variant{}}))
+// buildLayout строит дерево меню от пункта id (0 — корень) со всеми вложенными пунктами.
+func (t tree) buildLayout(id int32) layout {
+	props := map[string]dbus.Variant{"children-display": dbus.MakeVariant("submenu")}
+	if id != 0 {
+		props = t.items[id].props()
 	}
-	return root
+	l := layout{ID: id, Props: props, Children: []dbus.Variant{}}
+	for _, c := range t.children[id] {
+		l.Children = append(l.Children, dbus.MakeVariant(t.buildLayout(c)))
+	}
+	return l
 }
 
 // menuObject — методы протокола dbusmenu. Отдельный тип, чтобы на шину попали только они.
 type menuObject struct{ m *menu }
 
-// GetLayout возвращает дерево меню (глубина и фильтр свойств не нужны для плоского меню).
+// GetLayout возвращает дерево меню от пункта parentID (0 — корень) со всеми вложенными пунктами
+// (глубину и фильтр свойств панели не ограничиваем: меню небольшое).
 func (o *menuObject) GetLayout(parentID, _ int32, _ []string) (uint32, layout, *dbus.Error) {
-	items, rev := o.m.snapshot()
-	root := buildLayout(items)
-	if parentID == 0 {
-		return rev, root, nil
+	t, rev := o.m.snapshot()
+	if _, ok := t.items[parentID]; parentID != 0 && !ok {
+		return rev, t.buildLayout(0), dbus.MakeFailedError(fmt.Errorf("unknown menu item %d", parentID))
 	}
-	// Запрос поддерева пункта: у пунктов нет детей.
-	if parentID > 0 && int(parentID) <= len(items) {
-		return rev, layout{ID: parentID, Props: items[parentID-1].props(), Children: []dbus.Variant{}}, nil
-	}
-	return rev, root, dbus.MakeFailedError(fmt.Errorf("unknown menu item %d", parentID))
+	return rev, t.buildLayout(parentID), nil
 }
 
 // GetGroupProperties возвращает свойства нескольких пунктов (пустой список — всех).
 func (o *menuObject) GetGroupProperties(ids []int32, _ []string) ([]itemProps, *dbus.Error) {
-	items, _ := o.m.snapshot()
+	t, _ := o.m.snapshot()
 	var out []itemProps
-	for i, it := range items {
-		id := int32(i + 1)
+	for id := int32(1); int(id) <= len(t.items); id++ {
 		if len(ids) == 0 || containsID(ids, id) {
-			out = append(out, itemProps{ID: id, Props: it.props()})
+			out = append(out, itemProps{ID: id, Props: t.items[id].props()})
 		}
 	}
 	return out, nil
@@ -175,35 +216,33 @@ func (o *menuObject) GetGroupProperties(ids []int32, _ []string) ([]itemProps, *
 
 // GetProperty возвращает одно свойство пункта.
 func (o *menuObject) GetProperty(id int32, name string) (dbus.Variant, *dbus.Error) {
-	items, _ := o.m.snapshot()
-	if id >= 1 && int(id) <= len(items) {
-		if v, ok := items[id-1].props()[name]; ok {
+	t, _ := o.m.snapshot()
+	if it, ok := t.items[id]; ok {
+		if v, ok := it.props()[name]; ok {
 			return v, nil
 		}
 	}
 	return dbus.MakeVariant(""), dbus.MakeFailedError(fmt.Errorf("no property %q for item %d", name, id))
 }
 
-// Event обрабатывает действие с пунктом: "clicked" вызывает OnClick.
+// Event обрабатывает действие с пунктом: "clicked" вызывает OnClick (у подменю — нет).
 func (o *menuObject) Event(id int32, eventID string, _ dbus.Variant, _ uint32) *dbus.Error {
 	if eventID != "clicked" {
 		return nil
 	}
-	items, _ := o.m.snapshot()
-	if id >= 1 && int(id) <= len(items) {
-		if it := items[id-1]; !it.Disabled && it.OnClick != nil {
-			go it.OnClick()
-		}
+	t, _ := o.m.snapshot()
+	if it, ok := t.items[id]; ok && !it.Disabled && it.OnClick != nil && len(it.Children) == 0 {
+		go it.OnClick()
 	}
 	return nil
 }
 
 // EventGroup обрабатывает несколько действий; возвращает ID неизвестных пунктов.
 func (o *menuObject) EventGroup(events []menuEvent) ([]int32, *dbus.Error) {
-	items, _ := o.m.snapshot()
+	t, _ := o.m.snapshot()
 	var bad []int32
 	for _, e := range events {
-		if e.ID < 1 || int(e.ID) > len(items) {
+		if _, ok := t.items[e.ID]; !ok {
 			bad = append(bad, e.ID)
 			continue
 		}

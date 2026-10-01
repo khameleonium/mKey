@@ -295,6 +295,7 @@ func (m *Module) Delete(id string) error {
 	if err := os.Remove(m.path(id)); err != nil {
 		return err
 	}
+	m.log.Info("project deleted", "project", id)
 	m.reload(id)
 	return nil
 }

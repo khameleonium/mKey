@@ -2,20 +2,26 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"mkey/internal/contracts"
+	"mkey/internal/lib/devmap"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
@@ -44,6 +50,7 @@ var streamTopics = map[string]bool{
 // registerGUIRoutes добавляет маршруты веб-интерфейса.
 func (m *Module) registerGUIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/projects/{id}", m.handleProjectGet)
+	mux.HandleFunc("GET /api/v1/projects/{id}/export", m.handleProjectExport)
 	mux.HandleFunc("PUT /api/v1/projects/{id}", m.handleProjectPut)
 	mux.HandleFunc("DELETE /api/v1/projects/{id}", m.handleProjectDelete)
 	mux.HandleFunc("POST /api/v1/projects", m.handleProjectCreate)
@@ -113,6 +120,123 @@ func (m *Module) handleProjectGet(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, _ := m.svc.projects.Raw(id)
 	writeJSON(w, http.StatusOK, map[string]any{"project": st.Project, "raw": string(raw), "path": st.Path, "error": st.Error})
+}
+
+// handleProjectExport отдаёт файл проекта для сохранения и обмена (ADR-0027): в раздел devices
+// дописываются имена кнопок устройств, которые встречаются в проекте ({Геймпад.Старт}), — у того,
+// кто загрузит проект, такое же устройство получит эти имена. Комментарии файла сохраняются.
+func (m *Module) handleProjectExport(w http.ResponseWriter, r *http.Request) {
+	if m.svc.projects == nil {
+		m.unavailable(w, r)
+		return
+	}
+	id := r.PathValue("id")
+	_, ok := m.svc.projects.Get(id)
+	raw, err := m.svc.projects.Raw(id)
+	if !ok || err != nil {
+		m.writeError(w, r, http.StatusNotFound, "api.project_not_found", map[string]string{"project": id})
+		return
+	}
+
+	// Имена кнопок устройств проекта (если инспектор работает).
+	if m.svc.inspect != nil {
+		if names := m.svc.inspect.NamesFor(deviceRefs(string(raw))); len(names) > 0 {
+			if out, err := withDeviceNames(raw, names); err == nil {
+				raw = out
+			} else {
+				m.log.Warn("cannot add device names to the exported project", "project", id, "err", err)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": id + project.FileSuffix}))
+	_, _ = w.Write(raw)
+}
+
+// deviceRefRe и joinedRefRe — упоминания кнопок устройств в тексте проекта: «Устройство.Кнопка»
+// ({Геймпад.Старт}, UnKey2.001) и слитная запись авто-ID (UnKey001, UnKey2001).
+var (
+	deviceRefRe = regexp.MustCompile(`([\p{L}\p{N}_]+)\.[\p{L}\p{N}_]+`)
+	joinedRefRe = regexp.MustCompile(`(?i)\bunkey[0-9]+\b`)
+)
+
+// deviceRefs находит в тексте проекта возможные имена устройств; лишние (например, «script» из
+// «script.lua») отсеет инспектор — у него нет таких устройств.
+func deviceRefs(text string) []string {
+	var out []string
+	for _, m := range deviceRefRe.FindAllStringSubmatch(text, -1) {
+		out = append(out, m[1])
+	}
+	for _, s := range joinedRefRe.FindAllString(text, -1) {
+		if dev, _, ok := devmap.SplitJoined(s); ok {
+			out = append(out, dev)
+		}
+	}
+	return out
+}
+
+// withDeviceNames записывает имена в раздел devices файла проекта: записи тех же моделей
+// заменяются, остальные остаются; комментарии файла сохраняются.
+func withDeviceNames(raw []byte, names []devmap.Names) ([]byte, error) {
+	// Файл как дерево YAML.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("project is not a YAML map")
+	}
+	root := doc.Content[0]
+
+	// Прежний раздел devices: модели, которых нет среди новых имён, сохраняются.
+	var merged []devmap.Names
+	key := func(n devmap.Names) string {
+		return strings.ToLower(n.Match.Vid + ":" + n.Match.Pid + ":" + n.Match.Name)
+	}
+	fresh := map[string]bool{}
+	for _, n := range names {
+		fresh[key(n)] = true
+	}
+	idx := -1
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "devices" {
+			idx = i
+			var old []devmap.Names
+			if err := root.Content[i+1].Decode(&old); err == nil {
+				for _, n := range old {
+					if !fresh[key(n)] {
+						merged = append(merged, n)
+					}
+				}
+			}
+		}
+	}
+	merged = append(merged, names...)
+
+	// Новый раздел на месте прежнего или в конце файла.
+	var value yaml.Node
+	if err := value.Encode(merged); err != nil {
+		return nil, err
+	}
+	if idx >= 0 {
+		root.Content[idx+1] = &value
+	} else {
+		k := &yaml.Node{Kind: yaml.ScalarNode, Value: "devices",
+			HeadComment: "Имена кнопок устройств этого проекта: mKey подставит их такому же устройству."}
+		root.Content = append(root.Content, k, &value)
+	}
+
+	// Запись с отступом в два пробела.
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // projectBody — тело сохранения и проверки: структура проекта или текст YAML.

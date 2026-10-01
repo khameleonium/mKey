@@ -31,6 +31,9 @@ type watchEntry struct {
 	// Kernel — имя кода в ядре ("BTN_TRIGGER_HAPPY3"); Code — сам код.
 	Kernel string `json:"kernel"`
 	Code   uint16 `json:"code"`
+	// Labeled — Name — авто-ID или имя, данное человеком ({UnKey001}, {Sega.Start}): кнопку можно
+	// переименовать (FR-DEV-4).
+	Labeled bool `json:"labeled,omitempty"`
 	// Action — для клавиш "down" или "up"; Value — значение оси, колеса или сдвиг мыши по X.
 	Action string `json:"action,omitempty"`
 	Value  int32  `json:"value,omitempty"`
@@ -109,7 +112,7 @@ func (m *Module) labelEntry(entry *watchEntry, e contracts.InputEvent) {
 		return
 	}
 	if l := m.svc.inspect.Label(e.Device, e.Event.Type, e.Event.Code); l != "" {
-		entry.Name = l
+		entry.Name, entry.Labeled = l, true
 	}
 }
 

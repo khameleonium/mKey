@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"mime"
 	"net/http"
 
 	"mkey/internal/lib/config"
@@ -90,26 +89,4 @@ func (m *Module) handleDeviceRename(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
-}
-
-// handleDeviceProfile отдаёт профиль из имён устройства (?ref=, FR-DEV-5) файлом YAML для
-// скачивания. Нет устройства или неоднозначно — 400 api.rename_<вид>.
-func (m *Module) handleDeviceProfile(w http.ResponseWriter, r *http.Request) {
-	if m.svc.inspect == nil {
-		m.unavailable(w, r)
-		return
-	}
-	data, filename, err := m.svc.inspect.ExportProfile(r.URL.Query().Get("ref"))
-	var ne *devmap.NameError
-	switch {
-	case errors.As(err, &ne):
-		m.writeError(w, r, http.StatusBadRequest, "api.rename_"+ne.Code, map[string]string{"name": ne.Name, "other": ne.Other})
-		return
-	case err != nil:
-		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
-		return
-	}
-	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
-	_, _ = w.Write(data)
 }

@@ -244,26 +244,3 @@ func newDevicesRenameCmd(tr *i18n.Translator) *cobra.Command {
 	cmd.Flags().BoolVar(&clear, "clear", false, tr.T("cli.rename.flag.clear"))
 	return cmd
 }
-
-// newDevicesProfileCmd создаёт команду `mkey devices profile <устройство>`: профиль из имён
-// устройства (FR-DEV-5) — им можно поделиться; на другом компьютере его кладут в папку профилей.
-func newDevicesProfileCmd(tr *i18n.Translator) *cobra.Command {
-	return &cobra.Command{
-		Use:   "profile <устройство>",
-		Short: tr.T("cli.profile.short"),
-		Long:  tr.T("cli.profile.long"),
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := daemonClient(cmd, tr)
-			if err != nil {
-				return err
-			}
-			var data []byte
-			if err := c.do(cmd.Context(), "GET", "/api/v1/devices/profile?ref="+url.QueryEscape(args[0]), nil, &data); err != nil {
-				return userError(formatAPIError(tr, err, ""))
-			}
-			_, err = cmd.OutOrStdout().Write(data)
-			return err
-		},
-	}
-}

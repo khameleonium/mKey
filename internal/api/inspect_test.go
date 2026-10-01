@@ -12,6 +12,7 @@ import (
 	"mkey/internal/lib/devmap"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
+	"mkey/internal/lib/project"
 )
 
 // fakeInspector — инспектор с заданными устройствами; поиск — по имени файла или части названия;
@@ -48,12 +49,14 @@ func (f fakeInspector) Rename(_, _, name string) error {
 	return nil
 }
 
-// ExportProfile — профиль только у UnKey.
-func (f fakeInspector) ExportProfile(device string) ([]byte, string, error) {
-	if device != "UnKey" {
-		return nil, "", &devmap.NameError{Code: devmap.NameUnknown, Name: device}
+// NamesFor — имена только у устройства «Геймпад» (он же UnKey).
+func (f fakeInspector) NamesFor(devices []string) []devmap.Names {
+	for _, d := range devices {
+		if strings.EqualFold(d, "Геймпад") || strings.EqualFold(d, "UnKey") {
+			return []devmap.Names{{Match: devmap.NamesMatch{Vid: "0079", Pid: "0011"}, Name: "Геймпад", Buttons: map[string]string{"BTN_TRIGGER": "Старт"}}}
+		}
 	}
-	return []byte("version: 1\n"), "usb-gamepad.yaml", nil
+	return nil
 }
 
 // DeviceOf — авто-ID только у event9.
@@ -178,7 +181,7 @@ func TestLabelEntry(t *testing.T) {
 	} {
 		entry := watchEntry{Name: c.name}
 		m.labelEntry(&entry, ie(c.dev, c.code))
-		if entry.Name != c.want {
+		if entry.Name != c.want || entry.Labeled != (c.want == "UnKey001") {
 			t.Errorf("%s %s: name = %q, want %q", c.dev, c.name, entry.Name, c.want)
 		}
 	}
@@ -223,24 +226,48 @@ func TestDeviceRename(t *testing.T) {
 	}
 }
 
-// TestDeviceProfileExport проверяет скачивание профиля: файл с именем и понятная ошибка.
-func TestDeviceProfileExport(t *testing.T) {
+// TestProjectExport проверяет сохранение проекта в файл: имена кнопок устройств проекта дописываются
+// в раздел devices (старые записи других моделей остаются, комментарии — тоже); проект без кнопок
+// устройств — как есть; нет проекта — 404.
+func TestProjectExport(t *testing.T) {
 	t.Parallel()
 	m, _ := newTestModule(t)
 	mode := "smart"
 	m.svc.inspect = fakeInspector{mode: &mode}
+	m.svc.projects = &memProjects{files: map[string]string{
+		"china": "# Мой геймпад\nversion: 1\nname: Китайский геймпад\nevents:\n  - id: a\n    trigger: {type: hotkey, keys: \"{Геймпад.Старт}\"}\n" +
+			"devices:\n  - match: {vid: \"1234\", pid: \"5678\"}\n    name: Руль\n",
+		"plain": "version: 1\nname: P\nevents: []\n",
+	}}
 	h := m.routes(true)
-
-	// Профиль — файлом для скачивания.
-	req := httptest.NewRequest("GET", "/api/v1/devices/profile?ref=UnKey", nil)
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-	if rr.Code != 200 || rr.Body.String() != "version: 1\n" || !strings.Contains(rr.Header().Get("Content-Disposition"), "usb-gamepad.yaml") {
-		t.Fatalf("export: %d %q %v", rr.Code, rr.Body.String(), rr.Header())
+	get := func(id string) (int, string, string) {
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, httptest.NewRequest("GET", "/api/v1/projects/"+id+"/export", nil))
+		return rr.Code, rr.Body.String(), rr.Header().Get("Content-Disposition")
 	}
 
-	// Нет устройства — 400 с понятным текстом.
-	if code, out := call(t, h, "GET", "/api/v1/devices/profile?ref=nope", "", nil); code != 400 || out["error"].(map[string]any)["code"] != "api.rename_unknown" {
-		t.Errorf("unknown: %d %v", code, out)
+	// Имена дописаны, прежняя модель и комментарий остались, файл — с именем проекта.
+	code, body, disp := get("china")
+	if code != 200 || !strings.Contains(disp, "china.mkey.yaml") || !strings.Contains(body, "# Мой геймпад") ||
+		!strings.Contains(body, "BTN_TRIGGER: Старт") || !strings.Contains(body, "name: Руль") {
+		t.Fatalf("export: %d %s\n%s", code, disp, body)
+	}
+	p, err := project.Parse([]byte(body), "china")
+	if err != nil || len(p.Devices) != 2 || project.Check(p) != nil {
+		t.Errorf("exported file: %+v %v", p.Devices, err)
+	}
+
+	// Без кнопок устройств — как есть; нет проекта — 404.
+	if code, body, _ := get("plain"); code != 200 || body != "version: 1\nname: P\nevents: []\n" {
+		t.Errorf("plain: %d %q", code, body)
+	}
+	if code, _, _ := get("nope"); code != 404 {
+		t.Errorf("missing: %d", code)
+	}
+
+	// Поиск упоминаний устройств в тексте.
+	refs := deviceRefs(`keys: "{Геймпад.Старт}" send: "{UnKey2001}{unkey001}" lua: {file: script.lua}`)
+	if strings.Join(refs, ",") != "Геймпад,script,UnKey2,UnKey" {
+		t.Errorf("refs = %v", refs)
 	}
 }

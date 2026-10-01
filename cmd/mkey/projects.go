@@ -111,7 +111,24 @@ func newProjectCmd(tr *i18n.Translator) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(list, toggle("enable", true), toggle("disable", false), imp)
+	// mkey project export <проект> — файл проекта для обмена: с именами кнопок устройств (ADR-0027).
+	export := &cobra.Command{
+		Use: "export <проект>", Short: tr.T("cli.project.export.short"), Long: tr.T("cli.project.export.long"), Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := daemonClient(cmd, tr)
+			if err != nil {
+				return err
+			}
+			var data []byte
+			if err := c.do(cmd.Context(), "GET", "/api/v1/projects/"+url.PathEscape(args[0])+"/export", nil, &data); err != nil {
+				return userError(formatAPIError(tr, err, ""))
+			}
+			_, err = cmd.OutOrStdout().Write(data)
+			return err
+		},
+	}
+
+	cmd.AddCommand(list, toggle("enable", true), toggle("disable", false), imp, export)
 	return cmd
 }
 

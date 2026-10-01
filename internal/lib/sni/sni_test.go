@@ -68,3 +68,56 @@ func TestMenuLayout(t *testing.T) {
 	default:
 	}
 }
+
+// TestSubmenu проверяет подменю и пункты с галочкой: нумерацию в глубину, свойства, поддерево,
+// щелчок по вложенному пункту и то, что щелчок по самому подменю ничего не вызывает.
+func TestSubmenu(t *testing.T) {
+	t.Parallel()
+	clicked := make(chan string, 4)
+	m := newMenu(nil, []MenuItem{
+		{Label: "Projects", OnClick: func() { clicked <- "projects" }, Children: []MenuItem{
+			{Label: "A", Checkable: true, Checked: true, OnClick: func() { clicked <- "A" }},
+			{Label: "B", Checkable: true},
+		}},
+		{Label: "Quit", OnClick: func() { clicked <- "quit" }},
+	})
+	o := &menuObject{m: m}
+
+	// Нумерация: Projects=1, A=2, B=3, Quit=4; у подменю — children-display, у пунктов — галочки.
+	_, root, _ := o.GetLayout(0, -1, nil)
+	if len(root.Children) != 2 {
+		t.Fatalf("root children = %d", len(root.Children))
+	}
+	sub := root.Children[0].Value().(layout)
+	if sub.ID != 1 || sub.Props["children-display"].Value() != "submenu" || len(sub.Children) != 2 {
+		t.Fatalf("submenu = %+v", sub)
+	}
+	a := sub.Children[0].Value().(layout)
+	b := sub.Children[1].Value().(layout)
+	if a.ID != 2 || a.Props["toggle-type"].Value() != "checkmark" || a.Props["toggle-state"].Value() != int32(1) || b.Props["toggle-state"].Value() != int32(0) {
+		t.Errorf("checkmarks: %+v %+v", a.Props, b.Props)
+	}
+	if quit := root.Children[1].Value().(layout); quit.ID != 4 {
+		t.Errorf("quit id = %d", quit.ID)
+	}
+
+	// Поддерево пункта и свойства всех пунктов.
+	if _, l, err := o.GetLayout(1, -1, nil); err != nil || len(l.Children) != 2 {
+		t.Errorf("subtree: %+v %v", l, err)
+	}
+	if props, _ := o.GetGroupProperties(nil, nil); len(props) != 4 {
+		t.Errorf("group properties = %d", len(props))
+	}
+
+	// Щелчок по вложенному пункту вызывает его; по подменю — ничего.
+	_ = o.Event(1, "clicked", dbus.MakeVariant(0), 0)
+	_ = o.Event(2, "clicked", dbus.MakeVariant(0), 0)
+	if got := <-clicked; got != "A" {
+		t.Errorf("clicked %q, want A", got)
+	}
+	select {
+	case got := <-clicked:
+		t.Errorf("unexpected click %q", got)
+	default:
+	}
+}

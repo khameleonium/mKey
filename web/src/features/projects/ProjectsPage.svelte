@@ -99,19 +99,13 @@
     }
   }
 
-  /** exportFile скачивает файл проекта. */
-  async function exportFile(p: ProjectInfo): Promise<void> {
-    try {
-      const { raw } = await api.project(p.id);
-      const url = URL.createObjectURL(new Blob([raw], { type: "application/yaml" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${p.id}.mkey.yaml`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
+  /** exportFile скачивает файл проекта для обмена: mKey дописывает в него имена кнопок
+   * устройств, которые встречаются в проекте ({Геймпад.Старт}, ADR-0027). */
+  function exportFile(p: ProjectInfo): void {
+    const a = document.createElement("a");
+    a.href = `/api/v1/projects/${encodeURIComponent(p.id)}/export`;
+    a.download = `${p.id}.mkey.yaml`;
+    a.click();
   }
 
   /** remove удаляет проект после подтверждения. */
