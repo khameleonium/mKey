@@ -42,7 +42,7 @@ type hotkeyParams struct {
 // hotkey — зарегистрированная горячая клавиша.
 type hotkey struct {
 	ev       contracts.EventRef
-	chord    []keys.Key // последний элемент — основная клавиша
+	chord    []contracts.DeviceKey // последний элемент — основная клавиша
 	on       string
 	consume  bool
 	device   string
@@ -73,7 +73,7 @@ func (hotkeyType) Meta() contracts.ExtensionMeta {
 }
 
 // parseHotkey разбирает и проверяет параметры триггера hotkey.
-func parseHotkey(tr project.Trigger) (hotkeyParams, []keys.Key, error) {
+func (m *Module) parseHotkey(tr project.Trigger) (hotkeyParams, []contracts.DeviceKey, error) {
 	var p hotkeyParams
 	if err := project.Decode(tr.Params, &p); err != nil {
 		return p, nil, fmt.Errorf("hotkey: %w", err)
@@ -81,7 +81,7 @@ func parseHotkey(tr project.Trigger) (hotkeyParams, []keys.Key, error) {
 	if strings.Trim(p.Keys, "{} ") == "" {
 		return p, nil, project.Required("trigger", "hotkey", "keys")
 	}
-	chord, err := parseChord(p.Keys)
+	chord, err := m.parseChord(p.Keys)
 	if err != nil {
 		return p, nil, fmt.Errorf("hotkey: %w", err)
 	}
@@ -97,14 +97,14 @@ func parseHotkey(tr project.Trigger) (hotkeyParams, []keys.Key, error) {
 }
 
 // Validate проверяет параметры, ничего не регистрируя.
-func (hotkeyType) Validate(tr project.Trigger) error {
-	_, _, err := parseHotkey(tr)
+func (t hotkeyType) Validate(tr project.Trigger) error {
+	_, _, err := t.m.parseHotkey(tr)
 	return err
 }
 
 // Arm проверяет параметры и регистрирует горячую клавишу.
 func (t hotkeyType) Arm(_ context.Context, ref contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	p, chord, err := parseHotkey(tr)
+	p, chord, err := t.m.parseHotkey(tr)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,9 @@ func (t hotkeyType) Arm(_ context.Context, ref contracts.EventRef, tr project.Tr
 func (m *Module) onDown(device string, code uint16, fires *[]func()) bool {
 	drop := false
 	for h := range m.hotkeys {
-		// Основная клавиша, устройство и остальные клавиши сочетания.
+		// Основная клавиша (с её устройством, если указано), фильтр устройства и остальные клавиши сочетания.
 		main := h.chord[len(h.chord)-1]
-		if !main.Matches(code) || (h.device != "" && !m.deviceOK(device, h.device)) || !m.chordHeld(h) {
+		if !m.matches(main, device, code) || (h.device != "" && !m.deviceOK(device, h.device)) || !m.chordHeld(h) {
 			continue
 		}
 		if h.consume {
@@ -172,7 +172,7 @@ func (m *Module) onDown(device string, code uint16, fires *[]func()) bool {
 func (m *Module) onUp(device string, code uint16, fires *[]func()) {
 	for h := range m.hotkeys {
 		main := h.chord[len(h.chord)-1]
-		if !main.Matches(code) {
+		if !m.matches(main, device, code) {
 			continue
 		}
 		switch h.on {
@@ -266,11 +266,11 @@ type modControl struct {
 }
 
 // newModControl создаёт управление модификаторами из клавиш сочетания (кроме основной).
-func (m *Module) newModControl(chord []keys.Key) *modControl {
+func (m *Module) newModControl(chord []contracts.DeviceKey) *modControl {
 	var mods []keys.Key
 	for _, k := range chord {
 		if isModifier(k.Code) {
-			mods = append(mods, k)
+			mods = append(mods, k.Key)
 		}
 	}
 	return &modControl{m: m, mods: mods, released: map[string][]uint16{}}
@@ -325,27 +325,27 @@ func (c *modControl) Restore() {
 }
 
 // parseChord разбирает сочетание записью зажатием: "^{Ctrl}^{Alt}{H}" (зажатые клавиши и последняя
-// нажатая) или "{F8}" (одна клавиша).
-func parseChord(s string) ([]keys.Key, error) {
+// нажатая) или "{F8}" (одна клавиша). Кнопки устройств с авто-ID ({UnKey001}) находит инспектор.
+func (m *Module) parseChord(s string) ([]contracts.DeviceKey, error) {
 	refs, err := dsl.ParseHotkey(strings.TrimSpace(s))
 	if err != nil {
 		return nil, err
 	}
-	return refsToKeys(refs)
+	return m.refsToKeys(refs)
 }
 
 // parseSequence разбирает последовательность "{G}{G}": несколько одиночных клавиш.
-func parseSequence(s string) ([]keys.Key, error) {
+func (m *Module) parseSequence(s string) ([]contracts.DeviceKey, error) {
 	nodes, err := dsl.Parse(s)
 	if err != nil {
 		return nil, err
 	}
-	var out []keys.Key
+	var out []contracts.DeviceKey
 	for _, n := range nodes {
 		if n.Kind != dsl.KindTap || len(n.Keys) != 1 || n.Repeat > 0 || n.HoldMS > 0 {
 			return nil, fmt.Errorf("a sequence is a list of single keys, e.g. {G}{G}")
 		}
-		k, err := refsToKeys(n.Keys)
+		k, err := m.refsToKeys(n.Keys)
 		if err != nil {
 			return nil, err
 		}
@@ -357,21 +357,30 @@ func parseSequence(s string) ([]keys.Key, error) {
 	return out, nil
 }
 
-// refsToKeys переводит ссылки DSL в клавиши (префиксы устройств появятся в фазе 7).
-func refsToKeys(refs []dsl.KeyRef) ([]keys.Key, error) {
-	out := make([]keys.Key, 0, len(refs))
+// refsToKeys переводит ссылки DSL в клавиши: стандартные имена — с любого устройства, сырые коды,
+// кнопки устройств с авто-ID ({UnKey001}, {UnKey2.A}) — через инспектор (FR-DEV-2).
+func (m *Module) refsToKeys(refs []dsl.KeyRef) ([]contracts.DeviceKey, error) {
+	out := make([]contracts.DeviceKey, 0, len(refs))
 	for _, r := range refs {
 		switch {
 		case r.Device != "":
-			return nil, fmt.Errorf("device prefixes (%s.) are not supported in hotkeys yet", r.Device)
+			// Без инспектора (модуль отключён) имена устройств неизвестны.
+			if m.inspect == nil {
+				return nil, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownDevice, "device", r.Device)
+			}
+			k, err := m.inspect.ResolveKey(r.Device, r.Name)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, k)
 		case r.Code != nil:
-			out = append(out, keys.Key{Name: fmt.Sprintf("#%d", *r.Code), Type: ev.EvKey, Code: *r.Code})
+			out = append(out, contracts.DeviceKey{Key: keys.Key{Name: fmt.Sprintf("#%d", *r.Code), Type: ev.EvKey, Code: *r.Code}})
 		default:
 			k, ok := keys.Lookup(r.Name)
 			if !ok {
-				return nil, fmt.Errorf("unknown key %q", r.Name)
+				return nil, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownKey, "name", r.Name)
 			}
-			out = append(out, k)
+			out = append(out, contracts.DeviceKey{Key: k})
 		}
 	}
 	return out, nil

@@ -32,6 +32,8 @@ const (
 	ErrAxisChord        = "dsl.axis_chord"         // значение оси у сочетания
 	ErrBadCommandArgs   = "dsl.bad_command_args"   // {command}, {usage}
 	ErrUnknownDevice    = "dsl.unknown_device"     // {device}
+	ErrUnknownButton    = "dsl.unknown_button"     // {device}, {button}: у устройства нет такой кнопки
+	ErrCannotSend       = "dsl.cannot_send"        // {key}, {kernel}: эту кнопку mKey пока не умеет нажимать
 	ErrNotSupported     = "dsl.not_supported"      // {what}: возможность появится позже
 	ErrUntypeable       = "dsl.untypeable_char"    // {char}, {layouts}: символа нет в раскладках
 	ErrChord            = "dsl.chord_in_braces"    // {keys}, {macro}, {hotkey}: {Ctrl+C} — в скобках одна клавиша
@@ -47,7 +49,7 @@ var AllErrorCodes = []string{
 	ErrUnclosedGroup, ErrUnexpectedClose, ErrUnclosedText, ErrBadEscape, ErrEmptyBraces,
 	ErrUnknownKey, ErrUnknownKeyHint, ErrBadNumber, ErrBadDuration, ErrTooLong, ErrBadRepeat,
 	ErrPrefixNotAllowed, ErrStarOnlyRelease, ErrRepeatAndHold, ErrPauseRange, ErrAxisChord,
-	ErrBadCommandArgs, ErrUnknownDevice, ErrNotSupported, ErrUntypeable,
+	ErrBadCommandArgs, ErrUnknownDevice, ErrUnknownButton, ErrCannotSend, ErrNotSupported, ErrUntypeable,
 	ErrChord, ErrBraceKey, ErrAlreadyHeld, ErrNotHeld, ErrBadHotkey,
 }
 
@@ -79,6 +81,12 @@ func (e *Error) Error() string {
 
 // newError создаёт ошибку с параметрами, переданными парами «имя, значение».
 func newError(pos Pos, code string, kv ...string) *Error {
+	return NewError(pos, code, kv...)
+}
+
+// NewError создаёт ошибку языка с кодом code и параметрами сообщения парами «имя, значение»
+// (для модулей, которые сами проверяют имена устройств и кнопок, например inspector).
+func NewError(pos Pos, code string, kv ...string) *Error {
 	e := &Error{Pos: pos, Code: code}
 	if len(kv) > 0 {
 		e.Args = map[string]string{}

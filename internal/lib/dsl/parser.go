@@ -7,6 +7,7 @@ import (
 	"unicode"
 	"unicode/utf16"
 
+	"mkey/internal/lib/devmap"
 	"mkey/internal/lib/keys"
 )
 
@@ -392,6 +393,12 @@ func (p *parser) keyRef() (KeyRef, error) {
 func (p *parser) checkKey(ref *KeyRef, pos Pos) error {
 	// Ссылки на устройства и сырые коды здесь не проверяются.
 	if ref.Device != "" || ref.Code != nil {
+		return nil
+	}
+
+	// Слитная запись кнопки авто-ID-устройства: {UnKey001} → устройство UnKey, кнопка 001 (FR-DEV-2).
+	if dev, btn, ok := devmap.SplitJoined(ref.Name); ok {
+		ref.Device, ref.Name = dev, btn
 		return nil
 	}
 

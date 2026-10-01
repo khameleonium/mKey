@@ -1,6 +1,7 @@
 package dsl
 
 import (
+	"errors"
 	"math"
 	"strings"
 
@@ -65,6 +66,44 @@ func (DefaultResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
 		t.Device = DeviceMouse
 	}
 	return t, nil
+}
+
+// KeyLookup находит кнопку устройства с авто-ID (FR-DEV-2): device — "UnKey2", button — "001".
+// Возвращает код EV_KEY и имя для сообщений; ошибка — *Error.
+type KeyLookup func(device, button string) (code uint16, name string, err error)
+
+// DeviceResolver — как DefaultResolver, но кнопки устройств ({UnKey001}) находит через Lookup:
+// клавиши KEY_* нажимает виртуальная клавиатура mKey, кнопки мыши — мышь; остальные (кнопки
+// джойстика) пока нажать нельзя — ErrCannotSend.
+type DeviceResolver struct{ Lookup KeyLookup }
+
+// Resolve находит цель для ссылки на клавишу.
+func (r DeviceResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
+	if ref.Device == "" || r.Lookup == nil {
+		return DefaultResolver{}.Resolve(ref, pos)
+	}
+
+	// Кнопка устройства: ошибка поиска — с позицией в макросе.
+	code, name, err := r.Lookup(ref.Device, ref.Name)
+	if err != nil {
+		var de *Error
+		if errors.As(err, &de) {
+			e := *de
+			e.Pos = pos
+			return Target{}, &e
+		}
+		return Target{}, newError(pos, ErrUnknownDevice, "device", ref.Device)
+	}
+
+	// Куда отправлять: клавиатура, мышь или пока никуда.
+	kernel := ev.CodeName(ev.EvKey, code)
+	switch {
+	case strings.HasPrefix(kernel, "KEY_"):
+		return Target{Device: DeviceKeyboard, Code: code, Name: name}, nil
+	case code >= ev.BtnMouse && code < ev.BtnJoystick:
+		return Target{Device: DeviceMouse, Code: code, Name: name}, nil
+	}
+	return Target{}, newError(pos, ErrCannotSend, "key", name, "kernel", kernel)
 }
 
 // StepKind — вид шага плана выполнения.

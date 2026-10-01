@@ -1,6 +1,17 @@
 package contracts
 
-import "mkey/internal/lib/evdev"
+import (
+	"mkey/internal/lib/evdev"
+	"mkey/internal/lib/keys"
+)
+
+// DeviceKey — клавиша или кнопка, возможно конкретного устройства: {A} — с любого устройства,
+// {UnKey2.001} — только с устройства UnKey2 (FR-DEV-2).
+type DeviceKey struct {
+	keys.Key
+	// Device — авто-ID устройства ("UnKey2"); пусто — любое устройство.
+	Device string `json:"device,omitempty"`
+}
 
 // Inspector — подробные сведения об устройствах ввода (модуль inspector, FR-DEV-1): постоянные
 // имена, все кнопки и оси с именами mKey и ядра. По ним человек узнаёт, как устройство
@@ -12,6 +23,13 @@ type Inspector interface {
 	// постоянное имя by-id/by-path — точно, иначе часть названия (без учёта регистра).
 	// Точное совпадение пути или имени файла даёт одно устройство; иначе — все подходящие.
 	Find(ref string) []DeviceDetails
+	// ResolveKey находит кнопку устройства для макросов: device — авто-ID ("UnKey2", без учёта
+	// регистра), button — номер ("001") или стандартное имя клавиши ("A"). Работает и для
+	// отключённого устройства (по devices.yaml). Ошибка — *dsl.Error (dsl.unknown_device,
+	// dsl.unknown_button).
+	ResolveKey(device, button string) (DeviceKey, error)
+	// DeviceOf возвращает авто-ID подключённого устройства по пути ("" — у него нет авто-ID).
+	DeviceOf(path string) string
 	// Label возвращает имя для макросов кнопки или оси без стандартного имени
 	// ("UnKey001", "UnKey2.001", "UnKey.Axis01", FR-DEV-2); "" — у неё нет авто-ID.
 	Label(path string, typ, code uint16) string

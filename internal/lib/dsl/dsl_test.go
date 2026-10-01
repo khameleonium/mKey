@@ -35,12 +35,14 @@ func TestParseFormat(t *testing.T) {
 		`{Wheel up 3}`:                          `{Wheel up 3}`,
 		`{Click}`:                               `{Click}`,
 		`{#30}{#0x110}`:                         `{#30}{#272}`,
-		`{pad2.South}{Педаль.Левая}{UnKey.001}`: `{pad2.South}{Педаль.Левая}{UnKey.001}`,
-		`{pad2.LX=0.5}{pad2.LY = -1}`:           `{pad2.LX=0.5}{pad2.LY=-1}`,
-		`{"a\"b\\c\/d\teA😀"}`:                   `{"a\"b\\c/d\teA😀"}`,
-		"{\"line1\nline2\"}":                    `{"line1\nline2"}`,
-		``:                                      ``,
-		"  \n // only comment":                  ``,
+		`{pad2.South}{Педаль.Левая}{UnKey.001}`: `{pad2.South}{Педаль.Левая}{UnKey001}`,
+		// Авто-ID (FR-DEV-2): слитная запись — у первого устройства, у остальных — через точку.
+		`{unkey001}{UnKey2001}{UnKey2.001}{UnKey12034}`: `{UnKey001}{UnKey2.001}{UnKey2.001}{UnKey12.034}`,
+		`{pad2.LX=0.5}{pad2.LY = -1}`:                   `{pad2.LX=0.5}{pad2.LY=-1}`,
+		`{"a\"b\\c\/d\teA😀"}`:                           `{"a\"b\\c/d\teA😀"}`,
+		"{\"line1\nline2\"}":                            `{"line1\nline2"}`,
+		``:                                              ``,
+		"  \n // only comment":                          ``,
 	}
 	for in, want := range cases {
 		nodes, err := Parse(in)
@@ -321,6 +323,67 @@ func TestParseHotkey(t *testing.T) {
 	for _, src := range []string{``, `{A}{B}`, `^{Ctrl}`, `^{Ctrl}{H}~{Ctrl}`, `{A*2}`, `^{Ctrl}^{Ctrl}{H}`, `{Ctrl+H}`, `{"x"}`} {
 		if _, err := ParseHotkey(src); err == nil {
 			t.Errorf("%q accepted", src)
+		}
+	}
+}
+
+// TestDeviceResolver проверяет отправку кнопок устройств с авто-ID (FR-DEV-2): KEY_* — на клавиатуру,
+// кнопки мыши — на мышь, кнопки джойстика — ошибка; ошибка поиска — с позицией в макросе.
+func TestDeviceResolver(t *testing.T) {
+	t.Parallel()
+	lookup := func(device, button string) (uint16, string, error) {
+		switch device + "." + button {
+		case "UnKey.016":
+			return ev.KeyCalc, "UnKey016", nil
+		case "UnKey.A":
+			return ev.KeyA, "UnKey.A", nil
+		case "UnKey2.001":
+			return ev.BtnSide, "UnKey2.001", nil
+		case "UnKey3.001":
+			return ev.BtnTrigger, "UnKey3.001", nil
+		}
+		return 0, "", NewError(Pos{}, ErrUnknownButton, "device", device, "button", button)
+	}
+	compile := func(src string, r Resolver) ([]Step, error) {
+		nodes, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %q: %v", src, err)
+		}
+		return Compile(nodes, r)
+	}
+
+	// Клавиатура, мышь; обычные клавиши — как раньше.
+	steps, err := compile(`{UnKey016}{UnKey.A}{UnKey2.001}{B}`, DeviceResolver{Lookup: lookup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []Target
+	for _, s := range steps {
+		got = append(got, s.Targets...)
+	}
+	want := []Target{
+		{Device: DeviceKeyboard, Code: ev.KeyCalc, Name: "UnKey016"}, {Device: DeviceKeyboard, Code: ev.KeyA, Name: "UnKey.A"},
+		{Device: DeviceMouse, Code: ev.BtnSide, Name: "UnKey2.001"}, {Device: DeviceKeyboard, Code: ev.KeyB, Name: "B"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("targets = %+v", got)
+	}
+
+	// Кнопка джойстика — нельзя нажать; неизвестная кнопка — с позицией; без Lookup — неизвестное устройство.
+	for _, c := range []struct {
+		src  string
+		r    Resolver
+		code string
+		col  int
+	}{
+		{`{UnKey3.001}`, DeviceResolver{Lookup: lookup}, ErrCannotSend, 1},
+		{`[10]{UnKey.999}`, DeviceResolver{Lookup: lookup}, ErrUnknownButton, 5},
+		{`{UnKey016}`, DeviceResolver{}, ErrUnknownDevice, 1},
+	} {
+		_, err := compile(c.src, c.r)
+		var de *Error
+		if !errors.As(err, &de) || de.Code != c.code || de.Pos.Col != c.col {
+			t.Errorf("%s: err = %#v", c.src, err)
 		}
 	}
 }

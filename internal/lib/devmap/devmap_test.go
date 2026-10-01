@@ -217,3 +217,29 @@ func TestSaveLoad(t *testing.T) {
 		t.Error("future version: no error")
 	}
 }
+
+// TestRefs проверяет запись кнопок в макросах: слитная форма только у UnKey и трёх цифр, разбор
+// слитной формы (последние три цифры — кнопка).
+func TestRefs(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ dev, ctl, want string }{
+		{"UnKey", "001", "UnKey001"}, {"unkey", "001", "unkey001"}, {"UnKey2", "001", "UnKey2.001"},
+		{"UnKey", "Axis01", "UnKey.Axis01"}, {"Sega", "001", "Sega.001"}, {"UnKey", "01", "UnKey.01"},
+	} {
+		if got := Ref(c.dev, c.ctl); got != c.want {
+			t.Errorf("Ref(%q, %q) = %q, want %q", c.dev, c.ctl, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		in, dev, btn string
+		ok           bool
+	}{
+		{"UnKey001", "UnKey", "001", true}, {"unkey2001", "UnKey2", "001", true}, {"UNKEY12034", "UnKey12", "034", true},
+		{"UnKey01", "", "", false}, {"UnKey", "", "", false}, {"Sega001", "", "", false}, {"UnKeyA001", "", "", false},
+	} {
+		dev, btn, ok := SplitJoined(c.in)
+		if dev != c.dev || btn != c.btn || ok != c.ok {
+			t.Errorf("SplitJoined(%q) = %q %q %v", c.in, dev, btn, ok)
+		}
+	}
+}

@@ -63,6 +63,8 @@ type Module struct {
 	bus      contracts.Bus
 	projects contracts.Projects
 	keyState contracts.KeyState
+	// inspect — авто-ID устройств: отправка кнопок {UnKey001} (nil — модуль отключён).
+	inspect  contracts.Inspector
 	notifier contracts.Notifier
 	// root живёт до Stop: от него наследуются контексты проектов.
 	root       context.Context
@@ -129,6 +131,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.layouts, _ = contracts.LookupService[contracts.LayoutProvider](host.Services())
 	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
 	m.keyState, _ = contracts.LookupService[contracts.KeyState](host.Services())
+	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
 	if m.cfg.VarsFile != "" {
 		m.persist.path = m.cfg.VarsFile
@@ -239,7 +242,7 @@ func (m *Module) StopAll() {
 // отпускается по его завершению (FR-DSL-5).
 func (m *Module) Run(ctx context.Context, src string) error {
 	// Проверяем макрос до регистрации раннера: ошибка в тексте ничего не нажимает.
-	steps, err := compileSource(src)
+	steps, err := m.compileSource(src)
 	if err != nil {
 		return err
 	}
@@ -248,13 +251,21 @@ func (m *Module) Run(ctx context.Context, src string) error {
 	return m.exec(ctx, r, steps)
 }
 
-// compileSource разбирает и компилирует макрос; ошибки — *dsl.Error.
-func compileSource(src string) ([]dsl.Step, error) {
+// compileSource разбирает и компилирует макрос; ошибки — *dsl.Error. Кнопки устройств
+// с авто-ID ({UnKey001}) находит инспектор, если он есть.
+func (m *Module) compileSource(src string) ([]dsl.Step, error) {
 	nodes, err := dsl.Parse(src)
 	if err != nil {
 		return nil, err
 	}
-	return dsl.Compile(nodes, dsl.DefaultResolver{})
+	var lookup dsl.KeyLookup
+	if m.inspect != nil {
+		lookup = func(device, button string) (uint16, string, error) {
+			k, err := m.inspect.ResolveKey(device, button)
+			return k.Code, k.Name, err
+		}
+	}
+	return dsl.Compile(nodes, dsl.DeviceResolver{Lookup: lookup})
 }
 
 // newRun регистрирует раннер, чтобы StopAll мог его прервать. finish отпускает всё,
@@ -279,7 +290,7 @@ func (m *Module) newRun(parent context.Context) (context.Context, *run, func()) 
 // execSource выполняет макрос в рамках существующего раннера r: зажатые клавиши остаются
 // зажатыми для следующих действий события и отпускаются по завершению события.
 func (m *Module) execSource(ctx context.Context, r *run, src string) error {
-	steps, err := compileSource(src)
+	steps, err := m.compileSource(src)
 	if err != nil {
 		return err
 	}

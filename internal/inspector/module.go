@@ -14,6 +14,7 @@ import (
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/devmap"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/paths"
@@ -228,6 +229,49 @@ func eventNumber(path string) int {
 		return -1
 	}
 	return n
+}
+
+// ResolveKey находит кнопку устройства по авто-ID и номеру или имени (contracts.Inspector):
+// номер из devices.yaml ("001"), имя, данное человеком, или стандартное имя клавиши ("A").
+func (m *Module) ResolveKey(device, button string) (contracts.DeviceKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Устройство — по авто-ID или имени (работает и для отключённого: по файлу).
+	var rec *devmap.Device
+	if m.file != nil {
+		rec = m.file.Lookup(device)
+	}
+	if rec == nil {
+		return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownDevice, "device", device)
+	}
+	key := func(code uint16, name string) contracts.DeviceKey {
+		return contracts.DeviceKey{Key: keys.Key{Name: devmap.Ref(rec.AutoID, name), Type: ev.EvKey, Code: code}, Device: rec.AutoID}
+	}
+
+	// Номер кнопки или её имя, данное человеком.
+	for num, c := range rec.Buttons {
+		if num == button || (c.Name != "" && strings.EqualFold(c.Name, button)) {
+			if code, ok := ev.ParseCode(ev.EvKey, c.Code); ok {
+				return key(code, num), nil
+			}
+		}
+	}
+
+	// Стандартное имя клавиши — именно на этом устройстве ({UnKey.A}).
+	if k, ok := keys.Lookup(button); ok {
+		dk := key(k.Code, k.Name)
+		dk.AnySide = k.AnySide
+		return dk, nil
+	}
+	return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", rec.AutoID, "button", button)
+}
+
+// DeviceOf возвращает авто-ID подключённого устройства по пути (contracts.Inspector).
+func (m *Module) DeviceOf(path string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.bound[path]
 }
 
 // Label возвращает авто-ID кнопки или оси для макросов (contracts.Inspector).

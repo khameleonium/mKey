@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 
-	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
 )
 
@@ -213,10 +212,15 @@ type Events interface {
 
 // KeyState — текущее состояние физических клавиш и кнопок (модуль hotkeys).
 type KeyState interface {
-	// IsDown сообщает, зажата ли клавиша сейчас на любом устройстве (модификатор без стороны — любой из двух).
-	IsDown(k keys.Key) bool
+	// ParseKey разбирает имя клавиши, как в макросах (с фигурными скобками или без): "A", "Mouse0",
+	// кнопку устройства с авто-ID — "UnKey001", "UnKey2.001", "UnKey.A" (FR-DEV-2). Ошибка — *dsl.Error
+	// (dsl.unknown_key, dsl.unknown_device, dsl.unknown_button).
+	ParseKey(name string) (DeviceKey, error)
+	// IsDown сообщает, зажата ли клавиша сейчас: на любом устройстве или, если в k указано
+	// устройство, только на нём (модификатор без стороны — любой из двух).
+	IsDown(k DeviceKey) bool
 	// WaitKey ждёт нажатия клавиши k (для `mkey wait key`).
-	WaitKey(ctx context.Context, k keys.Key) error
+	WaitKey(ctx context.Context, k DeviceKey) error
 	// Resume возобновляет работу после экстренной остановки: перехват и срабатывание триггеров.
 	Resume()
 	// Suspended сообщает, приостановлен ли mKey после экстренной остановки.

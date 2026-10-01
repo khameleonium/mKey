@@ -64,10 +64,23 @@ func (v *fakeVars) All() map[string]any       { v.mu.Lock(); defer v.mu.Unlock()
 // fakeKeys — состояние клавиш: зажата только F8.
 type fakeKeys struct{}
 
-func (fakeKeys) IsDown(k keys.Key) bool                  { return k.Name == "F8" }
-func (fakeKeys) WaitKey(context.Context, keys.Key) error { return nil }
-func (fakeKeys) Resume()                                 {}
-func (fakeKeys) Suspended() bool                         { return false }
+func (fakeKeys) IsDown(k contracts.DeviceKey) bool                  { return k.Name == "F8" }
+func (fakeKeys) WaitKey(context.Context, contracts.DeviceKey) error { return nil }
+func (fakeKeys) Resume()                                            {}
+func (fakeKeys) Suspended() bool                                    { return false }
+
+// ParseKey знает стандартные имена и одну кнопку устройства — UnKey001 (как F8 устройства UnKey).
+func (fakeKeys) ParseKey(name string) (contracts.DeviceKey, error) {
+	name = strings.Trim(name, "{}")
+	if name == "UnKey001" {
+		return contracts.DeviceKey{Key: keys.Key{Name: "F8", Type: 1, Code: 66}, Device: "UnKey"}, nil
+	}
+	k, ok := keys.Lookup(name)
+	if !ok {
+		return contracts.DeviceKey{}, errors.New("unknown key")
+	}
+	return contracts.DeviceKey{Key: k}, nil
+}
 
 // newAction создаёт действие lua с фейковым состоянием клавиш.
 func newAction() luaAction {
@@ -87,7 +100,7 @@ mkey.type("Привет")
 mkey.move_rel(10, -5)
 mkey.click("Right")
 mkey.var.count = mkey.var.count + 1
-if mkey.is_down("F8") and not mkey.is_down("F9") then mkey.send("{B}") end
+if mkey.is_down("F8") and not mkey.is_down("F9") and mkey.is_down("UnKey001") then mkey.send("{B}") end
 mkey.var.who = mkey.event.id
 local w = mkey.window()
 local p, err = mkey.pixel(1, 2)

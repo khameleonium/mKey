@@ -4,7 +4,21 @@ import (
 	"net/http"
 
 	"mkey/internal/lib/config"
+	"mkey/internal/lib/dsl"
 )
+
+// keyResolver — распознаватель клавиш макросов: кнопки устройств с авто-ID ({UnKey001}, FR-DEV-2)
+// находит инспектор (если он работает), остальные — как обычно.
+func (m *Module) keyResolver() dsl.Resolver {
+	if m.svc.inspect == nil {
+		return dsl.DeviceResolver{}
+	}
+	insp := m.svc.inspect
+	return dsl.DeviceResolver{Lookup: func(device, button string) (uint16, string, error) {
+		k, err := insp.ResolveKey(device, button)
+		return k.Code, k.Name, err
+	}}
+}
 
 // deviceSettings — настройки устройств в окне: каким устройствам давать авто-ID (FR-DEV-2).
 type deviceSettings struct {

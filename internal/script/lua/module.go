@@ -259,13 +259,22 @@ func (api *luaAPI) click(ls *glua.LState) int {
 	return api.do(ls, "{Click "+ls.CheckString(1)+"}")
 }
 
-// isDown — mkey.is_down("Mouse0"): зажата ли физическая клавиша.
+// isDown — mkey.is_down("Mouse0"), mkey.is_down("UnKey001"): зажата ли физическая клавиша
+// (кнопки устройств с авто-ID — только на своём устройстве, FR-DEV-2). Без модуля hotkeys — false.
 func (api *luaAPI) isDown(ls *glua.LState) int {
-	k, ok := keys.Lookup(strings.Trim(ls.CheckString(1), "{}"))
-	if !ok {
-		ls.ArgError(1, "unknown key")
+	name := ls.CheckString(1)
+	if api.m.keyState == nil {
+		if _, ok := keys.Lookup(strings.Trim(name, "{}")); !ok {
+			ls.ArgError(1, "unknown key")
+		}
+		ls.Push(glua.LFalse)
+		return 1
 	}
-	ls.Push(glua.LBool(api.m.keyState != nil && api.m.keyState.IsDown(k)))
+	k, err := api.m.keyState.ParseKey(name)
+	if err != nil {
+		ls.ArgError(1, "unknown key "+name)
+	}
+	ls.Push(glua.LBool(api.m.keyState.IsDown(k)))
 	return 1
 }
 

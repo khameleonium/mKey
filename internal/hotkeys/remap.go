@@ -3,14 +3,17 @@ package hotkeys
 import (
 	"strings"
 
+	"mkey/internal/contracts"
 	ev "mkey/internal/lib/evdev"
 )
 
-// remapRule — переназначение клавиши (FR-HK-4).
+// remapRule — переназначение клавиши (FR-HK-4): from — что заменить (возможно, кнопка
+// конкретного устройства {UnKey001}), to — код замены.
 type remapRule struct {
-	from, to uint16
-	device   string
-	project  string
+	from    contracts.DeviceKey
+	to      uint16
+	device  string
+	project string
 }
 
 // reloadRemaps перечитывает переназначения из включённых проектов и пересчитывает захват.
@@ -27,13 +30,15 @@ func (m *Module) reloadRemaps() {
 			continue
 		}
 		for _, r := range st.Project.Remaps {
-			from, err1 := parseChord(braced(r.From))
-			to, err2 := parseChord(braced(r.To))
-			if err1 != nil || err2 != nil || len(from) != 1 || len(to) != 1 {
+			// Заменять можно и кнопку устройства с авто-ID; заменой — только обычную клавишу
+			// (нажатие уходит в копию того же устройства).
+			from, err1 := m.parseChord(braced(r.From))
+			to, err2 := m.parseChord(braced(r.To))
+			if err1 != nil || err2 != nil || len(from) != 1 || len(to) != 1 || to[0].Device != "" {
 				m.log.Warn("invalid remap skipped", "project", st.Project.ID, "from", r.From, "to", r.To)
 				continue
 			}
-			rules = append(rules, remapRule{from: from[0].Code, to: to[0].Code, device: r.Device, project: st.Project.ID})
+			rules = append(rules, remapRule{from: from[0], to: to[0].Code, device: r.Device, project: st.Project.ID})
 		}
 	}
 
@@ -61,7 +66,7 @@ func braced(s string) string {
 // Замена действует на систему только для захваченных устройств — поэтому для них и включается захват.
 func (m *Module) applyRemap(device string, e *ev.Event) {
 	for _, r := range m.remaps {
-		if e.Code == r.from && (r.device == "" || m.deviceOK(device, r.device)) {
+		if e.Code == r.from.Code && m.matches(r.from, device, e.Code) && (r.device == "" || m.deviceOK(device, r.device)) {
 			e.Code = r.to
 			return
 		}

@@ -9,6 +9,7 @@ import (
 
 	"mkey/internal/contracts"
 	ev "mkey/internal/lib/evdev"
+	"mkey/internal/lib/keys"
 )
 
 // fakeInspector — инспектор с заданными устройствами; поиск — по имени файла или части названия;
@@ -22,6 +23,25 @@ type fakeInspector struct {
 func (f fakeInspector) Label(path string, _, code uint16) string {
 	if path == "/dev/input/event9" && code == 0x2c2 {
 		return "UnKey001"
+	}
+	return ""
+}
+
+// ResolveKey знает две кнопки: UnKey.001 (BTN_TRIGGER_HAPPY3) и UnKey.002 (KEY_CALC).
+func (f fakeInspector) ResolveKey(device, button string) (contracts.DeviceKey, error) {
+	if device == "UnKey" && button == "001" {
+		return contracts.DeviceKey{Key: keys.Key{Name: "UnKey001", Type: ev.EvKey, Code: 0x2c2}, Device: "UnKey"}, nil
+	}
+	if device == "UnKey" && button == "002" {
+		return contracts.DeviceKey{Key: keys.Key{Name: "UnKey002", Type: ev.EvKey, Code: ev.KeyCalc}, Device: "UnKey"}, nil
+	}
+	return contracts.DeviceKey{}, errors.New("unknown")
+}
+
+// DeviceOf — авто-ID только у event9.
+func (f fakeInspector) DeviceOf(path string) string {
+	if path == "/dev/input/event9" {
+		return "UnKey"
 	}
 	return ""
 }
@@ -143,5 +163,27 @@ func TestLabelEntry(t *testing.T) {
 		if entry.Name != c.want {
 			t.Errorf("%s %s: name = %q, want %q", c.dev, c.name, entry.Name, c.want)
 		}
+	}
+}
+
+// TestDryRunDeviceKey проверяет сухой прогон с кнопками устройства с авто-ID: клавишу (KEY_CALC)
+// можно нажать, кнопку джойстика — пока нет; без инспектора — «устройство не найдено».
+func TestDryRunDeviceKey(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	mode := "smart"
+	m.svc.inspect = fakeInspector{mode: &mode}
+	code, out := call(t, m.routes(true), "POST", "/api/v1/send", `{"sequence":"{UnKey002}","dry_run":true}`, nil)
+	if code != 200 || out["ok"] != true {
+		t.Fatalf("dry run: %d %v", code, out)
+	}
+	code, out = call(t, m.routes(true), "POST", "/api/v1/send", `{"sequence":"{UnKey001}","dry_run":true}`, nil)
+	if e, _ := out["error"].(map[string]any); code != 400 || e["code"] != "dsl.cannot_send" {
+		t.Errorf("joystick button: %d %v", code, out)
+	}
+	m.svc.inspect = nil
+	code, out = call(t, m.routes(true), "POST", "/api/v1/send", `{"sequence":"{UnKey001}","dry_run":true}`, nil)
+	if e, _ := out["error"].(map[string]any); code != 400 || e["code"] != "dsl.unknown_device" {
+		t.Errorf("no inspector: %d %v", code, out)
 	}
 }

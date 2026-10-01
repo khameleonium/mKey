@@ -39,6 +39,9 @@ func Modules() []registry.Entry {
 		// Ввод и вывод: без них mKey бесполезен, но без прав они работают в режиме «недоступно».
 		{Module: input.New(), Core: true},
 		{Module: output.New(), Core: true},
+		// Инспектор устройств: подробности и авто-ID (UnKey001) — до hotkeys, engine и lua,
+		// которые по нему узнают кнопки конкретных устройств (нужен input).
+		{Module: inspector.New(), Core: false},
 		// Горячие клавиши и перехват (нужен input).
 		{Module: hotkeys.New(), Core: false},
 		// Выполнение макросов и событий (нужны output; store, hotkeys и desktop — по возможности).
@@ -50,8 +53,6 @@ func Modules() []registry.Entry {
 		{Module: recorder.New(), Core: false},
 		// Диагностика и настройка.
 		{Module: setup.New(), Core: false},
-		// Инспектор устройств: подробные сведения об устройствах ввода (нужен input).
-		{Module: inspector.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой
 		// (до API: API получает сервисы модулей при запуске).
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.

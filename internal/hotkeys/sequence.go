@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mkey/internal/contracts"
-	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
 )
 
@@ -24,7 +23,7 @@ type sequenceParams struct {
 
 // sequence — зарегистрированная последовательность.
 type sequence struct {
-	keys   []keys.Key
+	keys   []contracts.DeviceKey
 	within time.Duration
 	fire   func(contracts.Fire)
 }
@@ -43,7 +42,7 @@ func (sequenceType) Meta() contracts.ExtensionMeta {
 }
 
 // parseSequenceParams разбирает и проверяет параметры триггера sequence.
-func parseSequenceParams(tr project.Trigger) (sequenceParams, []keys.Key, error) {
+func (m *Module) parseSequenceParams(tr project.Trigger) (sequenceParams, []contracts.DeviceKey, error) {
 	var p sequenceParams
 	if err := project.Decode(tr.Params, &p); err != nil {
 		return p, nil, fmt.Errorf("sequence: %w", err)
@@ -51,7 +50,7 @@ func parseSequenceParams(tr project.Trigger) (sequenceParams, []keys.Key, error)
 	if strings.Trim(p.Keys, "{} ") == "" {
 		return p, nil, project.Required("trigger", "sequence", "keys")
 	}
-	ks, err := parseSequence(p.Keys)
+	ks, err := m.parseSequence(p.Keys)
 	if err != nil {
 		return p, nil, fmt.Errorf("sequence: %w", err)
 	}
@@ -59,14 +58,14 @@ func parseSequenceParams(tr project.Trigger) (sequenceParams, []keys.Key, error)
 }
 
 // Validate проверяет параметры, ничего не регистрируя.
-func (sequenceType) Validate(tr project.Trigger) error {
-	_, _, err := parseSequenceParams(tr)
+func (t sequenceType) Validate(tr project.Trigger) error {
+	_, _, err := t.m.parseSequenceParams(tr)
 	return err
 }
 
 // Arm проверяет параметры и регистрирует последовательность.
 func (t sequenceType) Arm(_ context.Context, _ contracts.EventRef, tr project.Trigger, fire func(contracts.Fire)) (func(), error) {
-	p, ks, err := parseSequenceParams(tr)
+	p, ks, err := t.m.parseSequenceParams(tr)
 	if err != nil {
 		return nil, err
 	}
@@ -84,14 +83,15 @@ func (t sequenceType) Arm(_ context.Context, _ contracts.EventRef, tr project.Tr
 	}, nil
 }
 
-// feedSequence добавляет нажатие в историю и проверяет последовательности (под блокировкой).
-func (m *Module) feedSequence(code uint16, fires *[]func()) {
+// feedSequence добавляет нажатие code на устройстве device в историю и проверяет
+// последовательности (под блокировкой).
+func (m *Module) feedSequence(device string, code uint16, fires *[]func()) {
 	// Модификаторы в последовательности не участвуют.
 	if isModifier(code) {
 		return
 	}
 	now := time.Now()
-	m.history = append(m.history, press{code: code, at: now})
+	m.history = append(m.history, press{device: device, code: code, at: now})
 	if len(m.history) > historySize {
 		m.history = m.history[len(m.history)-historySize:]
 	}
@@ -105,7 +105,7 @@ func (m *Module) feedSequence(code uint16, fires *[]func()) {
 		tail := m.history[len(m.history)-n:]
 		ok := now.Sub(tail[0].at) <= s.within
 		for i, k := range s.keys {
-			ok = ok && k.Matches(tail[i].code)
+			ok = ok && m.matches(k, tail[i].device, tail[i].code)
 		}
 		if ok {
 			f := s.fire

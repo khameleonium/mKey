@@ -187,7 +187,7 @@ func (m *Module) hotstringFire(h *hotstring, end rune) func() {
 // anyDownCode сообщает, зажат ли хоть один из кодов на любом устройстве (под блокировкой).
 func (m *Module) anyDownCode(codes ...uint16) bool {
 	for _, c := range codes {
-		if m.anyDown(keys.Key{Code: c}) {
+		if m.anyDown(contracts.DeviceKey{Key: keys.Key{Code: c}}) {
 			return true
 		}
 	}

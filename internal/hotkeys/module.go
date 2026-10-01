@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
 )
 
 // ModuleID — идентификатор модуля.
@@ -26,11 +26,13 @@ var modifierCodes = []uint16{
 
 // Module — модуль горячих клавиш.
 type Module struct {
-	// log — логгер; input — источник событий; projects и layouts — необязательные сервисы.
+	// log — логгер; input — источник событий; projects, layouts и inspect — необязательные сервисы
+	// (inspect — авто-ID устройств: кнопки вида {UnKey001}, FR-DEV-2).
 	log      *slog.Logger
 	input    contracts.InputSource
 	projects contracts.Projects
 	layouts  contracts.LayoutProvider
+	inspect  contracts.Inspector
 	// unsub — отписки от шины.
 	unsub []func()
 	// ctx живёт до Stop; stop отменяет его; wg ждёт фоновые горутины.
@@ -60,15 +62,16 @@ type Module struct {
 	typed []rune
 }
 
-// press — одно нажатие в истории.
+// press — одно нажатие в истории: устройство, код, время.
 type press struct {
-	code uint16
-	at   time.Time
+	device string
+	code   uint16
+	at     time.Time
 }
 
 // waiter — ожидание нажатия клавиши.
 type waiter struct {
-	key keys.Key
+	key contracts.DeviceKey
 	ch  chan struct{}
 }
 
@@ -98,6 +101,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.input = in
 	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
 	m.layouts, _ = contracts.LookupService[contracts.LayoutProvider](host.Services())
+	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
 	m.layout.Store("us")
 
 	// Виды триггеров.
@@ -107,13 +111,15 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		}
 	}
 
-	// Подписки: изменения проектов (переназначения) и отключение устройств (сброс их клавиш).
+	// Подписки: изменения проектов (переназначения), отключение устройств (сброс их клавиш) и
+	// новые авто-ID (перехват для «съедаемых» кнопок {UnKey001} считается по устройству).
 	projCh, unsub1 := host.Bus().Subscribe(contracts.TopicProjectsChanged)
 	remCh, unsub2 := host.Bus().Subscribe(contracts.TopicInputDeviceRemoved)
-	m.unsub = []func(){unsub1, unsub2}
+	autoCh, unsub3 := host.Bus().Subscribe(contracts.TopicAutoIDsChanged)
+	m.unsub = []func(){unsub1, unsub2, unsub3}
 	m.ctx, m.stop = context.WithCancel(context.Background())
 	m.wg.Add(1)
-	go m.listen(m.ctx, projCh, remCh)
+	go m.listen(m.ctx, projCh, remCh, autoCh)
 
 	return contracts.ProvideService[contracts.KeyState](host.Services(), m)
 }
@@ -146,7 +152,7 @@ func (m *Module) Stop(context.Context) error {
 }
 
 // listen обрабатывает события шины до остановки.
-func (m *Module) listen(ctx context.Context, projects, removed <-chan contracts.Event) {
+func (m *Module) listen(ctx context.Context, projects, removed, autoIDs <-chan contracts.Event) {
 	defer m.wg.Done()
 	for {
 		select {
@@ -167,6 +173,13 @@ func (m *Module) listen(ctx context.Context, projects, removed <-chan contracts.
 				delete(m.suppressed, d.Info.Path)
 				m.mu.Unlock()
 			}
+		case _, ok := <-autoIDs:
+			if !ok {
+				return
+			}
+			m.mu.Lock()
+			m.updateGrab()
+			m.mu.Unlock()
 		}
 	}
 }
@@ -217,10 +230,10 @@ func (m *Module) HandleInput(device string, e *ev.Event, grabbed bool) bool {
 		m.setDown(device, e.Code, true)
 		if !suspended {
 			drop = m.onDown(device, e.Code, &fires)
-			m.feedSequence(e.Code, &fires)
+			m.feedSequence(device, e.Code, &fires)
 			m.feedHotstring(e.Code, &fires)
 		}
-		m.notifyWaiters(e.Code)
+		m.notifyWaiters(device, e.Code)
 		if drop {
 			m.suppress(device, e.Code, true)
 		}
@@ -268,10 +281,10 @@ func (m *Module) suppress(device string, code uint16, on bool) {
 }
 
 // anyDown сообщает, зажата ли клавиша k на любом устройстве (под блокировкой).
-func (m *Module) anyDown(k keys.Key) bool {
-	for _, codes := range m.down {
+func (m *Module) anyDown(k contracts.DeviceKey) bool {
+	for device, codes := range m.down {
 		for c := range codes {
-			if k.Matches(c) {
+			if m.matches(k, device, c) {
 				return true
 			}
 		}
@@ -279,15 +292,37 @@ func (m *Module) anyDown(k keys.Key) bool {
 	return false
 }
 
+// matches сообщает, что нажатие code на устройстве device — это клавиша k: код совпадает, а если
+// у k указано устройство ({UnKey2.001}), то и авто-ID устройства.
+func (m *Module) matches(k contracts.DeviceKey, device string, code uint16) bool {
+	if !k.Matches(code) {
+		return false
+	}
+	return k.Device == "" || (m.inspect != nil && m.inspect.DeviceOf(device) == k.Device)
+}
+
+// ParseKey разбирает имя клавиши, как в макросах (contracts.KeyState): "A", "{Mouse0}",
+// кнопки устройств с авто-ID — "UnKey001", "UnKey2.001", "UnKey.A".
+func (m *Module) ParseKey(name string) (contracts.DeviceKey, error) {
+	ks, err := m.parseChord(braced(name))
+	if err != nil {
+		return contracts.DeviceKey{}, err
+	}
+	if len(ks) != 1 {
+		return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrBadHotkey)
+	}
+	return ks[0], nil
+}
+
 // IsDown сообщает, зажата ли клавиша сейчас (contracts.KeyState).
-func (m *Module) IsDown(k keys.Key) bool {
+func (m *Module) IsDown(k contracts.DeviceKey) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.anyDown(k)
 }
 
 // WaitKey ждёт нажатия клавиши k или отмены ctx.
-func (m *Module) WaitKey(ctx context.Context, k keys.Key) error {
+func (m *Module) WaitKey(ctx context.Context, k contracts.DeviceKey) error {
 	w := &waiter{key: k, ch: make(chan struct{})}
 	m.mu.Lock()
 	m.waiters[w] = struct{}{}
@@ -305,10 +340,10 @@ func (m *Module) WaitKey(ctx context.Context, k keys.Key) error {
 	}
 }
 
-// notifyWaiters будит ожидающих нажатия клавиши code (под блокировкой).
-func (m *Module) notifyWaiters(code uint16) {
+// notifyWaiters будит ожидающих нажатия клавиши code на устройстве device (под блокировкой).
+func (m *Module) notifyWaiters(device string, code uint16) {
 	for w := range m.waiters {
-		if w.key.Matches(code) {
+		if m.matches(w.key, device, code) {
 			close(w.ch)
 			delete(m.waiters, w)
 		}
@@ -325,9 +360,11 @@ func (m *Module) Suspended() bool { return m.input.GrabSuspended() }
 // «съедаемые» горячими клавишами или переназначаемые (под блокировкой).
 func (m *Module) updateGrab() {
 	// Коды, ради которых нужен захват, и фильтры устройств.
+	// autoID — авто-ID устройства клавиши ({UnKey2.001}): захватывается только оно.
 	type need struct {
 		codes  []uint16
 		device string
+		autoID string
 	}
 	var needs []need
 	for h := range m.hotkeys {
@@ -337,11 +374,11 @@ func (m *Module) updateGrab() {
 			if main.AnySide {
 				codes = append(codes, sidePair(main.Code))
 			}
-			needs = append(needs, need{codes: codes, device: h.device})
+			needs = append(needs, need{codes: codes, device: h.device, autoID: main.Device})
 		}
 	}
 	for _, r := range m.remaps {
-		needs = append(needs, need{codes: []uint16{r.from}, device: r.device})
+		needs = append(needs, need{codes: []uint16{r.from.Code}, device: r.device, autoID: r.from.Device})
 	}
 	if len(needs) == 0 {
 		m.input.SetGrabPolicy(nil)
@@ -352,6 +389,9 @@ func (m *Module) updateGrab() {
 	m.input.SetGrabPolicy(func(d contracts.InputDevice) bool {
 		for _, n := range needs {
 			if n.device != "" && !deviceMatches(d.Info, n.device) {
+				continue
+			}
+			if n.autoID != "" && (m.inspect == nil || m.inspect.DeviceOf(d.Info.Path) != n.autoID) {
 				continue
 			}
 			for _, c := range n.codes {

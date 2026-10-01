@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"mkey/internal/contracts"
-	"mkey/internal/lib/keys"
+	"mkey/internal/lib/dsl"
 )
 
 // maxWait — наибольшее время ожидания клавиши в /wait/key.
@@ -175,8 +174,14 @@ func (m *Module) handleWaitKey(w http.ResponseWriter, r *http.Request) {
 	if !m.readJSON(w, r, &req) {
 		return
 	}
-	k, ok := keys.Lookup(strings.Trim(req.Key, "{}"))
-	if !ok {
+	// Клавиша (и кнопки устройств с авто-ID: {UnKey001}).
+	k, err := m.svc.keyState.ParseKey(req.Key)
+	var de *dsl.Error
+	if errors.As(err, &de) {
+		m.writeError(w, r, http.StatusBadRequest, de.Code, de.Args)
+		return
+	}
+	if err != nil {
 		m.writeError(w, r, http.StatusBadRequest, "dsl.unknown_key", map[string]string{"name": req.Key})
 		return
 	}

@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/dsl"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
 )
@@ -24,7 +26,7 @@ func (m *Module) builtinConditions() []contracts.ConditionType {
 		// key_state — клавиша сейчас зажата или отпущена.
 		builtinCondition{
 			meta:     meta("condition", "key_state", "input", `{"type":"object","required":["key"],"properties":{"key":{"type":"string","x-widget":"key"},"state":{"enum":["down","up"],"default":"down"}}}`),
-			validate: func(c project.Condition) error { _, _, err := keyStateParams(c); return err },
+			validate: func(c project.Condition) error { _, _, err := m.keyStateParams(c); return err },
 			check:    m.checkKeyState,
 		},
 		// toggle — состояние переключателя события (по умолчанию — своего).
@@ -109,35 +111,45 @@ func checkVariable(_ context.Context, rc contracts.RunContext, c project.Conditi
 	return false, fmt.Errorf("variable %q is not a number, op %q is not applicable", p.Name, p.Op)
 }
 
-// keyStateParams разбирает параметры условия key_state.
-func keyStateParams(c project.Condition) (keys.Key, bool, error) {
+// keyStateParams разбирает параметры условия key_state. Имя клавиши разбирает модуль hotkeys —
+// так работают и кнопки устройств с авто-ID ({UnKey001}, FR-DEV-2); без него — только стандартные имена.
+func (m *Module) keyStateParams(c project.Condition) (contracts.DeviceKey, bool, error) {
 	var p struct {
 		Key   string `json:"key"`
 		State string `json:"state"`
 	}
 	if err := project.Decode(c.Params, &p); err != nil {
-		return keys.Key{}, false, err
+		return contracts.DeviceKey{}, false, err
 	}
-	name := p.Key
-	if len(name) > 2 && name[0] == '{' && name[len(name)-1] == '}' {
-		name = name[1 : len(name)-1]
+
+	// Клавиша.
+	var k contracts.DeviceKey
+	if m.keyState != nil {
+		var err error
+		if k, err = m.keyState.ParseKey(p.Key); err != nil {
+			return contracts.DeviceKey{}, false, err
+		}
+	} else {
+		key, ok := keys.Lookup(strings.Trim(p.Key, "{}"))
+		if !ok {
+			return contracts.DeviceKey{}, false, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownKey, "name", p.Key)
+		}
+		k = contracts.DeviceKey{Key: key}
 	}
-	k, ok := keys.Lookup(name)
-	if !ok {
-		return keys.Key{}, false, fmt.Errorf("unknown key %q", p.Key)
-	}
+
+	// Ожидаемое состояние.
 	switch p.State {
 	case "", "down":
 		return k, true, nil
 	case "up":
 		return k, false, nil
 	}
-	return keys.Key{}, false, fmt.Errorf("unknown state %q", p.State)
+	return contracts.DeviceKey{}, false, fmt.Errorf("unknown state %q", p.State)
 }
 
 // checkKeyState проверяет, зажата ли клавиша (нужен модуль hotkeys).
 func (m *Module) checkKeyState(_ context.Context, _ contracts.RunContext, c project.Condition) (bool, error) {
-	k, wantDown, err := keyStateParams(c)
+	k, wantDown, err := m.keyStateParams(c)
 	if err != nil {
 		return false, err
 	}

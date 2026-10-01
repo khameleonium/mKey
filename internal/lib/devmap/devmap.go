@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -118,6 +119,21 @@ func Ref(device, control string) string {
 		return device + control
 	}
 	return device + "." + control
+}
+
+// joinedRe — слитная запись кнопки авто-ID-устройства: «UnKey» (без учёта регистра), необязательный
+// номер устройства и ровно три цифры номера кнопки в конце: UnKey001, UnKey2001, UnKey12001.
+var joinedRe = regexp.MustCompile(`(?i)^(unkey[0-9]*)([0-9]{3})$`)
+
+// SplitJoined разбирает слитную запись кнопки устройства (FR-DEV-2): "UnKey001" → ("UnKey", "001"),
+// "UnKey2001" → ("UnKey2", "001") — последние три цифры всегда номер кнопки. Имя устройства
+// приводится к виду «UnKey…». false — это не слитная запись.
+func SplitJoined(name string) (device, button string, ok bool) {
+	m := joinedRe.FindStringSubmatch(name)
+	if m == nil {
+		return "", "", false
+	}
+	return AutoPrefix + m[1][len(AutoPrefix):], m[2], true
 }
 
 // Label возвращает номер кнопки ("001") или оси ("Axis01", "Rel01") по коду; "" — номера нет.

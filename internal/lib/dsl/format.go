@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"mkey/internal/lib/devmap"
 )
 
 // Format возвращает текст макроса в каноническом виде (FR-DSL-4):
@@ -76,7 +78,8 @@ func formatKeyRef(r KeyRef) string {
 		return "#" + strconv.Itoa(int(*r.Code))
 	}
 	if r.Device != "" {
-		return r.Device + "." + r.Name
+		// У первого авто-ID-устройства кнопка пишется слитно: {UnKey001} (FR-DEV-2).
+		return devmap.Ref(r.Device, r.Name)
 	}
 	return r.Name
 }

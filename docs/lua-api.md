@@ -30,7 +30,7 @@ actions:
 | `mkey.sleep(ms)` | пауза (прерывается остановкой) |
 | `mkey.move_rel(dx, dy)` | сдвинуть курсор мыши |
 | `mkey.click([button])` | щелчок: `"Left"` (по умолчанию), `"Right"`, `"Middle"`, `"Back"`, `"Forward"` |
-| `mkey.is_down(key)` | зажата ли физическая клавиша сейчас: `if mkey.is_down("Mouse0") then … end` |
+| `mkey.is_down(key)` | зажата ли физическая клавиша сейчас: `if mkey.is_down("Mouse0") then … end`; кнопка устройства с авто-ID — только на нём: `mkey.is_down("UnKey001")` |
 | `mkey.toggled()` | включён ли переключатель события (для триггера `on: toggle`) |
 | `mkey.held()` | держат ли ещё клавишу, запустившую событие |
 | `mkey.var.<имя>` | переменные проекта: `mkey.var.count = (mkey.var.count or 0) + 1` |

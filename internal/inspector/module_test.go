@@ -2,6 +2,7 @@ package inspector
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
 	"mkey/internal/lib/devmap"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/registry"
 )
@@ -227,5 +229,53 @@ func TestAutoIDs(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(path); string(data) != "devices: [oops" {
 		t.Errorf("broken file overwritten: %s", data)
+	}
+}
+
+// TestResolveKey проверяет поиск кнопок устройств для макросов: номер, имя человека, стандартное
+// имя на устройстве, отключённое устройство (по файлу), ошибки; и DeviceOf.
+func TestResolveKey(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	joy := contracts.InputDevice{Info: ev.Info{Path: "/dev/input/event9", Name: "Joy", ID: ev.ID{Vendor: 0x79},
+		Caps: ev.Capabilities{Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnTrigger, ev.BtnThumb}}}}, Kinds: []ev.Kind{ev.KindJoystick}}
+	m := autoModule(t, dir, joy)
+	m.file.Devices[0].Buttons["002"] = devmap.Control{Code: "BTN_THUMB", Name: "Start"}
+
+	cases := []struct {
+		dev, btn string
+		code     uint16
+		name     string
+	}{
+		{"UnKey", "001", ev.BtnTrigger, "UnKey001"},
+		{"unkey", "002", ev.BtnThumb, "UnKey002"},
+		{"UnKey", "start", ev.BtnThumb, "UnKey002"},
+		{"UnKey", "A", ev.KeyA, "UnKey.A"},
+	}
+	for _, c := range cases {
+		k, err := m.ResolveKey(c.dev, c.btn)
+		if err != nil || k.Code != c.code || k.Name != c.name || k.Device != "UnKey" {
+			t.Errorf("ResolveKey(%q, %q) = %+v, %v", c.dev, c.btn, k, err)
+		}
+	}
+
+	// Ошибки — коды языка макросов (понятные сообщения).
+	for _, c := range []struct{ dev, btn, code string }{
+		{"UnKey9", "001", dsl.ErrUnknownDevice}, {"UnKey", "099", dsl.ErrUnknownButton},
+	} {
+		_, err := m.ResolveKey(c.dev, c.btn)
+		var de *dsl.Error
+		if !errors.As(err, &de) || de.Code != c.code {
+			t.Errorf("ResolveKey(%q, %q) err = %v", c.dev, c.btn, err)
+		}
+	}
+
+	// DeviceOf: подключённое — авто-ID; после отключения устройство по-прежнему находится по файлу.
+	if m.DeviceOf("/dev/input/event9") != "UnKey" || m.DeviceOf("/dev/input/event1") != "" {
+		t.Error("DeviceOf")
+	}
+	delete(m.bound, "/dev/input/event9")
+	if _, err := m.ResolveKey("UnKey", "001"); err != nil {
+		t.Errorf("disconnected: %v", err)
 	}
 }

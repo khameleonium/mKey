@@ -246,7 +246,7 @@ func (m *Module) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	// Сухой прогон: компиляция без выполнения.
 	if req.DryRun {
-		steps, err := dsl.Compile(nodes, dsl.DefaultResolver{})
+		steps, err := dsl.Compile(nodes, m.keyResolver())
 		if err != nil {
 			m.writeRunError(w, r, err)
 			return

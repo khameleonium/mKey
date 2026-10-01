@@ -2,13 +2,16 @@ package hotkeys
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
@@ -27,7 +30,7 @@ type fakeInput struct {
 
 func (f *fakeInput) Devices() []contracts.InputDevice {
 	return []contracts.InputDevice{{Info: ev.Info{Path: kbPath, Name: "USB Keyboard", Caps: ev.Capabilities{Codes: map[uint16][]uint16{
-		ev.EvKey: {ev.KeyA, ev.KeyF8, ev.KeyH, ev.KeyCapslock, ev.KeyLeftctrl},
+		ev.EvKey: {ev.KeyA, ev.KeyF8, ev.KeyH, ev.KeyCapslock, ev.KeyLeftctrl, ev.KeyCalc},
 	}}}}}
 }
 func (f *fakeInput) Status() contracts.InputStatus                       { return contracts.InputStatus{} }
@@ -316,7 +319,7 @@ func TestRemap(t *testing.T) {
 func TestWaitKeyAndIsDown(t *testing.T) {
 	t.Parallel()
 	m, _ := newTestModule()
-	f8, _ := keys.Lookup("F8")
+	f8, _ := m.ParseKey("F8")
 	done := make(chan error, 1)
 	go func() { done <- m.WaitKey(context.Background(), f8) }()
 	time.Sleep(10 * time.Millisecond)
@@ -332,7 +335,7 @@ func TestWaitKeyAndIsDown(t *testing.T) {
 	if !m.IsDown(f8) {
 		t.Fatal("F8 must be down")
 	}
-	ctrl, _ := keys.Lookup("Ctrl")
+	ctrl, _ := m.ParseKey("{Ctrl}")
 	key(m, ev.KeyRightctrl, 1)
 	if !m.IsDown(ctrl) {
 		t.Fatal("Ctrl (any side) must be down")
@@ -378,7 +381,7 @@ func TestSuspendedNoTriggers(t *testing.T) {
 
 	// Состояние клавиш ведётся.
 	key(m, ev.KeyA, 1)
-	a, _ := keys.Lookup("A")
+	a, _ := m.ParseKey("A")
 	if !m.IsDown(a) {
 		t.Fatal("key state must be tracked while suspended")
 	}
@@ -390,5 +393,114 @@ func TestSuspendedNoTriggers(t *testing.T) {
 	key(m, ev.KeyF8, 1)
 	if rec.count() != 1 {
 		t.Fatal("must fire after resume")
+	}
+}
+
+// fakeInspector — авто-ID: фейковая клавиатура (kbPath) — устройство UnKey, его кнопка 001 — KEY_CALC.
+type fakeInspector struct{ contracts.Inspector }
+
+// ResolveKey знает UnKey.001 и стандартные имена на UnKey.
+func (fakeInspector) ResolveKey(device, button string) (contracts.DeviceKey, error) {
+	if !strings.EqualFold(device, "UnKey") {
+		return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownDevice, "device", device)
+	}
+	if button == "001" {
+		return contracts.DeviceKey{Key: keys.Key{Name: "UnKey001", Type: ev.EvKey, Code: ev.KeyCalc}, Device: "UnKey"}, nil
+	}
+	if k, ok := keys.Lookup(button); ok {
+		return contracts.DeviceKey{Key: k, Device: "UnKey"}, nil
+	}
+	return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", device, "button", button)
+}
+
+// DeviceOf — авто-ID только у фейковой клавиатуры.
+func (fakeInspector) DeviceOf(path string) string {
+	if path == kbPath {
+		return "UnKey"
+	}
+	return ""
+}
+
+// TestDeviceKeys проверяет кнопки устройств с авто-ID (FR-DEV-2): горячая клавиша срабатывает
+// только от своего устройства, перехват — только его, последовательности, состояние, ошибки имён.
+func TestDeviceKeys(t *testing.T) {
+	t.Parallel()
+	m, in := newTestModule()
+	m.inspect = fakeInspector{}
+	other := "/dev/input/event99"
+	press := func(dev string, code uint16) {
+		for _, v := range []int32{1, 0} {
+			e := ev.Event{Type: ev.EvKey, Code: code, Value: v}
+			m.HandleInput(dev, &e, true)
+		}
+	}
+
+	// {UnKey001}: с другого устройства тот же код не срабатывает, со своего — да; перехват — своего устройства.
+	rec := arm(t, hotkeyType{m}, map[string]any{"keys": "{UnKey001}", "consume": true})
+	press(other, ev.KeyCalc)
+	if rec.count() != 0 {
+		t.Fatal("fired from another device")
+	}
+	press(kbPath, ev.KeyCalc)
+	if rec.count() != 1 || !in.grabs() {
+		t.Fatalf("own device: fires=%d grab=%v", rec.count(), in.grabs())
+	}
+
+	// Сочетание с обычным модификатором и кнопкой устройства; стандартное имя на устройстве ({UnKey.A}).
+	chord := arm(t, hotkeyType{m}, map[string]any{"keys": "^{Ctrl}{UnKey.A}"})
+	e := ev.Event{Type: ev.EvKey, Code: ev.KeyLeftctrl, Value: 1}
+	m.HandleInput(other, &e, true)
+	press(other, ev.KeyA)
+	press(kbPath, ev.KeyA)
+	e.Value = 0
+	m.HandleInput(other, &e, true)
+	if chord.count() != 1 {
+		t.Errorf("chord fires = %d, want 1 (only A from UnKey)", chord.count())
+	}
+
+	// Последовательность из кнопок устройства.
+	seq := arm(t, sequenceType{m}, map[string]any{"keys": "{UnKey001}{UnKey001}"})
+	press(kbPath, ev.KeyCalc)
+	press(other, ev.KeyCalc)
+	if seq.count() != 0 {
+		t.Error("sequence fired with a press from another device")
+	}
+	press(kbPath, ev.KeyCalc)
+	press(kbPath, ev.KeyCalc)
+	if seq.count() != 1 {
+		t.Errorf("sequence fires = %d", seq.count())
+	}
+
+	// Состояние клавиши устройства.
+	k, err := m.ParseKey("{UnKey001}")
+	if err != nil || k.Device != "UnKey" {
+		t.Fatalf("ParseKey: %+v %v", k, err)
+	}
+	down := ev.Event{Type: ev.EvKey, Code: ev.KeyCalc, Value: 1}
+	m.HandleInput(other, &down, true)
+	if m.IsDown(k) {
+		t.Error("IsDown: pressed on another device")
+	}
+	m.HandleInput(kbPath, &down, true)
+	if !m.IsDown(k) {
+		t.Error("IsDown: pressed on own device")
+	}
+
+	// Ошибки имён — коды языка макросов; без инспектора устройства неизвестны.
+	for _, c := range []struct {
+		keys, code string
+		insp       contracts.Inspector
+	}{
+		{"{UnKey9.001}", dsl.ErrUnknownDevice, fakeInspector{}},
+		{"{UnKey099}", dsl.ErrUnknownButton, fakeInspector{}},
+		{"{UnKey001}", dsl.ErrUnknownDevice, nil},
+	} {
+		mm, _ := newTestModule()
+		mm.inspect = c.insp
+		err := hotkeyType{mm}.Validate(project.Trigger{Type: "hotkey", Params: map[string]any{"keys": c.keys}})
+		var de *dsl.Error
+		if !errors.As(err, &de) || de.Code != c.code {
+			t.Errorf("%s: err = %v", c.keys, err)
+		}
 	}
 }

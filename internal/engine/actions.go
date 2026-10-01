@@ -21,16 +21,16 @@ const minIterationSpacing = time.Millisecond
 func (m *Module) builtinActions() []contracts.ActionType {
 	return []contracts.ActionType{
 		// Действия ввода — все сводятся к макросу DSL.
-		dslAction("send", "keyboard", `{"type":"string","x-widget":"macro"}`, sendDSL),
-		dslAction("tap", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("")),
-		dslAction("key_down", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("^")),
-		dslAction("key_up", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("~")),
-		dslAction("hold", "keyboard", `{"type":"object","required":["key","ms"],"properties":{"key":{"type":"string","x-widget":"key"},"ms":{"type":"integer","minimum":1,"default":500,"x-widget":"ms"}}}`, holdDSL),
-		dslAction("pause", "time", `{"oneOf":[{"type":"integer","minimum":0,"default":100,"x-widget":"ms"},{"type":"object","required":["min_ms","max_ms"],"properties":{"min_ms":{"type":"integer","minimum":0,"x-widget":"ms"},"max_ms":{"type":"integer","minimum":0,"x-widget":"ms"}}}]}`, pauseDSL),
-		dslAction("type_text", "keyboard", `{"type":"string","x-widget":"multiline"}`, textDSL),
-		dslAction("mouse_move", "mouse", `{"type":"object","required":["dx","dy"],"properties":{"dx":{"type":"integer","default":0},"dy":{"type":"integer","default":0}}}`, moveDSL),
-		dslAction("mouse_click", "mouse", `{"enum":["Left","Right","Middle","Back","Forward"],"default":"Left"}`, clickDSL),
-		dslAction("wheel", "mouse", `{"type":"object","required":["direction"],"properties":{"direction":{"enum":["Up","Down","Left","Right"],"default":"Down"},"count":{"type":"integer","minimum":1,"default":1}}}`, wheelDSL),
+		m.dslAction("send", "keyboard", `{"type":"string","x-widget":"macro"}`, sendDSL),
+		m.dslAction("tap", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("")),
+		m.dslAction("key_down", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("^")),
+		m.dslAction("key_up", "keyboard", `{"type":"string","x-widget":"key"}`, keyDSL("~")),
+		m.dslAction("hold", "keyboard", `{"type":"object","required":["key","ms"],"properties":{"key":{"type":"string","x-widget":"key"},"ms":{"type":"integer","minimum":1,"default":500,"x-widget":"ms"}}}`, holdDSL),
+		m.dslAction("pause", "time", `{"oneOf":[{"type":"integer","minimum":0,"default":100,"x-widget":"ms"},{"type":"object","required":["min_ms","max_ms"],"properties":{"min_ms":{"type":"integer","minimum":0,"x-widget":"ms"},"max_ms":{"type":"integer","minimum":0,"x-widget":"ms"}}}]}`, pauseDSL),
+		m.dslAction("type_text", "keyboard", `{"type":"string","x-widget":"multiline"}`, textDSL),
+		m.dslAction("mouse_move", "mouse", `{"type":"object","required":["dx","dy"],"properties":{"dx":{"type":"integer","default":0},"dy":{"type":"integer","default":0}}}`, moveDSL),
+		m.dslAction("mouse_click", "mouse", `{"enum":["Left","Right","Middle","Back","Forward"],"default":"Left"}`, clickDSL),
+		m.dslAction("wheel", "mouse", `{"type":"object","required":["direction"],"properties":{"direction":{"enum":["Up","Down","Left","Right"],"default":"Down"},"count":{"type":"integer","minimum":1,"default":1}}}`, wheelDSL),
 
 		// Логика и переменные.
 		m.repeatAction(),
@@ -47,7 +47,7 @@ func (m *Module) builtinActions() []contracts.ActionType {
 }
 
 // dslAction создаёт действие, которое сводится к макросу DSL: проверка — разбор и компиляция макроса.
-func dslAction(id, category, schema string, toDSL func(any) (string, error)) builtinAction {
+func (m *Module) dslAction(id, category, schema string, toDSL func(any) (string, error)) builtinAction {
 	return builtinAction{
 		meta:  meta("action", id, category, schema),
 		toDSL: toDSL,
@@ -60,7 +60,7 @@ func dslAction(id, category, schema string, toDSL func(any) (string, error)) bui
 			if err != nil {
 				return err
 			}
-			if _, err = compileSource(src); err != nil || id != "send" {
+			if _, err = m.compileSource(src); err != nil || id != "send" {
 				return err
 			}
 			// Макрос целиком (блок «Макрос»): зажатия и отпускания должны сходиться (^ дважды, ~ без ^ — ошибки).
