@@ -1,9 +1,31 @@
 package contracts
 
 import (
+	"mkey/internal/lib/devmap"
 	"mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 )
+
+// DeviceProfile — профиль устройства в точке расширения PointDeviceProfile (FR-DEV-7, ADR-0027):
+// готовые имена кнопок и осей для модели. Встроенные профили регистрирует inspector, их могут
+// добавлять и плагины; профили человека из папки профилей важнее зарегистрированных.
+type DeviceProfile interface {
+	Extension
+	// Profile возвращает данные профиля.
+	Profile() *devmap.Profile
+}
+
+// StaticProfile — готовая реализация DeviceProfile.
+type StaticProfile struct {
+	M ExtensionMeta
+	P *devmap.Profile
+}
+
+// Meta возвращает метаданные профиля.
+func (p StaticProfile) Meta() ExtensionMeta { return p.M }
+
+// Profile возвращает данные профиля.
+func (p StaticProfile) Profile() *devmap.Profile { return p.P }
 
 // DeviceKey — клавиша или кнопка, возможно конкретного устройства: {A} — с любого устройства,
 // {UnKey2.001} — только с устройства UnKey2 (FR-DEV-2).
@@ -35,6 +57,9 @@ type Inspector interface {
 	// текущее имя; name == "" — убрать имя. Авто-ID и номера остаются рабочими навсегда.
 	// Устройству без авто-ID он выдаётся. Ошибка — *devmap.NameError.
 	Rename(device, control, name string) error
+	// ExportProfile составляет профиль из имён устройства (FR-DEV-5): YAML и предлагаемое имя
+	// файла. Ошибка — *devmap.NameError (нет такого устройства, неоднозначно).
+	ExportProfile(device string) (data []byte, filename string, err error)
 	// Label возвращает имя для макросов кнопки или оси без стандартного имени
 	// ("UnKey001", "UnKey2.001", "UnKey.Axis01", FR-DEV-2); "" — у неё нет авто-ID.
 	Label(path string, typ, code uint16) string
@@ -48,6 +73,9 @@ type Inspector interface {
 // TopicAutoIDsChanged — инспектор выдал устройствам новые авто-ID или узнал их снова
 // (окно обновляет список устройств); Payload: nil.
 const TopicAutoIDsChanged = "inspector.auto_ids_changed"
+
+// PlaceProfiles — папка профилей устройств человека (место «Где что лежит»).
+const PlaceProfiles = "profiles"
 
 // PlaceDevices — файл devices.yaml с авто-ID устройств и кнопок (место «Где что лежит»).
 const PlaceDevices = "devices"
@@ -63,6 +91,8 @@ type DeviceDetails struct {
 	AutoID string `json:"auto_id,omitempty"`
 	// DeviceName — имя устройства, данное человеком (FR-DEV-3); пусто — нет.
 	DeviceName string `json:"device_name,omitempty"`
+	// Profile — применённый профиль устройства ("builtin/…", "user/…"; FR-DEV-7); пусто — нет.
+	Profile string `json:"profile,omitempty"`
 	// Keys — клавиши и кнопки (EV_KEY); Rel — относительные оси (мышь, колесо);
 	// Axes — абсолютные оси с диапазонами (стики, курки, крестовины, тачпад).
 	Keys []DeviceControl `json:"keys,omitempty"`

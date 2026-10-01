@@ -56,7 +56,8 @@ func newClient(dir, lang string) *client {
 	}}}
 }
 
-// do выполняет запрос к API и разбирает ответ в out (если out не nil).
+// do выполняет запрос к API и разбирает ответ в out (если out не nil; *[]byte — тело как есть,
+// например файл профиля).
 // Возвращает errNotRunning, если демон не запущен, и *apiError для ошибок API.
 func (c *client) do(ctx context.Context, method, path string, body, out any) error {
 	// Готовим запрос с телом в JSON и языком ответа.
@@ -98,9 +99,13 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) err
 		return &eb.Error
 	}
 
-	// Успешный ответ.
+	// Успешный ответ: как есть или из JSON.
 	if out == nil {
 		return nil
+	}
+	if raw, ok := out.(*[]byte); ok {
+		*raw, err = io.ReadAll(resp.Body)
+		return err
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

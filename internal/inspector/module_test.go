@@ -334,3 +334,66 @@ func TestRename(t *testing.T) {
 		}
 	}
 }
+
+// TestProfiles проверяет профили устройств (FR-DEV-7): профиль человека из папки, профиль из реестра
+// для устройства, которое иначе авто-ID не получило бы, однократное применение, испорченный файл
+// и сохранение профиля из имён устройства.
+func TestProfiles(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	profDir := filepath.Join(dir, "profiles")
+	_ = os.MkdirAll(profDir, 0o755)
+	_ = os.WriteFile(filepath.Join(profDir, "sega.yaml"), []byte("match: {vid: \"0079\", pid: \"0011\"}\ndevice_name: Sega\nbuttons: {BTN_TRIGGER: A}\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(profDir, "broken.yaml"), []byte("match: [oops"), 0o600)
+
+	joy := contracts.InputDevice{Info: ev.Info{Path: "/dev/input/event9", Name: "USB Gamepad", ID: ev.ID{Vendor: 0x79, Product: 0x11},
+		Caps: ev.Capabilities{Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnTrigger, ev.BtnThumb}}}}, Kinds: []ev.Kind{ev.KindJoystick}}
+	mouse := contracts.InputDevice{Info: ev.Info{Path: "/dev/input/event6", Name: "Fancy Mouse", ID: ev.ID{Vendor: 0x46d, Product: 0xc077},
+		Caps: ev.Capabilities{Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnLeft}}}}, Kinds: []ev.Kind{ev.KindMouse}}
+
+	// Реестр с профилем мыши (как встроенный или от плагина).
+	ext := registry.NewExtensions()
+	mp, _ := devmap.ParseProfile([]byte("match: {vid: \"046d\", pid: \"c077\"}\ndevice_name: Мышка\n"))
+	_ = ext.Register(contracts.PointDeviceProfile, contracts.StaticProfile{M: contracts.ExtensionMeta{ID: "builtin/mouse.yaml"}, P: mp})
+
+	start := func() *Module {
+		m := &Module{
+			log: slog.New(slog.NewTextHandler(io.Discard, nil)), ext: ext,
+			cfg:   Config{InputDir: dir, DevicesFile: filepath.Join(dir, "devices.yaml"), ProfilesDir: profDir},
+			input: fakeInput{devs: []contracts.InputDevice{joy, mouse}}, mode: "smart", bound: map[string]string{}, badProfiles: map[string]bool{},
+		}
+		m.file, _ = devmap.Load(m.cfg.DevicesFile)
+		m.fileOK = true
+		m.assignAll()
+		return m
+	}
+	m := start()
+
+	// Профиль человека: имя устройства и кнопки; профиль из реестра: мышь получила запись и имя.
+	if k, err := m.ResolveKey("Sega", "A"); err != nil || k.Code != ev.BtnTrigger {
+		t.Errorf("user profile: %+v %v", k, err)
+	}
+	if d := m.Find("event6"); len(d) != 1 || d[0].DeviceName != "Мышка" || d[0].Profile != "builtin/mouse.yaml" {
+		t.Errorf("registry profile: %+v", d)
+	}
+	if !m.badProfiles[filepath.Join(profDir, "broken.yaml")] {
+		t.Error("broken profile not reported")
+	}
+
+	// Однократно: убранное имя после перезапуска не возвращается.
+	if err := m.Rename("Sega", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if d := start().Find("event9"); d[0].DeviceName != "" {
+		t.Errorf("profile applied again: %q", d[0].DeviceName)
+	}
+
+	// Сохранение профиля из имён устройства.
+	data, name, err := m.ExportProfile("event9")
+	if err != nil || name != "usb-gamepad.yaml" || !strings.Contains(string(data), "BTN_TRIGGER: A") || !strings.Contains(string(data), `vid: "0079"`) {
+		t.Errorf("export: %s %q %v", data, name, err)
+	}
+	if _, _, err := m.ExportProfile("event42"); err == nil {
+		t.Error("export of unknown device: no error")
+	}
+}

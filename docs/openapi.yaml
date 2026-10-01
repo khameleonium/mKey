@@ -135,6 +135,11 @@ paths:
     post:
       summary: "Дать имя устройству или его кнопке (FR-DEV-3): {device, control, name}; control пусто — устройство; name пусто — убрать имя. Ошибка имени — 400 api.rename_chars|key|auto|taken|unknown|ambiguous"
       responses: { "200": { description: "{ok}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/devices/profile:
+    get:
+      summary: "Профиль из имён устройства (?ref=, FR-DEV-5, ADR-0027): файл YAML для скачивания (Content-Disposition); нет устройства — 400 api.rename_unknown|ambiguous"
+      parameters: [ { name: ref, in: query, required: true, schema: { type: string } } ]
+      responses: { "200": { description: "application/yaml" }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/settings/devices:
     get:
       summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"

@@ -28,6 +28,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("GET /api/v1/devices", m.handleDevices)
 	mux.HandleFunc("GET /api/v1/devices/inspect", m.handleDeviceInspect)
 	mux.HandleFunc("POST /api/v1/devices/rename", m.handleDeviceRename)
+	mux.HandleFunc("GET /api/v1/devices/profile", m.handleDeviceProfile)
 	mux.HandleFunc("GET /api/v1/settings/devices", m.handleDeviceSettingsGet)
 	mux.HandleFunc("PUT /api/v1/settings/devices", m.handleDeviceSettingsPut)
 	mux.HandleFunc("GET /api/v1/doctor", m.handleDoctor)

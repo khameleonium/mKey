@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,14 @@ func (f fakeInspector) Rename(_, _, name string) error {
 		return &devmap.NameError{Code: devmap.NameKey, Name: name}
 	}
 	return nil
+}
+
+// ExportProfile — профиль только у UnKey.
+func (f fakeInspector) ExportProfile(device string) ([]byte, string, error) {
+	if device != "UnKey" {
+		return nil, "", &devmap.NameError{Code: devmap.NameUnknown, Name: device}
+	}
+	return []byte("version: 1\n"), "usb-gamepad.yaml", nil
 }
 
 // DeviceOf — авто-ID только у event9.
@@ -211,5 +220,27 @@ func TestDeviceRename(t *testing.T) {
 	e, _ := out["error"].(map[string]any)
 	if msg, _ := e["message"].(string); code != 400 || e["code"] != "api.rename_key" || !strings.Contains(msg, "«Enter» — это имя клавиши") {
 		t.Errorf("bad name: %d %v", code, out)
+	}
+}
+
+// TestDeviceProfileExport проверяет скачивание профиля: файл с именем и понятная ошибка.
+func TestDeviceProfileExport(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	mode := "smart"
+	m.svc.inspect = fakeInspector{mode: &mode}
+	h := m.routes(true)
+
+	// Профиль — файлом для скачивания.
+	req := httptest.NewRequest("GET", "/api/v1/devices/profile?ref=UnKey", nil)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Code != 200 || rr.Body.String() != "version: 1\n" || !strings.Contains(rr.Header().Get("Content-Disposition"), "usb-gamepad.yaml") {
+		t.Fatalf("export: %d %q %v", rr.Code, rr.Body.String(), rr.Header())
+	}
+
+	// Нет устройства — 400 с понятным текстом.
+	if code, out := call(t, h, "GET", "/api/v1/devices/profile?ref=nope", "", nil); code != 400 || out["error"].(map[string]any)["code"] != "api.rename_unknown" {
+		t.Errorf("unknown: %d %v", code, out)
 	}
 }

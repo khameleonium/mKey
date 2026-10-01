@@ -18,6 +18,7 @@ import (
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/paths"
+	"mkey/profiles"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.
@@ -32,6 +33,8 @@ type Config struct {
 	AutoIDs string `json:"auto_ids"`
 	// DevicesFile — файл авто-ID ("" — ~/.config/mkey/devices.yaml).
 	DevicesFile string `json:"devices_file"`
+	// ProfilesDir — папка профилей устройств человека ("" — ~/.config/mkey/profiles).
+	ProfilesDir string `json:"profiles_dir"`
 }
 
 // Module — инспектор устройств (contracts.Inspector).
@@ -41,6 +44,8 @@ type Module struct {
 	cfg Config
 	// input — источник устройств (nil — модуль input отключён: список пуст).
 	input contracts.InputSource
+	// ext — реестр расширений (профили устройств других модулей и плагинов).
+	ext contracts.ExtensionRegistry
 	// bus — шина (подключение и отключение устройств); events и unsub — подписка на них.
 	bus    contracts.Bus
 	events <-chan contracts.Event
@@ -56,6 +61,8 @@ type Module struct {
 	fileOK bool
 	// bound — авто-ID подключённых устройств по пути ("/dev/input/event9" → "UnKey").
 	bound map[string]string
+	// badProfiles — испорченные профили человека, о которых уже предупредили в журнале.
+	badProfiles map[string]bool
 }
 
 // New создаёт модуль. Зависимости модуль получает в Init, а не в конструкторе.
@@ -79,6 +86,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if m.cfg.DevicesFile == "" {
 		m.cfg.DevicesFile = filepath.Join(paths.Config(os.Getenv), devmap.FileName)
 	}
+	if m.cfg.ProfilesDir == "" {
+		m.cfg.ProfilesDir = filepath.Join(paths.Config(os.Getenv), "profiles")
+	}
 
 	// Режим авто-ID: неверное значение в настройках — по умолчанию и предупреждение в журнале.
 	mode, err := devmap.ParseMode(m.cfg.AutoIDs)
@@ -86,7 +96,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		m.log.Warn("bad auto_ids setting, using smart", "err", err)
 		mode = devmap.ModeSmart
 	}
-	m.mode, m.bound = mode, map[string]string{}
+	m.mode, m.bound, m.badProfiles = mode, map[string]string{}, map[string]bool{}
 
 	// Источник устройств (без модуля input инспектору нечего показывать, но он не мешает другим)
 	// и подписка на подключение и отключение — до Start, чтобы не пропустить устройства.
@@ -94,12 +104,27 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.bus = host.Bus()
 	m.events, m.unsub = m.bus.Subscribe("input.*")
 
-	// Файл devices.yaml — в списке «Где что лежит».
-	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
-		M: contracts.ExtensionMeta{ID: contracts.PlaceDevices, NameKey: "place.devices", DescriptionKey: "place.devices.description", Provider: ModuleID},
-		P: m.cfg.DevicesFile, N: 25,
-	}); err != nil {
-		return err
+	// Файл devices.yaml и папка профилей — в списке «Где что лежит».
+	m.ext = host.Extensions()
+	for _, p := range []contracts.StaticPlace{
+		{M: contracts.ExtensionMeta{ID: contracts.PlaceDevices, NameKey: "place.devices", DescriptionKey: "place.devices.description", Provider: ModuleID}, P: m.cfg.DevicesFile, N: 25},
+		{M: contracts.ExtensionMeta{ID: contracts.PlaceProfiles, NameKey: "place.profiles", DescriptionKey: "place.profiles.description", Provider: ModuleID}, P: m.cfg.ProfilesDir, Dir: true, N: 26},
+	} {
+		if err := m.ext.Register(contracts.PointPlace, p); err != nil {
+			return err
+		}
+	}
+
+	// Встроенные профили устройств (испорченный встроенный профиль — ошибка сборки, её ловит тест).
+	for name, data := range profiles.Devices() {
+		p, err := devmap.ParseProfile(data)
+		if err != nil {
+			return fmt.Errorf("%s: builtin profile %s: %w", ModuleID, name, err)
+		}
+		meta := contracts.ExtensionMeta{ID: "builtin/" + name, Provider: ModuleID}
+		if err := m.ext.Register(contracts.PointDeviceProfile, contracts.StaticProfile{M: meta, P: p}); err != nil {
+			return err
+		}
 	}
 	return contracts.ProvideService[contracts.Inspector](host.Services(), m)
 }
@@ -191,22 +216,26 @@ func (m *Module) assign(devs []contracts.InputDevice) {
 		}
 		match := devmap.MatchOf(d.Info, links[d.Info.Path])
 
+		profID, prof := m.findProfile(match)
+
 		// Знакомое устройство: новые кнопки — следующими номерами, порт — текущий.
 		if rec := m.file.Find(match, busy); rec != nil {
 			if rec.Update(d.Info, d.Kinds) || rec.Match != match {
 				rec.Match = match
 				changed = true
 			}
+			changed = m.applyProfile(rec, profID, prof) || changed
 			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
 			bound = true
 			continue
 		}
 
-		// Новое устройство, подходящее под режим, — очередной авто-ID.
-		if devmap.Qualifies(m.mode, d.Info.Caps, d.Kinds) {
+		// Новое устройство, подходящее под режим или с профилем, — очередной авто-ID.
+		if prof != nil || devmap.Qualifies(m.mode, d.Info.Caps, d.Kinds) {
 			rec := m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
+			m.applyProfile(rec, profID, prof)
 			m.bound[d.Info.Path], busy[rec.AutoID] = rec.AutoID, true
-			m.log.Info("auto-id assigned", "device", d.Info.Name, "path", d.Info.Path, "id", rec.AutoID)
+			m.log.Info("auto-id assigned", "device", d.Info.Name, "path", d.Info.Path, "id", rec.AutoID, "profile", profID)
 			changed, bound = true, true
 		}
 	}
@@ -220,6 +249,58 @@ func (m *Module) assign(devs []contracts.InputDevice) {
 	if bound && m.bus != nil {
 		m.bus.Publish(contracts.TopicAutoIDsChanged, nil)
 	}
+}
+
+// findProfile ищет профиль для устройства с приметами match (под m.mu): сначала в папке профилей
+// человека (по имени файла), затем среди зарегистрированных (встроенные, плагины). Испорченный
+// профиль человека пропускается с предупреждением в журнале (один раз).
+func (m *Module) findProfile(match devmap.Match) (string, *devmap.Profile) {
+	// Профили человека.
+	entries, _ := os.ReadDir(m.cfg.ProfilesDir)
+	for _, e := range entries {
+		ext := filepath.Ext(e.Name())
+		if e.IsDir() || (ext != ".yaml" && ext != ".yml") {
+			continue
+		}
+		path := filepath.Join(m.cfg.ProfilesDir, e.Name())
+		data, err := os.ReadFile(path)
+		var p *devmap.Profile
+		if err == nil {
+			p, err = devmap.ParseProfile(data)
+		}
+		if err != nil {
+			if !m.badProfiles[path] {
+				m.badProfiles[path] = true
+				m.log.Warn("device profile skipped", "file", path, "err", err)
+			}
+			continue
+		}
+		if p.Matches(match) {
+			return "user/" + e.Name(), p
+		}
+	}
+
+	// Зарегистрированные профили.
+	if m.ext != nil {
+		for _, ext := range m.ext.List(contracts.PointDeviceProfile) {
+			if dp, ok := ext.(contracts.DeviceProfile); ok && dp.Profile().Matches(match) {
+				return dp.Meta().ID, dp.Profile()
+			}
+		}
+	}
+	return "", nil
+}
+
+// applyProfile подставляет имена профиля в запись, если этот профиль к ней ещё не применялся
+// (под m.mu). Возвращает true, если запись изменилась.
+func (m *Module) applyProfile(rec *devmap.Device, id string, p *devmap.Profile) bool {
+	if p == nil || rec.Profile == id {
+		return false
+	}
+	p.Apply(m.file, rec)
+	rec.Profile = id
+	m.log.Info("device profile applied", "device", rec.AutoID, "profile", id)
+	return true
 }
 
 // eventNumber возвращает номер N из пути ".../eventN" (-1 — путь другого вида).
@@ -314,6 +395,75 @@ func (m *Module) labelLocked(path string, typ, code uint16) string {
 	return ""
 }
 
+// recordFor находит запись devices.yaml устройства (под m.mu): по авто-ID или имени, иначе —
+// среди подключённых found (по пути, eventN, части названия). Подключённому устройству без
+// авто-ID при create он выдаётся. Ошибка — *devmap.NameError (не найдено, неоднозначно).
+func (m *Module) recordFor(device string, found []contracts.DeviceDetails, create bool) (*devmap.Device, error) {
+	if rec := m.file.Lookup(device); rec != nil {
+		return rec, nil
+	}
+
+	// Подключённое устройство: ровно одно.
+	switch len(found) {
+	case 0:
+		return nil, &devmap.NameError{Code: devmap.NameUnknown, Name: device}
+	case 1:
+	default:
+		names := make([]string, 0, len(found))
+		for _, d := range found {
+			names = append(names, filepath.Base(d.Info.Path)+" "+d.Info.Name)
+		}
+		return nil, &devmap.NameError{Code: devmap.NameAmbiguous, Name: device, Other: strings.Join(names, "; ")}
+	}
+
+	// Его запись или новая.
+	d := found[0]
+	if id := m.bound[d.Info.Path]; id != "" {
+		return m.file.Lookup(id), nil
+	}
+	if !create {
+		return nil, &devmap.NameError{Code: devmap.NameUnknown, Name: device}
+	}
+	links := ev.ReadLinks(m.cfg.InputDir)
+	rec := m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
+	m.bound[d.Info.Path] = rec.AutoID
+	return rec, nil
+}
+
+// ExportProfile составляет профиль из имён устройства (contracts.Inspector): YAML и имя файла
+// по названию модели ("usb-gamepad.yaml").
+func (m *Module) ExportProfile(device string) ([]byte, string, error) {
+	found := m.Find(device)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rec, err := m.recordFor(device, found, false)
+	if err != nil {
+		return nil, "", err
+	}
+	data, err := devmap.MarshalProfile(devmap.ExportProfile(rec, rec.Match.Name))
+	return data, profileFileName(rec.Match.Name), err
+}
+
+// profileFileName — имя файла профиля из названия модели: латинские буквы и цифры, остальное — «-».
+func profileFileName(name string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dash = false
+		} else if !dash && b.Len() > 0 {
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	base := strings.TrimSuffix(b.String(), "-")
+	if base == "" {
+		base = "device"
+	}
+	return base + ".yaml"
+}
+
 // Rename даёт имя устройству или его кнопке и сохраняет devices.yaml (contracts.Inspector).
 func (m *Module) Rename(device, control, name string) error {
 	name = strings.TrimSpace(name)
@@ -327,31 +477,12 @@ func (m *Module) Rename(device, control, name string) error {
 	}
 
 	// Запись: по авто-ID или имени; иначе — подключённое устройство (без авто-ID — выдаём его).
-	rec := m.file.Lookup(device)
-	if rec == nil {
-		switch len(found) {
-		case 0:
-			return &devmap.NameError{Code: devmap.NameUnknown, Name: device}
-		case 1:
-		default:
-			names := make([]string, 0, len(found))
-			for _, d := range found {
-				names = append(names, filepath.Base(d.Info.Path)+" "+d.Info.Name)
-			}
-			return &devmap.NameError{Code: devmap.NameAmbiguous, Name: device, Other: strings.Join(names, "; ")}
-		}
-		d := found[0]
-		if id := m.bound[d.Info.Path]; id != "" {
-			rec = m.file.Lookup(id)
-		} else {
-			links := ev.ReadLinks(m.cfg.InputDir)
-			rec = m.file.Add(d.Info, d.Kinds, links[d.Info.Path])
-			m.bound[d.Info.Path] = rec.AutoID
-		}
+	rec, err := m.recordFor(device, found, true)
+	if err != nil {
+		return err
 	}
 
 	// Имя устройства или кнопки.
-	var err error
 	if control == "" {
 		err = m.file.SetDeviceName(rec.AutoID, name)
 	} else {
@@ -408,7 +539,7 @@ func (m *Module) Devices() []contracts.DeviceDetails {
 		// Авто-ID и имя устройства, имена и номера его кнопок и осей без стандартного имени.
 		dd.AutoID = m.bound[d.Info.Path]
 		if rec := m.recordLocked(d.Info.Path); rec != nil {
-			dd.DeviceName = rec.Name
+			dd.DeviceName, dd.Profile = rec.Name, rec.Profile
 			for _, list := range []struct {
 				typ uint16
 				c   []contracts.DeviceControl

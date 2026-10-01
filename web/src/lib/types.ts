@@ -211,6 +211,8 @@ export interface DeviceDetails extends InputDevice {
   auto_id?: string;
   /** Имя устройства, данное человеком (FR-DEV-3). */
   device_name?: string;
+  /** Применённый профиль устройства ("builtin/…", "user/…"). */
+  profile?: string;
   keys?: DeviceControl[];
   rel?: DeviceControl[];
   axes?: DeviceAxis[];

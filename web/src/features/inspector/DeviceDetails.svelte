@@ -99,7 +99,21 @@
       >
     </dd>
     {#if d.auto_id}<dt>{t("inspector.auto_id")}</dt>
-      <dd><code>{d.auto_id}</code></dd>{/if}
+      <dd class="row">
+        <code>{d.auto_id}</code>
+        <a
+          class="btn small ghost"
+          href={`/api/v1/devices/profile?ref=${encodeURIComponent(d.auto_id)}`}
+          download
+          title={t("inspector.save_profile_hint")}>⇩ {t("inspector.save_profile")}</a
+        >
+      </dd>{/if}
+    {#if d.profile}<dt>{t("inspector.profile")}</dt>
+      <dd>
+        {t(d.profile.startsWith("user/") ? "inspector.profile_user" : "inspector.profile_builtin", {
+          file: d.profile.slice(d.profile.indexOf("/") + 1),
+        })}
+      </dd>{/if}
     <dt>{t("inspector.file")}</dt>
     <dd><code>{d.info.path}</code></dd>
     {#if d.by_id}<dt>{t("inspector.by_id")}</dt>

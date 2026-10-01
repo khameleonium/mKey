@@ -88,6 +88,9 @@ type Device struct {
 	Buttons map[string]Control `yaml:"buttons,omitempty"`
 	// Axes — оси без стандартного имени: "Axis01" (абсолютные), "Rel01" (относительные) → код и имя.
 	Axes map[string]Control `yaml:"axes,omitempty"`
+	// Profile — профиль, имена из которого уже подставлены (FR-DEV-7): повторно он не применяется,
+	// поэтому убранное человеком имя не возвращается.
+	Profile string `yaml:"profile,omitempty"`
 }
 
 // Match — приметы устройства (FR-DEV-6): модель и название; серийный номер, если есть;
