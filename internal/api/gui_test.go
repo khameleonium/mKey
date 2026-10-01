@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"mkey/internal/contracts"
 	ev "mkey/internal/lib/evdev"
@@ -319,5 +320,45 @@ func TestDescribeProblem(t *testing.T) {
 	}
 	if text, d := describeProblem(tr, p, errors.New("boom")); text != "boom" || d != nil {
 		t.Errorf("plain = %q %+v", text, d)
+	}
+}
+
+// TestDescribeEvent проверяет записи монитора нажатий: клавиши, автоповтор, оси, колесо, мышь.
+func TestDescribeEvent(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	axes := map[string]time.Time{}
+	ie := func(typ, code uint16, v int32, at time.Duration) contracts.InputEvent {
+		return contracts.InputEvent{Device: "/d", Event: ev.Event{Time: now.Add(at), Type: typ, Code: code, Value: v}}
+	}
+
+	// Клавиша: нажатие и отпускание с именем для макросов; автоповтор и SYN не показываются.
+	if e, ok := describeEvent(ie(ev.EvKey, ev.KeyA, 1, 0), "Kbd", false, axes); !ok || e.Name != "A" || e.Action != "down" || e.Kernel != "KEY_A" || e.DeviceName != "Kbd" {
+		t.Fatalf("key down = %+v", e)
+	}
+	if e, ok := describeEvent(ie(ev.EvKey, 0x2ff, 0, 0), "", false, axes); !ok || e.Name != "#767" || e.Action != "up" {
+		t.Fatalf("unknown key = %+v", e)
+	}
+	for _, x := range []contracts.InputEvent{ie(ev.EvKey, ev.KeyA, 2, 0), ie(ev.EvSyn, 0, 0, 0), ie(ev.EvRel, ev.RelX, 3, 0)} {
+		if _, ok := describeEvent(x, "", false, axes); ok {
+			t.Fatalf("shown: %+v", x)
+		}
+	}
+
+	// Ось: не чаще раза в 100 мс; колесо; перемещение — только с moves.
+	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 100, 0), "", false, axes); !ok {
+		t.Fatal("first axis value hidden")
+	}
+	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 120, 50*time.Millisecond), "", false, axes); ok {
+		t.Fatal("axis not throttled")
+	}
+	if e, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 130, 150*time.Millisecond), "", false, axes); !ok || e.Value != 130 {
+		t.Fatalf("axis after interval = %+v", e)
+	}
+	if e, ok := describeEvent(ie(ev.EvRel, ev.RelWheel, -1, 0), "", false, axes); !ok || e.Kind != "wheel" || e.Value != -1 {
+		t.Fatalf("wheel = %+v", e)
+	}
+	if e, ok := describeEvent(ie(ev.EvRel, ev.RelY, 4, 0), "", true, axes); !ok || e.Kind != "move" || e.DY != 4 {
+		t.Fatalf("move = %+v", e)
 	}
 }

@@ -143,13 +143,14 @@ func (r *eventRig) clicks() int {
 	return n
 }
 
-// eventually ждёт выполнения условия.
+// eventually ждёт выполнения условия. Запас 10 с — для медленных машин под нагрузкой: условия
+// точные (конкретные суммы), поэтому длинное ожидание не скрывает ошибок, а только замедляет падение.
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("timeout: %s", what)
+			t.Fatalf("timeout: %s (условие так и не выполнилось за 10 с)", what)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -221,6 +222,13 @@ events:
   - { id: restart, policy: restart, trigger: { type: test }, actions: [ { pause: 400 }, { set_var: { name: n, add: 1000 } } ] }
 `)
 	get := func() int64 { v, _ := r.m.Vars("p").Get("n"); return v.(int64) }
+	// Если шаг не дождался своей суммы, в журнале теста видно, какая сумма получилась.
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("n = %d, running: ignore=%d queue=%d parallel=%d restart=%d", get(),
+				r.running("ignore"), r.running("queue"), r.running("parallel"), r.running("restart"))
+		}
+	})
 
 	// ignore: три быстрых срабатывания — одно выполнение.
 	for range 3 {

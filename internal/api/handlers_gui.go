@@ -50,6 +50,7 @@ func (m *Module) registerGUIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/templates", m.handleTemplates)
 	mux.HandleFunc("GET /api/v1/stream", m.handleStream)
 	mux.HandleFunc("POST /api/v1/capture/key", m.handleCaptureKey)
+	mux.HandleFunc("GET /api/v1/input/watch", m.handleWatch)
 	mux.HandleFunc("POST /api/v1/doctor/fix", m.handleDoctorFix)
 	mux.HandleFunc("POST /api/v1/uninstall", m.handleUninstall)
 	mux.HandleFunc("GET /api/v1/logs", m.handleLogs)

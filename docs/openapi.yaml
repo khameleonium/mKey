@@ -252,6 +252,14 @@ paths:
       responses:
         "200": { description: "{name, code, kernel, device, device_name}" }
         "408": { $ref: "#/components/responses/Error" }
+  /api/v1/input/watch:
+    get:
+      summary: "Монитор нажатий (Server-Sent Events, событие input): клавиши, кнопки, оси (не чаще 10 раз в секунду на ось), колесо; ?moves=1 — и перемещения мыши"
+      description: |
+        Данные: {time, device, device_name, kind (key|axis|wheel|move), name (имя для макросов или #код),
+        kernel, code, action (down|up), value, dy}. Нажатия только передаются, пока открыт поток, и
+        никуда не сохраняются (NFR-8).
+      responses: { "200": { description: "text/event-stream" } }
   /api/v1/dsl/to_actions:
     post:
       summary: "Разобрать макрос на отдельные действия (блоки) — {text} → {actions}"
