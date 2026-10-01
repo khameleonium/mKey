@@ -15,12 +15,19 @@
 //	0.500 1 ^{Mouse0}                   ← нажата левая кнопка мыши
 //	0.620 1 ~{Mouse0}
 //	1.200 1 wheel -1                    ← колесо на щелчок вниз
-//	5.000 end                           ← конец записи
+//	# ---- пауза 3,2 с ----             ← пометка: долго ничего не происходило
+//	4.400 0 ^{B}   # заметка            ← комментарий после действия
+//	shift -2                            ← всё ниже — на 2 с раньше (убрать паузу)
+//	7.000 end                           ← конец записи (с учётом сдвига — 5.000)
 //
 // Действия: ^{Клавиша} — нажать, ~{Клавиша} — отпустить (имена — как в макросах, docs/dsl.md;
 // {#30} — клавиша по коду), move +dx +dy, wheel ±n, hwheel ±n, wheel-hr ±n, hwheel-hr ±n
 // (колесо высокого разрешения), ev тип код значение — любое другое событие evdev.
 // Автоповторы клавиш (значение 2) и служебные события EV_MSC не записываются.
+//
+// Для удобной правки (ADR-0024): # после пробела начинает комментарий до конца строки;
+// строка «shift ±секунды» сдвигает время всех строк ниже (сдвиги складываются); при записи
+// перед паузой от PauseMark программа сама вставляет пометку-комментарий.
 package mkrec
 
 import (
@@ -28,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -42,6 +50,10 @@ const Version = 1
 
 // FileExt — расширение файлов записей.
 const FileExt = ".mkrec"
+
+// PauseMark — пауза, перед которой при записи вставляется пометка «# ---- пауза N с ----»:
+// по ним легко найти нужное место в длинном файле.
+const PauseMark = time.Second
 
 // Device — записанное устройство.
 type Device struct {
@@ -118,8 +130,10 @@ func (f Frame) HasPress() bool {
 
 // fileComment — пояснение в начале каждого файла записи.
 const fileComment = `# Запись mKey (mkey rec). Одна строка — одно действие: время в секундах от начала,
-# номер устройства, действия. Строки можно удалять и править; # в начале строки — комментарий.
+# номер устройства, действия. Строки можно удалять и править.
 # ^{A} — нажать, ~{A} — отпустить, move +x +y — сдвинуть мышь, wheel ±n — колесо.
+# Знак # начинает комментарий: в начале строки или после действия (через пробел).
+# shift -2.5 — всё, что ниже, начнётся на 2,5 с раньше (так убирают паузу); shift 1 — на 1 с позже.
 # Подробно: docs/recording.md
 `
 
@@ -127,6 +141,9 @@ const fileComment = `# Запись mKey (mkey rec). Одна строка — �
 type Writer struct {
 	w   *bufio.Writer
 	err error
+	// last — время последнего записанного действия (для пометок о паузах); wrote — действия уже были.
+	last  time.Duration
+	wrote bool
 }
 
 // NewWriter возвращает писателя записи в w.
@@ -161,10 +178,20 @@ func (w *Writer) WriteHeader(h Header) error {
 	return w.err
 }
 
-// WriteFrame пишет одно действие строкой.
+// WriteFrame пишет одно действие строкой. Перед долгой паузой (от PauseMark) с прошлого
+// действия вставляет пометку-комментарий «# ---- пауза 3,2 с ----».
 func (w *Writer) WriteFrame(f Frame) error {
+	if w.wrote && f.T-w.last >= PauseMark {
+		w.printf("# ---- пауза %s с ----\n", pauseText(f.T-w.last))
+	}
+	w.last, w.wrote = f.T, true
 	w.printf("%s %d %s\n", seconds(f.T), f.Device, FormatEvents(f.Events))
 	return w.err
+}
+
+// pauseText записывает длительность паузы с одним знаком после запятой: «3,2».
+func pauseText(d time.Duration) string {
+	return strings.Replace(strconv.FormatFloat(d.Seconds(), 'f', 1, 64), ".", ",", 1)
 }
 
 // Append дописывает строки действий из r (черновика идущей записи).
@@ -268,6 +295,10 @@ const (
 	ProblemAction = "action"
 	// ProblemNumbers — после слова не хватает чисел или число неверное; Arg — слово.
 	ProblemNumbers = "numbers"
+	// ProblemShift — после shift должно быть число секунд (например, -2.5); Arg — что написано.
+	ProblemShift = "shift"
+	// ProblemNegative — после сдвигов время строки стало меньше нуля; Arg — итоговое время.
+	ProblemNegative = "negative"
 )
 
 // Problem — ошибка в файле записи: где она и что не так. Возвращается из Read; errors.Is(err, ErrFormat) — да.
@@ -307,10 +338,11 @@ func Read(r io.Reader) (*Recording, error) {
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	rec := &Recording{}
 	started := false
+	var shift time.Duration // сумма строк «shift» выше текущей
 	for n := 1; sc.Scan(); n++ {
-		// Пустые строки и комментарии.
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		// Пустые строки и комментарии (во всю строку и после действия).
+		line := strings.TrimSpace(stripComment(sc.Text()))
+		if line == "" {
 			continue
 		}
 		// bad дописывает к ошибке номер строки и саму строку.
@@ -319,7 +351,7 @@ func Read(r io.Reader) (*Recording, error) {
 			if !errors.As(err, &p) {
 				p = &Problem{Code: ProblemLine, Arg: err.Error()}
 			}
-			p.Line, p.Text = n, line
+			p.Line, p.Text = n, strings.TrimSpace(sc.Text())
 			return p
 		}
 
@@ -341,7 +373,7 @@ func Read(r io.Reader) (*Recording, error) {
 		}
 
 		// Сведения заголовка или действие.
-		if err := readLine(rec, line, fields); err != nil {
+		if err := readLine(rec, line, fields, &shift); err != nil {
 			return nil, bad(err)
 		}
 	}
@@ -360,9 +392,36 @@ func Read(r io.Reader) (*Recording, error) {
 	return rec, nil
 }
 
-// readLine разбирает строку заголовка или действия.
-func readLine(rec *Recording, line string, f []string) error {
+// stripComment отрезает комментарий: # в начале строки или после пробела, вне кавычек
+// (в имени устройства "…" и в клавише по коду {#30} знак # — не комментарий).
+func stripComment(line string) string {
+	quoted := false
+	for i, r := range line {
+		switch {
+		case r == '"' && (i == 0 || line[i-1] != '\\'):
+			quoted = !quoted
+		case r == '#' && !quoted && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return line[:i]
+		}
+	}
+	return line
+}
+
+// readLine разбирает строку заголовка или действия. shift — сумма строк «shift» выше:
+// она прибавляется ко времени действий и конца записи.
+func readLine(rec *Recording, line string, f []string, shift *time.Duration) error {
 	switch f[0] {
+	case "shift":
+		// shift ±секунды — сдвиг времени всех строк ниже.
+		if len(f) != 2 {
+			return problem(ProblemShift, strings.Join(f[1:], " "))
+		}
+		s, err := strconv.ParseFloat(f[1], 64)
+		if err != nil || math.IsNaN(s) || math.IsInf(s, 0) {
+			return problem(ProblemShift, f[1])
+		}
+		*shift += time.Duration(math.Round(s*1000)) * time.Millisecond
+		return nil
 	case "created":
 		t, err := time.Parse(time.RFC3339, strings.TrimSpace(strings.TrimPrefix(line, "created")))
 		if err != nil {
@@ -399,7 +458,10 @@ func readLine(rec *Recording, line string, f []string) error {
 	if err != nil || t < 0 {
 		return problem(ProblemLine, f[0])
 	}
-	at := time.Duration(t*1000+0.5) * time.Millisecond
+	at := time.Duration(t*1000+0.5)*time.Millisecond + *shift
+	if at < 0 {
+		return problem(ProblemNegative, seconds(at))
+	}
 	if len(f) == 2 && f[1] == "end" {
 		rec.Duration = at
 		return nil

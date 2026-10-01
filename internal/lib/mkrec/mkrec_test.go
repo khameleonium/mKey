@@ -111,6 +111,80 @@ func TestEditedFile(t *testing.T) {
 	}
 }
 
+// TestEditingAids проверяет удобства ручной правки: комментарии после действий, строки shift
+// (складываются, сдвигают и конец записи) и их ошибки.
+func TestEditingAids(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	src := `mkrec 1
+device 0 keyboard "Kbd #1"   # имя с # в кавычках — не комментарий
+0.100 0 ^{A}   # нажали A
+0.200 0 ~{A}	# отпустили
+shift -5
+5.300 0 ^{#30}        # клавиша по коду — не комментарий
+shift +0.5
+5.900 0 ~{#30}
+8.000 end   # конец
+`
+	rec, err := Read(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Header.Devices[0].Name != "Kbd #1" || len(rec.Frames) != 4 {
+		t.Fatalf("rec = %+v", rec)
+	}
+
+	// Времена: до сдвига — как написано; после shift -5 — на 5 с раньше; после shift +0.5 — на 4,5 с раньше.
+	for i, want := range []time.Duration{100 * ms, 200 * ms, 300 * ms, 1400 * ms} {
+		if rec.Frames[i].T != want {
+			t.Errorf("frame %d: T = %v, want %v", i, rec.Frames[i].T, want)
+		}
+	}
+	if rec.Duration != 3500*ms || rec.Frames[2].Events[0].Code != ev.KeyA {
+		t.Errorf("duration = %v, code = %d", rec.Duration, rec.Frames[2].Events[0].Code)
+	}
+
+	// Ошибки сдвига: не число, лишние слова, время меньше нуля.
+	for _, c := range []struct{ src, code, arg string }{
+		{"mkrec 1\nshift назад\n", ProblemShift, "назад"},
+		{"mkrec 1\nshift 1 2\n", ProblemShift, "1 2"},
+		{"mkrec 1\nshift\n", ProblemShift, ""},
+		{"mkrec 1\nshift -1\n0.500 0 ^{A}\n", ProblemNegative, "-0.500"},
+		{"mkrec 1\n0.1 0 ^{A}#без пробела\n", ProblemKey, "A}#без"},
+	} {
+		_, err := Read(strings.NewReader(c.src))
+		var p *Problem
+		if !errors.As(err, &p) || p.Code != c.code || p.Arg != c.arg {
+			t.Errorf("%q: err = %#v", c.src, err)
+		}
+	}
+}
+
+// TestPauseMarks проверяет пометки о паузах при записи: от PauseMark — комментарий перед действием,
+// короче — без пометки; файл с пометками читается как прежде.
+func TestPauseMarks(t *testing.T) {
+	t.Parallel()
+	ms := time.Millisecond
+	key := []ev.Event{{Type: ev.EvKey, Code: ev.KeyA, Value: 1}}
+	var buf bytes.Buffer
+	w := NewWriter(&buf)
+	for _, at := range []time.Duration{1500 * ms, 2499 * ms, 3499 * ms, 6700 * ms} {
+		if err := w.WriteFrame(Frame{T: at, Events: key}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	want := "1.500 0 ^{A}\n2.499 0 ^{A}\n# ---- пауза 1,0 с ----\n3.499 0 ^{A}\n# ---- пауза 3,2 с ----\n6.700 0 ^{A}\n"
+	if got := buf.String(); got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if rec, err := Read(strings.NewReader("mkrec 1\n" + buf.String())); err != nil || len(rec.Frames) != 4 {
+		t.Fatalf("read: %v %v", rec, err)
+	}
+}
+
 // TestKeyNamesRoundTrip проверяет, что имя каждой клавиши, которое пишет запись, читается обратно в тот же код.
 func TestKeyNamesRoundTrip(t *testing.T) {
 	t.Parallel()

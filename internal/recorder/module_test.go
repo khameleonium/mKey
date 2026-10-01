@@ -444,7 +444,8 @@ func TestConvertRecording(t *testing.T) {
 }
 
 // TestRecordingsProblem проверяет, что файл с ошибкой (после ручной правки) или запись первой
-// версии остаются в списке с описанием ошибки, а не с нулевой длительностью без объяснений.
+// версии остаются в списке с описанием ошибки, а не с нулевой длительностью без объяснений,
+// и что у каждой записи есть дата.
 func TestRecordingsProblem(t *testing.T) {
 	t.Parallel()
 	m, _, _ := newTestModule(t)
@@ -472,5 +473,12 @@ func TestRecordingsProblem(t *testing.T) {
 	}
 	if p := got["старая"]; p == nil || p.Code != mkrec.ProblemOldFormat {
 		t.Errorf("старая: %+v", p)
+	}
+
+	// Файл без строки created (написан вручную) — с датой изменения файла, а не «01.01.0001».
+	for _, r := range list {
+		if r.Created.IsZero() {
+			t.Errorf("%s: no date", r.Name)
+		}
 	}
 }

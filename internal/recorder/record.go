@@ -436,7 +436,11 @@ func (m *Module) Recordings() ([]contracts.RecordingInfo, error) {
 		path := filepath.Join(m.cfg.Dir, e.Name())
 		info := contracts.RecordingInfo{Name: name, Path: path}
 		if rec, err := readRecording(path); err == nil {
+			// Дата — из строки created; её нет (файл написан вручную) — дата изменения файла.
 			info.Created = rec.Header.Created
+			if fi, err := e.Info(); err == nil && info.Created.IsZero() {
+				info.Created = fi.ModTime()
+			}
 			info.DurationMS = rec.Duration.Milliseconds()
 			info.Events = len(rec.Frames)
 			for _, d := range rec.Header.Devices {
