@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -17,6 +18,7 @@ import (
 	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/layout"
+	"mkey/internal/lib/project"
 )
 
 // fakeDevice — виртуальное устройство, записывающее события.
@@ -359,5 +361,132 @@ func TestParseErrorReturned(t *testing.T) {
 	}
 	if len(devs.kb.log()) != 0 {
 		t.Fatal("nothing must be pressed when the macro has errors")
+	}
+}
+
+// fakePad — виртуальный геймпад проекта с осями (записывает положения осей).
+type fakePad struct {
+	*fakeDevice
+	axes []string
+}
+
+// SetAxis записывает «код=положение».
+func (p *fakePad) SetAxis(_ context.Context, code uint16, v float64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.axes = append(p.axes, fmt.Sprintf("%d=%v", code, v))
+	return nil
+}
+
+// fakeVdevs — виртуальные устройства проектов: только pad2 (кнопка South, ось LX).
+type fakeVdevs struct {
+	contracts.VirtualDeviceManager
+	pad *fakePad
+}
+
+func (f fakeVdevs) Device(name string) (contracts.VirtualDevice, error) {
+	if strings.EqualFold(name, "pad2") {
+		return f.pad, nil
+	}
+	return nil, contracts.ErrUnknownVirtual
+}
+
+func (f fakeVdevs) Resolve(device, control string) (uint16, bool, error) {
+	switch {
+	case !strings.EqualFold(device, "pad2"):
+		return 0, false, contracts.ErrUnknownVirtual
+	case control == "South":
+		return ev.BtnSouth, false, nil
+	case control == "LX":
+		return ev.AbsX, true, nil
+	}
+	return 0, false, contracts.ErrUnknownControl
+}
+
+// TestVirtualDevicesInMacro проверяет макрос с виртуальным устройством проекта: кнопка нажимается
+// на нём, ось ставится, в конце макроса ось возвращается в покой; ошибки имён — понятные.
+func TestVirtualDevicesInMacro(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(clock.NewFake(time.Unix(0, 0)), nil)
+	pad := &fakePad{fakeDevice: newFakeDevice("mKey pad2")}
+	m.vdevs = fakeVdevs{pad: pad}
+
+	// Кнопка и ось; после макроса ось — 0 (покой).
+	if err := m.Run(context.Background(), "{pad2.South}{pad2.LX=0.75}"); err != nil {
+		t.Fatal(err)
+	}
+	if log := pad.log(); len(log) != 2 || log[0].Code != ev.BtnSouth || log[0].Value != 1 || log[1].Value != 0 {
+		t.Errorf("buttons: %v", log)
+	}
+	if strings.Join(pad.axes, " ") != fmt.Sprintf("%d=0.75 %d=0", ev.AbsX, ev.AbsX) {
+		t.Errorf("axes: %v", pad.axes)
+	}
+
+	// Нет такой кнопки — понятная ошибка с местом; не виртуальное устройство — «не найдено».
+	for src, code := range map[string]string{"{pad2.Nope}": dsl.ErrUnknownButton, "{pad3.South}": dsl.ErrUnknownDevice} {
+		err := m.Run(context.Background(), src)
+		var de *dsl.Error
+		if !errors.As(err, &de) || de.Code != code {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+}
+
+// fakeVdevsIn — описание виртуальных устройств проекта: у xbox360 есть South и ось LX.
+type fakeVdevsIn struct{ contracts.VirtualDeviceManager }
+
+func (fakeVdevsIn) Validate(v project.VirtualDevice) error {
+	if v.Template != "xbox360" {
+		return errors.New("unknown template")
+	}
+	return nil
+}
+
+func (fakeVdevsIn) ResolveIn(_ project.VirtualDevice, control string) (uint16, bool, error) {
+	switch control {
+	case "South":
+		return ev.BtnSouth, false, nil
+	case "LX":
+		return ev.AbsX, true, nil
+	}
+	return 0, false, contracts.ErrUnknownControl
+}
+
+func (fakeVdevsIn) Resolve(string, string) (uint16, bool, error) {
+	return 0, false, contracts.ErrUnknownVirtual
+}
+
+// TestValidateBindings проверяет проверку привязок и виртуальных устройств проекта: место ошибки
+// (привязка № N) и понятный вид ошибки.
+func TestValidateBindings(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(clock.NewFake(time.Unix(0, 0)), nil)
+	m.vdevs = fakeVdevsIn{}
+	pad := []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}}
+	ok := project.Project{VirtualDevices: pad, Bindings: []project.Binding{
+		{From: "{W}", To: "{pad2.South}"}, {From: "{A}", To: "{pad2.LX}", Value: -1}, {From: "{F1}", To: "{Space}"},
+	}}
+	if err := m.validate(ok, true); err != nil {
+		t.Fatalf("valid project: %v", err)
+	}
+
+	for _, c := range []struct {
+		p    project.Project
+		part string
+		code string
+	}{
+		{project.Project{VirtualDevices: pad, Bindings: []project.Binding{{From: "{Nope}", To: "{pad2.South}"}}}, project.PartBinding, dsl.ErrUnknownKey},
+		{project.Project{VirtualDevices: pad, Bindings: []project.Binding{{From: "{W}", To: "{pad3.South}"}}}, project.PartBinding, dsl.ErrUnknownDevice},
+		{project.Project{VirtualDevices: pad, Bindings: []project.Binding{{From: "{W}", To: "{pad2.Nope}"}}}, project.PartBinding, dsl.ErrUnknownButton},
+		{project.Project{VirtualDevices: pad, Bindings: []project.Binding{{From: "{W}", To: "{pad2.LX}"}}}, project.PartBinding, dsl.ErrBindingValue},
+		{project.Project{VirtualDevices: pad, Bindings: []project.Binding{{From: "{W}", To: "{pad2.South}", Value: 1}}}, project.PartBinding, dsl.ErrAxisExpected},
+		{project.Project{VirtualDevices: []project.VirtualDevice{{Name: "x", Template: "nope"}}}, project.PartVirtualDevice, ""},
+	} {
+		err := m.validate(c.p, true)
+		var pr *project.Problem
+		var de *dsl.Error
+		if !errors.As(err, &pr) || pr.Part != c.part || pr.Index != 0 || (c.code != "" && (!errors.As(err, &de) || de.Code != c.code)) {
+			t.Errorf("%+v: err = %v", c.p.Bindings, err)
+		}
 	}
 }

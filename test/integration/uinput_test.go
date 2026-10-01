@@ -272,3 +272,56 @@ func waitForEvent(ch <-chan contracts.InputEvent, code uint16, timeout time.Dura
 		}
 	}
 }
+
+// TestForceFeedback проверяет вибрацию виртуального устройства (FR-VD-5): игра загружает эффект
+// (EVIOCSFF) и удаляет его — mKey подтверждает запросы, поэтому оба вызова быстро успешны (без
+// ответа ядро ждало бы до таймаута, и игра зависала бы). Устройство — тестовый «джойстик».
+func TestForceFeedback(t *testing.T) {
+	s := joystickSetup("mKey FF test")
+	s.FF = []uint16{0x50} // FF_RUMBLE
+	u, err := ev.CreateUInput(ev.DefaultUInputPath, s)
+	if err != nil {
+		t.Skipf("uinput unavailable: %v", err)
+	}
+	node, err := u.DevNode()
+	if err != nil {
+		_ = u.Close()
+		t.Fatal(err)
+	}
+
+	// Устройство видно с поддержкой вибрации; загрузка и удаление эффекта — быстро и без ошибок.
+	time.Sleep(200 * time.Millisecond) // udev выдаёт права на новый eventN не сразу
+	d, err := ev.Open(node)
+	if err != nil {
+		_ = u.Close()
+		t.Skipf("cannot open %s: %v", node, err)
+	}
+	if !d.Info().Caps.Has(ev.EvFf, 0x50) {
+		t.Errorf("FF_RUMBLE not announced: %v", d.Info().Caps.Codes[ev.EvFf])
+	}
+	start := time.Now()
+	id, err := d.UploadRumble(0x8000, 0x4000, 300*time.Millisecond)
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if err := d.EraseEffect(id); err != nil {
+		t.Fatalf("erase: %v", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("FF requests took %v (not answered?)", took)
+	}
+	t.Logf("effect %d uploaded and erased in %v", id, time.Since(start))
+
+	// Закрытие устройства завершает обработчик вибрации (Close не зависает).
+	_ = d.Close()
+	done := make(chan error, 1)
+	go func() { done <- u.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("close: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close hangs: FF handler did not stop")
+	}
+}

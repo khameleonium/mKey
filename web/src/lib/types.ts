@@ -180,6 +180,23 @@ export interface InputDevice {
   kinds: string[];
 }
 
+/** Виртуальное устройство проекта (GET /devices/virtual, FR-VD-1). */
+export interface VirtualDeviceInfo {
+  name: string;
+  template: string;
+  project: string;
+  system_name: string;
+  node?: string;
+  error?: string;
+}
+
+/** Состав шаблона виртуального устройства: кнопки и оси именами для макросов (GET /devices/virtual). */
+export interface VirtualTemplateInfo {
+  id: string;
+  buttons: string[];
+  axes: string[];
+}
+
 /** Запись монитора нажатий (GET /api/v1/input/watch, поток «input»). */
 export interface WatchEntry {
   time: string;
@@ -283,4 +300,26 @@ export interface CapturedKey {
   kernel: string;
   device: string;
   device_name: string;
+}
+
+/** RecordSettings — настройки записи по умолчанию (GET/PUT /settings/recording, config.yaml). */
+export interface RecordSettings {
+  /** kinds — какие устройства записывать ("keyboard", "mouse", "gamepad"…). */
+  kinds: string[];
+  /** moves — записывать движения мыши. */
+  moves: boolean;
+  /** merge_moves_ms — склейка движений мыши при записи, мс (0 — каждое движение). */
+  merge_moves_ms: number;
+  /** center_pointer — курсор в центр экрана перед записью. */
+  center_pointer: boolean;
+  /** coalesce_ms — склейка движений мыши при воспроизведении, мс (0 — нет). */
+  coalesce_ms: number;
+}
+
+/** InterfaceSettings — язык и тема окна (GET/PUT /settings/interface, config.yaml). */
+export interface InterfaceSettings {
+  /** language — "ru", "en" или "" (как в системе). */
+  language: string;
+  /** theme — "system", "light", "dark" или "" (как в системе). */
+  theme: string;
 }

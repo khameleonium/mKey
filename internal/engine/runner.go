@@ -64,7 +64,9 @@ type Module struct {
 	projects contracts.Projects
 	keyState contracts.KeyState
 	// inspect — авто-ID устройств: отправка кнопок {UnKey001} (nil — модуль отключён).
-	inspect  contracts.Inspector
+	inspect contracts.Inspector
+	// vdevs — виртуальные устройства проектов ({pad2.South}); nil — модуль вывода их не даёт.
+	vdevs    contracts.VirtualDeviceManager
 	notifier contracts.Notifier
 	// root живёт до Stop: от него наследуются контексты проектов.
 	root       context.Context
@@ -86,10 +88,12 @@ type Module struct {
 type run struct {
 	// cancel прерывает макрос.
 	cancel context.CancelFunc
-	// mu защищает held.
+	// mu защищает held и axes.
 	mu sync.Mutex
 	// held — что зажал этот макрос: устройство → коды в порядке нажатия.
 	held map[string][]uint16
+	// axes — оси виртуальных устройств, которые сдвинул макрос: в конце они возвращаются в покой.
+	axes map[string][]uint16
 }
 
 // New создаёт модуль с настоящими часами.
@@ -132,6 +136,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
 	m.keyState, _ = contracts.LookupService[contracts.KeyState](host.Services())
 	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
+	m.vdevs, _ = contracts.LookupService[contracts.VirtualDeviceManager](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
 	if m.cfg.VarsFile != "" {
 		m.persist.path = m.cfg.VarsFile
@@ -258,21 +263,39 @@ func (m *Module) compileSource(src string) ([]dsl.Step, error) {
 	if err != nil {
 		return nil, err
 	}
-	var lookup dsl.KeyLookup
+	return dsl.Compile(nodes, m.resolver())
+}
+
+// resolver — распознаватель клавиш макросов: виртуальные устройства проектов ({pad2.South}),
+// затем кнопки физических устройств с авто-ID ({UnKey001}), затем обычные клавиши.
+func (m *Module) resolver() dsl.DeviceResolver {
+	var r dsl.DeviceResolver
 	if m.inspect != nil {
-		lookup = func(device, button string) (uint16, string, error) {
+		r.Lookup = func(device, button string) (uint16, string, error) {
 			k, err := m.inspect.ResolveKey(device, button)
 			return k.Code, k.Name, err
 		}
 	}
-	return dsl.Compile(nodes, dsl.DeviceResolver{Lookup: lookup})
+	if m.vdevs != nil {
+		r.Virtual = func(device, control string) (uint16, bool, bool, error) {
+			code, axis, err := m.vdevs.Resolve(device, control)
+			if errors.Is(err, contracts.ErrUnknownVirtual) {
+				return 0, false, false, nil
+			}
+			if err != nil {
+				return 0, false, true, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", device, "button", control)
+			}
+			return code, axis, true, nil
+		}
+	}
+	return r
 }
 
 // newRun регистрирует раннер, чтобы StopAll мог его прервать. finish отпускает всё,
 // что раннер зажал, и снимает его с учёта; его нужно вызвать всегда.
 func (m *Module) newRun(parent context.Context) (context.Context, *run, func()) {
 	ctx, cancel := context.WithCancel(parent)
-	r := &run{cancel: cancel, held: map[string][]uint16{}}
+	r := &run{cancel: cancel, held: map[string][]uint16{}, axes: map[string][]uint16{}}
 	m.mu.Lock()
 	m.runs[r] = struct{}{}
 	m.mu.Unlock()
@@ -330,6 +353,8 @@ func (m *Module) step(ctx context.Context, r *run, s dsl.Step) error {
 		return nil
 	case dsl.StepReleaseAll:
 		return m.releaseAll(r)
+	case dsl.StepAxis:
+		return m.axis(ctx, r, s)
 	case dsl.StepTap:
 		return m.tap(ctx, r, s)
 	case dsl.StepWait:
@@ -415,16 +440,33 @@ func (m *Module) release(ctx context.Context, r *run, device string, code uint16
 	return nil
 }
 
-// releaseAll отпускает всё, что зажал раннер, в обратном порядке. Работает и после отмены.
+// releaseAll отпускает всё, что зажал раннер, в обратном порядке, и возвращает в покой сдвинутые
+// им оси виртуальных устройств. Работает и после отмены.
 func (m *Module) releaseAll(r *run) error {
-	// Забираем список зажатого под блокировкой.
+	// Забираем списки зажатого и сдвинутых осей под блокировкой.
 	r.mu.Lock()
-	held := r.held
-	r.held = map[string][]uint16{}
+	held, axes := r.held, r.axes
+	r.held, r.axes = map[string][]uint16{}, map[string][]uint16{}
 	r.mu.Unlock()
 
-	// Отпускаем без контекста отмены: это очистка, она должна выполниться всегда.
+	// Оси, сдвинутые макросом, — в покой (центр стиков, отпущенные курки).
 	var errs []error
+	for device, codes := range axes {
+		dev, err := m.device(device)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if setter, ok := dev.(contracts.AxisSetter); ok {
+			for _, c := range codes {
+				if err := setter.SetAxis(context.Background(), c, 0); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+
+	// Отпускаем без контекста отмены: это очистка, она должна выполниться всегда.
 	for device, codes := range held {
 		dev, err := m.device(device)
 		if err != nil {
@@ -448,7 +490,34 @@ func (m *Module) device(name string) (contracts.VirtualDevice, error) {
 	case dsl.DeviceMouse:
 		return m.devices.Mouse()
 	}
+	if m.vdevs != nil {
+		return m.vdevs.Device(name)
+	}
 	return nil, fmt.Errorf("engine: unknown device %q", name)
+}
+
+// axis ставит оси виртуального устройства в положение s.Value и запоминает их, чтобы в конце
+// макроса вернуть в покой.
+func (m *Module) axis(ctx context.Context, r *run, s dsl.Step) error {
+	for _, t := range s.Targets {
+		dev, err := m.device(t.Device)
+		if err != nil {
+			return err
+		}
+		setter, ok := dev.(contracts.AxisSetter)
+		if !ok {
+			return fmt.Errorf("engine: %s has no axes", dev.Name())
+		}
+		if err := setter.SetAxis(ctx, t.Code, s.Value); err != nil {
+			return err
+		}
+		r.mu.Lock()
+		if !slices.Contains(r.axes[t.Device], t.Code) {
+			r.axes[t.Device] = append(r.axes[t.Device], t.Code)
+		}
+		r.mu.Unlock()
+	}
+	return nil
 }
 
 // move сдвигает курсор мыши на (dx, dy).

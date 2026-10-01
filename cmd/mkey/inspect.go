@@ -244,3 +244,42 @@ func newDevicesRenameCmd(tr *i18n.Translator) *cobra.Command {
 	cmd.Flags().BoolVar(&clear, "clear", false, tr.T("cli.rename.flag.clear"))
 	return cmd
 }
+
+// newDevicesVirtualCmd создаёт команду `mkey devices virtual`: виртуальные устройства включённых
+// проектов (FR-VD-1) — имя в макросах, шаблон, проект, файл устройства или почему не создано.
+func newDevicesVirtualCmd(tr *i18n.Translator) *cobra.Command {
+	return &cobra.Command{
+		Use:   "virtual",
+		Short: tr.T("cli.virtual.short"),
+		Long:  tr.T("cli.virtual.long"),
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := daemonClient(cmd, tr)
+			if err != nil {
+				return err
+			}
+			var resp struct {
+				Devices   []contracts.VirtualDeviceInfo `json:"devices"`
+				Templates []string                      `json:"templates"`
+			}
+			if err := c.do(cmd.Context(), "GET", "/api/v1/devices/virtual", nil, &resp); err != nil {
+				return userError(formatAPIError(tr, err, ""))
+			}
+
+			// Устройства или подсказка, как их завести.
+			out := cmd.OutOrStdout()
+			if len(resp.Devices) == 0 {
+				printf(out, "%s\n", tr.T("cli.virtual.none"))
+			}
+			for _, d := range resp.Devices {
+				state := d.Node
+				if d.Error != "" {
+					state = tr.T("cli.virtual.error", i18n.A("error", d.Error))
+				}
+				printf(out, "  %-12s %-12s %-16s %s\n", d.Name, d.Template, tr.T("cli.virtual.project", i18n.A("project", d.Project)), state)
+			}
+			printf(out, "\n%s\n", tr.T("cli.virtual.templates", i18n.A("list", strings.Join(resp.Templates, ", "))))
+			return nil
+		},
+	}
+}

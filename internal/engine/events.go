@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/dsl"
+	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
 )
 
@@ -121,6 +123,22 @@ func (m *Module) ValidateProject(p project.Project) error {
 func (m *Module) validate(p project.Project, withTriggers bool) error {
 	if err := m.validateConditions(p.ActiveWhen); err != nil {
 		return fmt.Errorf("active_when: %w", err)
+	}
+
+	// Виртуальные устройства проекта: шаблон и набор кнопок (FR-VD-1).
+	if m.vdevs != nil {
+		for i, v := range p.VirtualDevices {
+			if err := m.vdevs.Validate(v); err != nil {
+				return &project.Problem{Part: project.PartVirtualDevice, Index: i, Kind: v.Template, Err: err}
+			}
+		}
+	}
+
+	// Привязки: откуда (физическая кнопка) и куда (кнопка или ось устройства, FR-VD-3).
+	for i, b := range p.Bindings {
+		if err := m.validateBinding(p, b); err != nil {
+			return &project.Problem{Part: project.PartBinding, Index: i, Err: err}
+		}
 	}
 	for _, e := range p.Events {
 		if !e.IsEnabled() && !withTriggers {
@@ -574,3 +592,25 @@ var (
 	_ contracts.RunContext = (*runCtx)(nil)
 	_ contracts.VarStore   = (*varStore)(nil)
 )
+
+// validateBinding проверяет привязку: источник (кнопку, как в горячих клавишах, или ось — стик,
+// мышь) и цель с настройками (contracts.CompileBinding).
+func (m *Module) validateBinding(p project.Project, b project.Binding) error {
+	// Источник: кнопка или ось (без модуля hotkeys — только стандартные имена клавиш).
+	var src contracts.DeviceKey
+	if m.keyState != nil {
+		k, err := m.keyState.ParseBindingSource(b.From)
+		if err != nil {
+			return err
+		}
+		src = k
+	} else if k, ok := keys.Lookup(strings.Trim(b.From, "{} ")); ok {
+		src = contracts.DeviceKey{Key: k}
+	} else {
+		return dsl.NewError(dsl.Pos{}, dsl.ErrUnknownKey, "name", b.From)
+	}
+
+	// Цель и настройки.
+	_, err := contracts.CompileBinding(b, src, p.VirtualDevices, m.vdevs)
+	return err
+}

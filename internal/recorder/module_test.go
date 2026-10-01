@@ -130,15 +130,26 @@ func TestRecordWithHotkey(t *testing.T) {
 	f := feeder{m: m, clk: clk, base: clk.Now()}
 	ms := time.Millisecond
 
-	// Запись начинается сочетанием Ctrl+Alt+R; его отпускание не записывается.
+	// Левый Ctrl + левый Alt + Пробел — не то сочетание: запись не начинается.
 	f.key(0, "/kbd", ev.KeyLeftctrl, 1)
-	f.key(1*ms, "/kbd", ev.KeyLeftalt, 1)
-	f.key(2*ms, "/kbd", ev.KeyR, 1)
+	f.key(0, "/kbd", ev.KeyLeftalt, 1)
+	f.key(0, "/kbd", ev.KeySpace, 1)
+	f.key(0, "/kbd", ev.KeySpace, 0)
+	f.key(0, "/kbd", ev.KeyLeftalt, 0)
+	f.key(0, "/kbd", ev.KeyLeftctrl, 0)
+	if _, ok := m.Recording(); ok {
+		t.Fatal("left Alt started recording")
+	}
+
+	// Запись начинается сочетанием левый Ctrl + правый Alt + Пробел; его отпускание не записывается.
+	f.key(0, "/kbd", ev.KeyLeftctrl, 1)
+	f.key(1*ms, "/kbd", ev.KeyRightalt, 1)
+	f.key(2*ms, "/kbd", ev.KeySpace, 1)
 	if _, ok := m.Recording(); !ok {
 		t.Fatal("hotkey did not start recording")
 	}
-	f.key(50*ms, "/kbd", ev.KeyR, 0)
-	f.key(51*ms, "/kbd", ev.KeyLeftalt, 0)
+	f.key(50*ms, "/kbd", ev.KeySpace, 0)
+	f.key(51*ms, "/kbd", ev.KeyRightalt, 0)
 	f.key(52*ms, "/kbd", ev.KeyLeftctrl, 0)
 
 	// Полезные действия: клавиша, перемещение мыши, кнопка геймпада (не записывается).
@@ -151,8 +162,8 @@ func TestRecordWithHotkey(t *testing.T) {
 
 	// Остановка тем же сочетанием: оно вырезается, длительность — до его начала.
 	f.key(3000*ms, "/kbd", ev.KeyLeftctrl, 1)
-	f.key(3001*ms, "/kbd", ev.KeyLeftalt, 1)
-	f.key(3002*ms, "/kbd", ev.KeyR, 1)
+	f.key(3001*ms, "/kbd", ev.KeyRightalt, 1)
+	f.key(3002*ms, "/kbd", ev.KeySpace, 1)
 	if _, ok := m.Recording(); ok {
 		t.Fatal("hotkey did not stop recording")
 	}
@@ -163,6 +174,9 @@ func TestRecordWithHotkey(t *testing.T) {
 		t.Fatalf("recordings = %+v, %v", list, err)
 	}
 	info := list[0]
+	if want := defaultName(f.base); info.Name != want {
+		t.Errorf("name = %q, want %q", info.Name, want)
+	}
 	if info.Events != 3 || info.DurationMS < 2900 || info.DurationMS > 3000 || len(info.Devices) != 2 {
 		t.Fatalf("info = %+v", info)
 	}
@@ -173,7 +187,7 @@ func TestRecordWithHotkey(t *testing.T) {
 			t.Errorf("no %q in:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "Ctrl") || strings.Contains(text, "{R}") {
+	if strings.Contains(text, "Ctrl") || strings.Contains(text, "{Space}") {
 		t.Errorf("hotkey recorded:\n%s", text)
 	}
 }

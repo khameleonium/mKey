@@ -1,10 +1,12 @@
 package evdev
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -269,4 +271,48 @@ func readCaps(fd int) (Capabilities, error) {
 	}
 	caps.Props = props
 	return caps, nil
+}
+
+// UploadRumble загружает в устройство эффект вибрации FF_RUMBLE (как это делают игры через
+// EVIOCSFF): strong и weak — сила тяжёлого и лёгкого моторов (0…65535), length — длительность.
+// Возвращает номер эффекта для EraseEffect. Для виртуального устройства запрос получает его
+// создатель (UInput с вибрацией подтверждает его, FR-VD-5).
+func (d *Device) UploadRumble(strong, weak uint16, length time.Duration) (int16, error) {
+	// struct ff_effect: type, id (-1 — новый), direction, trigger, replay{length, delay}, rumble.
+	buf := make([]byte, sizeofFFEffect)
+	binary.LittleEndian.PutUint16(buf[0:2], 0x50) // FF_RUMBLE
+	binary.LittleEndian.PutUint16(buf[2:4], 0xffff)
+	binary.LittleEndian.PutUint16(buf[10:12], uint16(length.Milliseconds()))
+	binary.LittleEndian.PutUint16(buf[16:18], strong)
+	binary.LittleEndian.PutUint16(buf[18:20], weak)
+
+	// Загрузка: ядро записывает номер эффекта в поле id.
+	rc, err := d.file.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var ierr error
+	if err := rc.Control(func(fd uintptr) { ierr = ioctlBuf(int(fd), eviocsff, buf) }); err != nil {
+		return 0, err
+	}
+	if ierr != nil {
+		return 0, fmt.Errorf("evdev: upload rumble: %w", ierr)
+	}
+	return int16(binary.LittleEndian.Uint16(buf[2:4])), nil
+}
+
+// EraseEffect удаляет загруженный эффект вибрации (EVIOCRMFF).
+func (d *Device) EraseEffect(id int16) error {
+	rc, err := d.file.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var ierr error
+	if err := rc.Control(func(fd uintptr) { ierr = ioctlInt(int(fd), eviocrmff, uintptr(id)) }); err != nil {
+		return err
+	}
+	if ierr != nil {
+		return fmt.Errorf("evdev: erase effect: %w", ierr)
+	}
+	return nil
 }

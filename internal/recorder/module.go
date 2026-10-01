@@ -26,8 +26,27 @@ type Config struct {
 	Hotkey string `json:"hotkey"`
 	// Kinds — какие устройства записывать по умолчанию (keyboard, mouse, touchpad, gamepad…).
 	Kinds []string `json:"kinds"`
+	// Moves — записывать движения мыши (false — только нажатия и колесо).
+	Moves bool `json:"moves"`
+	// MergeMovesMS — окно склейки движений мыши при записи, мс (0 — каждое движение отдельно).
+	MergeMovesMS int `json:"merge_moves_ms"`
+	// CenterPointer — ставить курсор в центр экрана перед записью.
+	CenterPointer bool `json:"center_pointer"`
 	// CoalesceMS — окно склейки перемещений мыши при воспроизведении, мс (0 — не склеивать).
 	CoalesceMS int `json:"coalesce_ms"`
+}
+
+// DefaultHotkey — сочетание записи по умолчанию: левый Ctrl + правый Alt + Пробел (решение
+// владельца: именно левый Ctrl и правый Alt — случайно его не нажать).
+const DefaultHotkey = "^{LCtrl}^{RAlt}{Space}"
+
+// defaultConfig — настройки модуля по умолчанию. Окно склейки при записи 8 мс: мышь 1000 Гц
+// даёт 125 строк в секунду вместо 1000, траектория та же, файл короче и удобнее для правки.
+func defaultConfig() Config {
+	return Config{
+		Hotkey: DefaultHotkey, Kinds: []string{"keyboard", "mouse"},
+		Moves: true, MergeMovesMS: 8, CenterPointer: true, CoalesceMS: 4,
+	}
 }
 
 // Module — реализация contracts.Module для модуля «recorder».
@@ -66,7 +85,7 @@ type Module struct {
 func New() *Module {
 	return &Module{
 		clk:   clock.Real{},
-		cfg:   Config{Hotkey: "^{Ctrl}^{Alt}{R}", Kinds: []string{"keyboard", "mouse"}, CoalesceMS: 4},
+		cfg:   defaultConfig(),
 		plays: map[*int]context.CancelFunc{},
 	}
 }
@@ -85,6 +104,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 	if m.cfg.Dir == "" {
 		m.cfg.Dir = filepath.Join(paths.Data(os.Getenv), "recordings")
+	}
+	if err := checkSettings(m.settingsOf(m.cfg)); err != nil {
+		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
 
 	// Сочетание записи: неверное — ошибка настройки.

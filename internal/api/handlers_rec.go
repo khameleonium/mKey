@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/config"
 	"mkey/internal/lib/mkrec"
 )
 
@@ -23,6 +24,45 @@ func (m *Module) registerRecRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/recordings/{name}/convert", m.handleRecordingConvert)
 	mux.HandleFunc("GET /api/v1/settings/hotkeys", m.handleHotkeysGet)
 	mux.HandleFunc("PUT /api/v1/settings/hotkeys", m.handleHotkeysPut)
+	mux.HandleFunc("GET /api/v1/settings/recording", m.handleRecordSettingsGet)
+	mux.HandleFunc("PUT /api/v1/settings/recording", m.handleRecordSettingsPut)
+}
+
+// handleRecordSettingsGet возвращает настройки записи по умолчанию.
+func (m *Module) handleRecordSettingsGet(w http.ResponseWriter, r *http.Request) {
+	if m.svc.recorder == nil {
+		m.unavailable(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, m.svc.recorder.RecordSettings())
+}
+
+// handleRecordSettingsPut меняет настройки записи по умолчанию: применяются со следующей записи
+// и сохраняются в config.yaml (modules.recorder). Неверные — 400 api.record_settings_bad.
+func (m *Module) handleRecordSettingsPut(w http.ResponseWriter, r *http.Request) {
+	if m.svc.recorder == nil {
+		m.unavailable(w, r)
+		return
+	}
+	var req contracts.RecordSettings
+	if !m.readJSON(w, r, &req) {
+		return
+	}
+
+	// Применяем и сохраняем в config.yaml одной записью.
+	if err := m.svc.recorder.SetRecordSettings(req); err != nil {
+		m.writeError(w, r, http.StatusBadRequest, "api.record_settings_bad", map[string]string{"error": err.Error()})
+		return
+	}
+	s := m.svc.recorder.RecordSettings()
+	if err := config.SetModuleValues(m.cfg.ConfigFile, "recorder", []config.KeyValue{
+		{Key: "kinds", Value: s.Kinds}, {Key: "moves", Value: s.Moves}, {Key: "merge_moves_ms", Value: s.MergeMovesMS},
+		{Key: "center_pointer", Value: s.CenterPointer}, {Key: "coalesce_ms", Value: s.CoalesceMS},
+	}); err != nil {
+		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, s)
 }
 
 // handleRecordings возвращает сохранённые записи и идущую запись (если есть).

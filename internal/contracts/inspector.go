@@ -29,6 +29,10 @@ type Inspector interface {
 	// отключённого устройства (по devices.yaml). Ошибка — *dsl.Error (dsl.unknown_device,
 	// dsl.unknown_button).
 	ResolveKey(device, button string) (DeviceKey, error)
+	// ResolveAxis находит ось устройства для привязок: device — авто-ID или имя, axis — номер
+	// ("Axis01", "Rel01"), имя, данное человеком, или стандартное имя (LX, MouseX). В ответе Type —
+	// EV_ABS или EV_REL. Ошибка — *dsl.Error (dsl.unknown_device, dsl.unknown_button).
+	ResolveAxis(device, axis string) (DeviceKey, error)
 	// DeviceOf возвращает авто-ID подключённого устройства по пути ("" — у него нет авто-ID).
 	DeviceOf(path string) string
 	// Rename даёт имя устройству (control == "") или его кнопке или оси (FR-DEV-3): device —

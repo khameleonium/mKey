@@ -3,7 +3,8 @@
   устройстве через API (FR-UI-3). Имя можно и вписать вручную.
   Props: value — имя одной клавиши ("F8") или, при combo, сочетание записью зажатием
   ("^{Ctrl}^{Alt}{H}", одна клавиша — "{F8}"); combo — ловить сочетание (все клавиши до первого
-  отпускания; для горячих клавиш); onchange(value) — новое значение.
+  отпускания; для горячих клавиш); placeholder — подсказка в пустом поле (необязательно);
+  onchange(value) — новое значение.
 -->
 <script lang="ts">
   import { api, ApiError } from "../api";
@@ -12,10 +13,12 @@
   let {
     value,
     combo = false,
+    placeholder = "",
     onchange,
   }: {
     value: string;
     combo?: boolean;
+    placeholder?: string;
     onchange: (value: string) => void;
   } = $props();
 
@@ -45,8 +48,9 @@
   <!-- Ручной ввод имени -->
   <input
     class="name"
+    class:combo
     {value}
-    placeholder={combo ? "^{Ctrl}{H}" : "Enter"}
+    placeholder={placeholder || (combo ? "^{Ctrl}{H}" : "Enter")}
     spellcheck="false"
     onchange={(e) => onchange(e.currentTarget.value)}
   />
@@ -67,6 +71,10 @@
   .name {
     width: 11em;
     font-family: var(--mono);
+  }
+  /* Сочетание длиннее одной клавиши: ^{LCtrl}^{RAlt}{Space} должно помещаться целиком. */
+  .name.combo {
+    width: 17em;
   }
   .waiting {
     border-color: var(--accent);

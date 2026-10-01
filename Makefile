@@ -57,8 +57,7 @@ web-test: web-deps
 
 ## test-integration: интеграционные тесты с реальным /dev/uinput
 test-integration:
-	@if [ -d test/integration ]; then go test -tags integration ./test/integration/...; \
-	else echo "test/integration: интеграционных тестов пока нет"; fi
+	go test -tags integration ./test/integration/... ./internal/output/...
 
 ## lint: все линтеры Go и фронтенда (включая архитектурный тест границ модулей)
 lint: go-lint web-lint

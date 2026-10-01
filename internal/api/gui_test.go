@@ -73,6 +73,16 @@ func (p *memProjects) Delete(id string) error {
 	return nil
 }
 
+// SetEnabled включает или выключает проект (в тестах — без изменения файла).
+func (p *memProjects) SetEnabled(id string, _ bool) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.files[id]; !ok {
+		return errors.New("not found")
+	}
+	return nil
+}
+
 func (p *memProjects) Templates() []contracts.Template {
 	return []contracts.Template{{ID: "autoclicker", Content: "version: 1\nname: t\nevents: []\n"}}
 }

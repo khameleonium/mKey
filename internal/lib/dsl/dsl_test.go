@@ -3,6 +3,7 @@ package dsl
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	ev "mkey/internal/lib/evdev"
@@ -384,6 +385,66 @@ func TestDeviceResolver(t *testing.T) {
 		var de *Error
 		if !errors.As(err, &de) || de.Code != c.code || de.Pos.Col != c.col {
 			t.Errorf("%s: err = %#v", c.src, err)
+		}
+	}
+}
+
+// TestVirtualResolver проверяет виртуальные устройства проектов в макросах: кнопка и ось идут на
+// устройство, ось нельзя нажать, кнопке нельзя задать положение, неизвестная кнопка — с позицией;
+// не виртуальное устройство ищется дальше (среди физических).
+func TestVirtualResolver(t *testing.T) {
+	t.Parallel()
+	virtual := func(device, control string) (uint16, bool, bool, error) {
+		if !strings.EqualFold(device, "pad2") {
+			return 0, false, false, nil
+		}
+		switch control {
+		case "South":
+			return ev.BtnSouth, false, true, nil
+		case "LX":
+			return ev.AbsX, true, true, nil
+		}
+		return 0, false, true, errors.New("no such control")
+	}
+	lookup := func(device, button string) (uint16, string, error) {
+		if device == "UnKey" {
+			return ev.KeyCalc, "UnKey" + button, nil
+		}
+		return 0, "", NewError(Pos{}, ErrUnknownDevice, "device", device)
+	}
+	r := DeviceResolver{Virtual: virtual, Lookup: lookup}
+	compile := func(src string) ([]Step, error) {
+		nodes, err := Parse(src)
+		if err != nil {
+			t.Fatalf("parse %q: %v", src, err)
+		}
+		return Compile(nodes, r)
+	}
+
+	// Кнопка и ось виртуального устройства; кнопка физического — как раньше.
+	steps, err := compile(`{PAD2.South}{pad2.LX=-0.5}{UnKey016}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if steps[0].Targets[0] != (Target{Device: "pad2", Code: ev.BtnSouth, Name: "PAD2.South"}) {
+		t.Errorf("button: %+v", steps[0].Targets[0])
+	}
+	if steps[1].Kind != StepAxis || steps[1].Value != -0.5 || !steps[1].Targets[0].Axis || steps[1].Targets[0].Code != ev.AbsX {
+		t.Errorf("axis: %+v", steps[1])
+	}
+	if steps[2].Targets[0].Device != DeviceKeyboard || steps[2].Targets[0].Code != ev.KeyCalc {
+		t.Errorf("physical: %+v", steps[2].Targets[0])
+	}
+
+	// Ошибки: ось как кнопка, положение у кнопки, неизвестная кнопка (с позицией).
+	for _, c := range []struct {
+		src, code string
+		col       int
+	}{{`{pad2.LX}`, ErrAxisAsKey, 1}, {`{pad2.South=1}`, ErrAxisExpected, 1}, {`[5]{pad2.Nope}`, ErrUnknownButton, 4}} {
+		_, err := compile(c.src)
+		var de *Error
+		if !errors.As(err, &de) || de.Code != c.code || de.Pos.Col != c.col {
+			t.Errorf("%s: %#v", c.src, err)
 		}
 	}
 }

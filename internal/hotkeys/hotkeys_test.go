@@ -3,6 +3,7 @@ package hotkeys
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -20,6 +21,12 @@ import (
 // kbPath — путь фейковой клавиатуры.
 const kbPath = "/dev/input/event3"
 
+// padPath и mousePath — фейковые геймпад и мышь (источники привязок осей).
+const (
+	padPath   = "/dev/input/event9"
+	mousePath = "/dev/input/event10"
+)
+
 // fakeInput — источник событий: список устройств и запись вызовов захвата и Inject.
 type fakeInput struct {
 	mu        sync.Mutex
@@ -29,9 +36,20 @@ type fakeInput struct {
 }
 
 func (f *fakeInput) Devices() []contracts.InputDevice {
-	return []contracts.InputDevice{{Info: ev.Info{Path: kbPath, Name: "USB Keyboard", Caps: ev.Capabilities{Codes: map[uint16][]uint16{
-		ev.EvKey: {ev.KeyA, ev.KeyF8, ev.KeyH, ev.KeyCapslock, ev.KeyLeftctrl, ev.KeyCalc},
-	}}}}}
+	return []contracts.InputDevice{
+		{Info: ev.Info{Path: kbPath, Name: "USB Keyboard", Caps: ev.Capabilities{Codes: map[uint16][]uint16{
+			ev.EvKey: {ev.KeyA, ev.KeyF8, ev.KeyH, ev.KeyCapslock, ev.KeyLeftctrl, ev.KeyCalc},
+		}}}},
+		// Геймпад: стик 0…255 (центр 128) и курок 0…255 (как у xpad — с кнопкой South).
+		{Info: ev.Info{Path: padPath, Name: "Pad", Caps: ev.Capabilities{
+			Codes: map[uint16][]uint16{ev.EvKey: {ev.BtnSouth}, ev.EvAbs: {ev.AbsX, ev.AbsZ}},
+			Abs:   map[uint16]ev.AbsInfo{ev.AbsX: {Minimum: 0, Maximum: 256}, ev.AbsZ: {Minimum: 0, Maximum: 255}},
+		}}},
+		// Мышь.
+		{Info: ev.Info{Path: mousePath, Name: "Mouse", Caps: ev.Capabilities{Codes: map[uint16][]uint16{
+			ev.EvKey: {ev.BtnLeft}, ev.EvRel: {ev.RelX, ev.RelY, ev.RelWheel},
+		}}}},
+	}
 }
 func (f *fakeInput) Status() contracts.InputStatus                       { return contracts.InputStatus{} }
 func (f *fakeInput) Subscribe(int) (<-chan contracts.InputEvent, func()) { return nil, func() {} }
@@ -501,6 +519,254 @@ func TestDeviceKeys(t *testing.T) {
 		var de *dsl.Error
 		if !errors.As(err, &de) || de.Code != c.code {
 			t.Errorf("%s: err = %v", c.keys, err)
+		}
+	}
+}
+
+// fakeOut — устройство-цель привязок: записывает нажатия и положения осей.
+type fakeOut struct {
+	mu  sync.Mutex
+	log []string
+}
+
+func (f *fakeOut) add(s string) { f.mu.Lock(); f.log = append(f.log, s); f.mu.Unlock() }
+func (f *fakeOut) got() string  { f.mu.Lock(); defer f.mu.Unlock(); return strings.Join(f.log, " ") }
+
+// fakeOutDev — устройство-цель с именем (клавиатура mKey или pad2).
+type fakeOutDev struct {
+	contracts.VirtualDevice
+	name string
+	out  *fakeOut
+}
+
+func (d fakeOutDev) Press(_ context.Context, c uint16) error {
+	d.out.add(fmt.Sprintf("%s+%s", d.name, ev.CodeName(ev.EvKey, c)))
+	return nil
+}
+func (d fakeOutDev) Release(_ context.Context, c uint16) error {
+	d.out.add(fmt.Sprintf("%s-%s", d.name, ev.CodeName(ev.EvKey, c)))
+	return nil
+}
+func (d fakeOutDev) SetAxis(_ context.Context, c uint16, v float64) error {
+	d.out.add(fmt.Sprintf("%s:%s=%v", d.name, ev.CodeName(ev.EvAbs, c), v))
+	return nil
+}
+
+// fakeOutputs — клавиатура mKey и виртуальные устройства проектов (только pad2 — Xbox).
+type fakeOutputs struct {
+	contracts.VirtualDevices
+	contracts.VirtualDeviceManager
+	out *fakeOut
+}
+
+func (f fakeOutputs) Keyboard() (contracts.VirtualDevice, error) {
+	return fakeOutDev{name: "kbd", out: f.out}, nil
+}
+func (f fakeOutputs) Device(name string) (contracts.VirtualDevice, error) {
+	return fakeOutDev{name: name, out: f.out}, nil
+}
+func (f fakeOutputs) ResolveIn(_ project.VirtualDevice, control string) (uint16, bool, error) {
+	switch control {
+	case "DPadUp":
+		return ev.BtnDpadUp, false, nil
+	case "LX":
+		return ev.AbsX, true, nil
+	case "LY":
+		return ev.AbsY, true, nil
+	case "RX":
+		return ev.AbsRx, true, nil
+	}
+	return 0, false, contracts.ErrUnknownControl
+}
+
+// TestBindings проверяет привязки (FR-VD-3): кнопка → кнопка виртуального устройства, две
+// клавиши → ось (последняя нажатая побеждает, отпустили все — покой), кнопка → клавиша mKey,
+// «спрятать» нажатие, сброс при перезагрузке проектов и отпускание после экстренной остановки.
+func TestBindings(t *testing.T) {
+	t.Parallel()
+	m, in := newTestModule()
+	out := &fakeOut{}
+	outs := fakeOutputs{out: out}
+	m.devs, m.vdm = outs, outs
+	m.projects = fakeProjects{p: project.Project{ID: "p",
+		VirtualDevices: []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}},
+		Bindings: []project.Binding{
+			{From: "{H}", To: "{pad2.DPadUp}"},
+			{From: "{A}", To: "{pad2.LX}", Value: -1},
+			{From: "{F8}", To: "{pad2.LX}", Value: 1, Hide: true},
+			{From: "{CapsLock}", To: "{Space}"},
+			{From: "{Nope}", To: "{pad2.South}"}, // ошибочная — пропускается
+		}}}
+	m.reloadRemaps()
+	m.wg.Add(1)
+	go m.bindWorker()
+	defer func() { _ = m.Stop(context.Background()) }()
+	wait := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for out.got() != want {
+			if time.Now().After(deadline) {
+				t.Fatalf("outputs:\n%s\nwant:\n%s", out.got(), want)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+
+	// Кнопка → кнопка: нажатие и отпускание.
+	key(m, ev.KeyH, 1)
+	key(m, ev.KeyH, 0)
+	want := "pad2+BTN_DPAD_UP pad2-BTN_DPAD_UP"
+	wait(want)
+
+	// Две кнопки на одну ось: A — влево, F8 — вправо, отпустили F8 — снова влево, A — центр.
+	// F8 спрятана от системы (устройство захватывается ради неё).
+	key(m, ev.KeyA, 1)
+	if !key(m, ev.KeyF8, 1) || !in.grabs() {
+		t.Error("hidden binding press must be dropped and the device grabbed")
+	}
+	key(m, ev.KeyF8, 0)
+	key(m, ev.KeyA, 0)
+	want += " pad2:ABS_X=-1 pad2:ABS_X=1 pad2:ABS_X=-1 pad2:ABS_X=0"
+	wait(want)
+
+	// Кнопка → клавиша mKey.
+	key(m, ev.KeyCapslock, 1)
+	key(m, ev.KeyCapslock, 0)
+	want += " kbd+KEY_SPACE kbd-KEY_SPACE"
+	wait(want)
+
+	// Перезагрузка проектов при нажатой привязке — нажатое отпускается.
+	key(m, ev.KeyH, 1)
+	m.reloadRemaps()
+	want += " pad2+BTN_DPAD_UP pad2-BTN_DPAD_UP"
+	wait(want)
+
+	// После экстренной остановки нажатие не передаётся, а отпускание — всегда.
+	key(m, ev.KeyH, 1)
+	in.mu.Lock()
+	in.suspended = true
+	in.mu.Unlock()
+	key(m, ev.KeyA, 1)
+	key(m, ev.KeyH, 0)
+	want += " pad2+BTN_DPAD_UP pad2-BTN_DPAD_UP"
+	wait(want)
+}
+
+// axis отправляет движение оси (EV_ABS или EV_REL) устройства path; true — событие спрятано.
+func axis(m *Module, path string, typ, code uint16, value int32) bool {
+	e := ev.Event{Type: typ, Code: code, Value: value}
+	return m.HandleInput(path, &e, true)
+}
+
+// TestAxisBindings проверяет привязки осей (FR-VD-3): ось → ось с переворотом и мёртвой зоной,
+// курок → кнопка с порогом, мышь → стик (возврат в центр), колесо → клавиша, плавный наклон клавишей.
+func TestAxisBindings(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule()
+	out := &fakeOut{}
+	outs := fakeOutputs{out: out}
+	m.devs, m.vdm = outs, outs
+	m.projects = fakeProjects{p: project.Project{ID: "p",
+		VirtualDevices: []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}},
+		Bindings: []project.Binding{
+			{From: "{LX}", To: "{pad2.LX}", Invert: true, Deadzone: 0.5, Hide: true},
+			{From: "{LT}", To: "{Space}", Threshold: 0.5},
+			{From: "{MouseX}", To: "{pad2.RX}", Sensitivity: 2},
+			{From: "{MouseWheel}", To: "{H}", Threshold: 1},
+			{From: "{A}", To: "{pad2.LY}", Value: 1, RampMS: 50},
+		}}}
+	m.reloadRemaps()
+	if len(m.bindings) != 5 {
+		t.Fatalf("bindings = %d", len(m.bindings))
+	}
+	m.wg.Add(1)
+	go m.bindWorker()
+	defer func() { _ = m.Stop(context.Background()) }()
+	wait := func(pred func(string) bool, what string) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for !pred(out.got()) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s; outputs:\n%s", what, out.got())
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	has := func(s string) func(string) bool { return func(got string) bool { return strings.Contains(got, s) } }
+
+	// Ось → ось: стик вправо до упора — цель влево до упора (переворот); малое отклонение — центр
+	// (мёртвая зона 0.5); исходное движение спрятано.
+	if !axis(m, padPath, ev.EvAbs, ev.AbsX, 256) {
+		t.Error("hidden axis must be dropped")
+	}
+	wait(has("pad2:ABS_X=-1"), "inverted full deflection")
+	axis(m, padPath, ev.EvAbs, ev.AbsX, 160)
+	wait(has("pad2:ABS_X=0"), "deadzone")
+
+	// Курок → Пробел: за порогом нажат, чуть ниже порога ещё нажат (гистерезис), отпущен — отпущен.
+	axis(m, padPath, ev.EvAbs, ev.AbsZ, 200)
+	wait(has("kbd+KEY_SPACE"), "trigger press")
+	axis(m, padPath, ev.EvAbs, ev.AbsZ, 120)
+	axis(m, padPath, ev.EvAbs, ev.AbsZ, 0)
+	wait(has("kbd-KEY_SPACE"), "trigger release")
+	if strings.Count(out.got(), "+KEY_SPACE") != 1 {
+		t.Errorf("trigger bounced: %s", out.got())
+	}
+
+	// Мышь → стик: быстрое движение — наклон до упора, мышь остановилась — стик в центре.
+	axis(m, mousePath, ev.EvRel, ev.RelX, 40)
+	wait(has("pad2:ABS_RX=1"), "mouse to stick")
+	wait(has("pad2:ABS_RX=0"), "stick back to center")
+
+	// Колесо вверх → короткое нажатие H; вниз — ничего.
+	axis(m, mousePath, ev.EvRel, ev.RelWheel, -1)
+	axis(m, mousePath, ev.EvRel, ev.RelWheel, 1)
+	wait(has("kbd-KEY_H"), "wheel tap")
+	if strings.Count(out.got(), "+KEY_H") != 1 {
+		t.Errorf("wheel: %s", out.got())
+	}
+
+	// Клавиша → ось плавно: промежуточные положения, затем 1; отпустили — плавно к 0.
+	key(m, ev.KeyA, 1)
+	wait(has("pad2:ABS_Y=1"), "ramp up")
+	key(m, ev.KeyA, 0)
+	wait(func(got string) bool { return strings.HasSuffix(got, "pad2:ABS_Y=0") }, "ramp down")
+	if n := strings.Count(out.got(), "pad2:ABS_Y="); n < 4 {
+		t.Errorf("ramp is not smooth (%d steps): %s", n, out.got())
+	}
+}
+
+// TestBindingOptions проверяет правила настроек привязок (contracts.CompileBinding).
+func TestBindingOptions(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule()
+	outs := fakeOutputs{out: &fakeOut{}}
+	m.devs, m.vdm = outs, outs
+	pads := []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}}
+	for _, c := range []struct {
+		b    project.Binding
+		code string
+	}{
+		{project.Binding{From: "{LX}", To: "{pad2.LX}"}, ""},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Value: 1}, dsl.ErrBindingOption},
+		{project.Binding{From: "{LX}", To: "{Space}"}, dsl.ErrBindingThreshold},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Deadzone: 0.95}, dsl.ErrBindingRange},
+		{project.Binding{From: "{A}", To: "{Space}", Invert: true}, dsl.ErrBindingOption},
+		{project.Binding{From: "{A}", To: "{pad2.LX}", RampMS: 9000, Value: 1}, dsl.ErrBindingRange},
+		{project.Binding{From: "{MouseX}", To: "{pad2.RX}", Deadzone: 0.1}, dsl.ErrBindingOption},
+		{project.Binding{From: "{A}", To: "{Space}", Value: 1}, dsl.ErrAxisExpected},
+		{project.Binding{From: "{Nope}", To: "{Space}"}, dsl.ErrUnknownKey},
+	} {
+		src, err := m.ParseBindingSource(c.b.From)
+		if err == nil {
+			_, err = contracts.CompileBinding(c.b, src, pads, outs)
+		}
+		var de *dsl.Error
+		switch {
+		case c.code == "" && err != nil:
+			t.Errorf("%+v: %v", c.b, err)
+		case c.code != "" && (!errors.As(err, &de) || de.Code != c.code):
+			t.Errorf("%+v: %v, want %s", c.b, err, c.code)
 		}
 	}
 }

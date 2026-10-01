@@ -10,6 +10,7 @@ import (
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/devmap"
+	"mkey/internal/lib/dsl"
 	ev "mkey/internal/lib/evdev"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/project"
@@ -28,6 +29,11 @@ func (f fakeInspector) Label(path string, _, code uint16) string {
 		return "UnKey001"
 	}
 	return ""
+}
+
+// ResolveAxis осей не знает.
+func (f fakeInspector) ResolveAxis(device, axis string) (contracts.DeviceKey, error) {
+	return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", device, "button", axis)
 }
 
 // ResolveKey знает две кнопки: UnKey.001 (BTN_TRIGGER_HAPPY3) и UnKey.002 (KEY_CALC).

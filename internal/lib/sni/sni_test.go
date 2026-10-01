@@ -121,3 +121,39 @@ func TestSubmenu(t *testing.T) {
 	default:
 	}
 }
+
+// TestMenuIDsAfterUpdate проверяет, что после обновления меню номера пунктов новые: подменю,
+// появившееся на месте обычного пункта, получает номер, которого панель ещё не видела, а щелчок
+// по номеру из старого меню не попадает в пункт нового.
+func TestMenuIDsAfterUpdate(t *testing.T) {
+	t.Parallel()
+	clicked := make(chan string, 4)
+	m := newMenu(nil, []MenuItem{
+		{Label: "Record"},
+		{Label: "Stop all", OnClick: func() { clicked <- "stop" }},
+	})
+	o := &menuObject{m: m}
+
+	// Было: Record=1, Stop all=2. Стало: Record, подменю Replay (с записью), Stop all.
+	m.set([]MenuItem{
+		{Label: "Record"},
+		{Label: "Replay", Children: []MenuItem{{Label: "rec1", OnClick: func() { clicked <- "rec1" }}}},
+		{Label: "Stop all", OnClick: func() { clicked <- "stop" }},
+	})
+	_, root, _ := o.GetLayout(0, -1, nil)
+	replay := root.Children[1].Value().(layout)
+	if replay.ID <= 2 || replay.Props["children-display"].Value() != "submenu" {
+		t.Fatalf("replay = %+v", replay)
+	}
+
+	// Щелчок по старому номеру 2 ничего не делает; по записи в подменю — запускает её.
+	_ = o.Event(2, "clicked", dbus.MakeVariant(0), 0)
+	rec := replay.Children[0].Value().(layout)
+	_ = o.Event(rec.ID, "clicked", dbus.MakeVariant(0), 0)
+	if got := <-clicked; got != "rec1" {
+		t.Fatalf("clicked %q, want rec1", got)
+	}
+	if props, _ := o.GetGroupProperties(nil, nil); len(props) != 4 {
+		t.Errorf("group properties = %d", len(props))
+	}
+}

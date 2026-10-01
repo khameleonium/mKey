@@ -42,6 +42,7 @@ var (
 	keyboardNS = buildNamespace(keyboardTable, ev.EvKey)
 	gamepadNS  = buildNamespace(gamepadTable, ev.EvKey)
 	axisNS     = buildNamespace(axisTable, ev.EvAbs)
+	relNS      = buildNamespace(relTable, ev.EvRel)
 )
 
 // buildNamespace строит индексы «имя → клавиша» и «код → клавиша» для таблицы.
@@ -83,6 +84,15 @@ func LookupGamepad(name string) (Key, bool) { return gamepadNS.lookup(name) }
 
 // LookupAxis ищет ось геймпада по имени (LX, LY, RX, RY, LT, RT, DPadX, DPadY).
 func LookupAxis(name string) (Key, bool) { return axisNS.lookup(name) }
+
+// LookupRel ищет относительную ось мыши по имени (MouseX, MouseY, MouseWheel, MouseHWheel).
+func LookupRel(name string) (Key, bool) { return relNS.lookup(name) }
+
+// RelNameOf возвращает имя относительной оси для кода EV_REL.
+func RelNameOf(code uint16) (string, bool) {
+	e, ok := relNS.byCode[code]
+	return e.name, ok
+}
 
 // NameOf возвращает каноническое имя mKey для кода EV_KEY: сначала среди клавиатуры и мыши,
 // затем среди кнопок геймпада. Для кода без имени возвращает false —

@@ -17,6 +17,10 @@ const (
 	PartCondition = "condition"
 	// PartAction — блок действия («Делать»).
 	PartAction = "action"
+	// PartBinding — привязка проекта (Event пусто: привязки — не в событиях).
+	PartBinding = "binding"
+	// PartVirtualDevice — виртуальное устройство проекта (Event пусто).
+	PartVirtualDevice = "virtual_device"
 )
 
 // Problem — ошибка в событии проекта: где она и что случилось.

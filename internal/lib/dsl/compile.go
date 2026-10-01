@@ -24,10 +24,12 @@ const maxWheel = 1000
 type Target struct {
 	// Device — устройство: DeviceKeyboard, DeviceMouse или имя виртуального устройства.
 	Device string `json:"device"`
-	// Code — код EV_KEY.
+	// Code — код EV_KEY (или EV_ABS, если Axis).
 	Code uint16 `json:"code"`
 	// Name — имя для сообщений и журналов.
 	Name string `json:"name"`
+	// Axis — это ось виртуального устройства ({pad2.LX=0.5}), а не кнопка.
+	Axis bool `json:"axis,omitempty"`
 }
 
 // Resolver находит устройство и код для ссылки на клавишу.
@@ -72,13 +74,32 @@ func (DefaultResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
 // Возвращает код EV_KEY и имя для сообщений; ошибка — *Error.
 type KeyLookup func(device, button string) (code uint16, name string, err error)
 
-// DeviceResolver — как DefaultResolver, но кнопки устройств ({UnKey001}) находит через Lookup:
-// клавиши KEY_* нажимает виртуальная клавиатура mKey, кнопки мыши — мышь; остальные (кнопки
-// джойстика) пока нажать нельзя — ErrCannotSend.
-type DeviceResolver struct{ Lookup KeyLookup }
+// VirtualLookup находит кнопку или ось виртуального устройства проекта ({pad2.South},
+// {pad2.LX=0.5}, FR-VD-1): found = false — такого виртуального устройства нет (тогда имя
+// ищется среди физических устройств); ошибка — *Error (например, нет такой кнопки).
+type VirtualLookup func(device, control string) (code uint16, axis, found bool, err error)
+
+// DeviceResolver — как DefaultResolver, но с устройствами: сначала виртуальные устройства проектов
+// (Virtual — нажатия и оси идут на них), затем кнопки физических устройств ({UnKey001}) через
+// Lookup: клавиши KEY_* нажимает виртуальная клавиатура mKey, кнопки мыши — мышь; остальные
+// (кнопки джойстика) нажать нельзя — ErrCannotSend.
+type DeviceResolver struct {
+	Lookup  KeyLookup
+	Virtual VirtualLookup
+}
 
 // Resolve находит цель для ссылки на клавишу.
 func (r DeviceResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
+	// Виртуальное устройство проекта.
+	if ref.Device != "" && r.Virtual != nil {
+		code, axis, found, err := r.Virtual(ref.Device, ref.Name)
+		if found {
+			if err != nil {
+				return Target{}, withPos(err, pos, ref)
+			}
+			return Target{Device: strings.ToLower(ref.Device), Code: code, Name: formatKeyRef(ref), Axis: axis}, nil
+		}
+	}
 	if ref.Device == "" || r.Lookup == nil {
 		return DefaultResolver{}.Resolve(ref, pos)
 	}
@@ -106,6 +127,18 @@ func (r DeviceResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
 	return Target{}, newError(pos, ErrCannotSend, "key", name, "kernel", kernel)
 }
 
+// withPos переносит ошибку поиска в место макроса: *Error получает позицию, другая ошибка
+// становится «неизвестная кнопка устройства».
+func withPos(err error, pos Pos, ref KeyRef) error {
+	var de *Error
+	if errors.As(err, &de) {
+		e := *de
+		e.Pos = pos
+		return &e
+	}
+	return newError(pos, ErrUnknownButton, "device", ref.Device, "button", ref.Name)
+}
+
 // StepKind — вид шага плана выполнения.
 type StepKind string
 
@@ -127,6 +160,8 @@ const (
 	StepMove StepKind = "move"
 	// StepWheel — прокрутка колеса.
 	StepWheel StepKind = "wheel"
+	// StepAxis — поставить оси Targets в положение Value (−1…1, у курков 0…1).
+	StepAxis StepKind = "axis"
 	// StepLoop — повторить Body Count раз.
 	StepLoop StepKind = "loop"
 )
@@ -151,6 +186,8 @@ type Step struct {
 	// DX и DY — смещение курсора (move); для wheel — щелчки по горизонтали (DX) и вертикали (DY) за один раз.
 	DX int32 `json:"dx,omitempty"`
 	DY int32 `json:"dy,omitempty"`
+	// Value — положение оси (axis).
+	Value float64 `json:"value,omitempty"`
 	// Body — вложенные шаги (loop).
 	Body []Step `json:"body,omitempty"`
 }
@@ -177,16 +214,28 @@ func compileNode(n Node, r Resolver) (Step, error) {
 		if err != nil {
 			return Step{}, err
 		}
+		// Ось нельзя нажать — ей задают положение.
+		for _, t := range targets {
+			if t.Axis {
+				return Step{}, newError(n.Pos, ErrAxisAsKey, "name", t.Name)
+			}
+		}
 		kind := map[Kind]StepKind{KindTap: StepTap, KindDown: StepPress, KindUp: StepRelease}[n.Kind]
 		return Step{Kind: kind, Pos: n.Pos, Targets: targets, Count: n.times(), HoldMS: n.HoldMS}, nil
 	case KindUpAll:
 		return Step{Kind: StepReleaseAll, Pos: n.Pos}, nil
 	case KindAxis:
-		// Оси есть только у виртуальных геймпадов (фаза 7); сначала проверяем устройство.
-		if _, err := resolveAll(n.Keys, n.Pos, r); err != nil {
+		// Положение оси виртуального устройства ({pad2.LX=0.5}): цель должна быть осью.
+		targets, err := resolveAll(n.Keys, n.Pos, r)
+		if err != nil {
 			return Step{}, err
 		}
-		return Step{}, newError(n.Pos, ErrNotSupported, "what", "axis")
+		for _, t := range targets {
+			if !t.Axis {
+				return Step{}, newError(n.Pos, ErrAxisExpected, "name", t.Name)
+			}
+		}
+		return Step{Kind: StepAxis, Pos: n.Pos, Targets: targets, Value: n.Value}, nil
 	case KindPause:
 		return Step{Kind: StepWait, Pos: n.Pos, MinMS: n.MinMS, MaxMS: n.MaxMS}, nil
 	case KindText:

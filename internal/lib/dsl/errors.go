@@ -34,6 +34,12 @@ const (
 	ErrUnknownDevice    = "dsl.unknown_device"     // {device}
 	ErrUnknownButton    = "dsl.unknown_button"     // {device}, {button}: у устройства нет такой кнопки
 	ErrCannotSend       = "dsl.cannot_send"        // {key}, {kernel}: эту кнопку mKey пока не умеет нажимать
+	ErrAxisAsKey        = "dsl.axis_as_key"        // {name}: ось нажимают как кнопку
+	ErrAxisExpected     = "dsl.axis_expected"      // {name}: положение задают не оси
+	ErrBindingValue     = "dsl.binding_value"      // {name}: привязке к оси нужно положение −1…1
+	ErrBindingThreshold = "dsl.binding_threshold"  // {name}: привязке оси к кнопке нужен порог −1…1
+	ErrBindingOption    = "dsl.binding_option"     // {name}, {option}: настройка не подходит к привязке
+	ErrBindingRange     = "dsl.binding_range"      // {name}, {option}, {min}, {max}: значение вне пределов
 	ErrNotSupported     = "dsl.not_supported"      // {what}: возможность появится позже
 	ErrUntypeable       = "dsl.untypeable_char"    // {char}, {layouts}: символа нет в раскладках
 	ErrChord            = "dsl.chord_in_braces"    // {keys}, {macro}, {hotkey}: {Ctrl+C} — в скобках одна клавиша
@@ -49,7 +55,7 @@ var AllErrorCodes = []string{
 	ErrUnclosedGroup, ErrUnexpectedClose, ErrUnclosedText, ErrBadEscape, ErrEmptyBraces,
 	ErrUnknownKey, ErrUnknownKeyHint, ErrBadNumber, ErrBadDuration, ErrTooLong, ErrBadRepeat,
 	ErrPrefixNotAllowed, ErrStarOnlyRelease, ErrRepeatAndHold, ErrPauseRange, ErrAxisChord,
-	ErrBadCommandArgs, ErrUnknownDevice, ErrUnknownButton, ErrCannotSend, ErrNotSupported, ErrUntypeable,
+	ErrBadCommandArgs, ErrUnknownDevice, ErrUnknownButton, ErrCannotSend, ErrAxisAsKey, ErrAxisExpected, ErrBindingValue, ErrBindingThreshold, ErrBindingOption, ErrBindingRange, ErrNotSupported, ErrUntypeable,
 	ErrChord, ErrBraceKey, ErrAlreadyHeld, ErrNotHeld, ErrBadHotkey,
 }
 

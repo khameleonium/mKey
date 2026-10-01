@@ -9,7 +9,8 @@
 //   - основное (Lookup): клавиатура и мышь — A, Enter, Ctrl, Mouse0…;
 //   - геймпад (LookupGamepad): South/East/…, LB/RB, Start… Имена вроде A/B/X/Y
 //     конфликтуют с буквами, поэтому доступны только с префиксом устройства ({pad2.A});
-//   - оси (LookupAxis): LX, LY, RX, RY, LT, RT, DPadX, DPadY.
+//   - оси (LookupAxis): LX, LY, RX, RY, LT, RT, DPadX, DPadY;
+//   - оси мыши (LookupRel): MouseX, MouseY, MouseWheel, MouseHWheel — только источники привязок.
 //
 // Модификаторы без стороны (Ctrl, Shift, Alt, Super) при отправке означают левую
 // клавишу, а при распознавании хоткея — любую из двух (Key.Matches).

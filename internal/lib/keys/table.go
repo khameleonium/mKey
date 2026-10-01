@@ -167,6 +167,15 @@ var axisTable = []entry{
 	{name: "DPadY", code: ev.AbsHat0y},
 }
 
+// relTable — относительные оси мыши (EV_REL): движение и колёса. Нажимать их нельзя — они бывают
+// только источником привязок (мышь → стик, колесо → клавиша).
+var relTable = []entry{
+	{name: "MouseX", code: ev.RelX},
+	{name: "MouseY", code: ev.RelY},
+	{name: "MouseWheel", code: ev.RelWheel},
+	{name: "MouseHWheel", code: ev.RelHwheel},
+}
+
 // sidePairs — пары «левый ↔ правый» для модификаторов без стороны.
 var sidePairs = map[uint16]uint16{
 	ev.KeyLeftctrl:  ev.KeyRightctrl,

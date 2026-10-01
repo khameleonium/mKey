@@ -7,7 +7,8 @@
 <script lang="ts">
   import { api } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
-  import { t } from "./lib/i18n/index.svelte";
+  import { setLang, t } from "./lib/i18n/index.svelte";
+  import { setTheme } from "./lib/theme.svelte";
   import { href, navigate, route } from "./lib/router.svelte";
   import { connect, live, refreshStatus } from "./lib/stream.svelte";
   import DevicesPage from "./features/devices/DevicesPage.svelte";
@@ -44,10 +45,22 @@
     }
   }
 
-  // Поток новостей, состояние и проверка первого запуска — при открытии окна.
+  /** loadInterface берёт язык и тему из config.yaml (если они там заданы) — файл главнее браузера. */
+  async function loadInterface(): Promise<void> {
+    try {
+      const s = await api.interfaceSettings();
+      if (s.language === "ru" || s.language === "en") setLang(s.language);
+      if (s.theme === "system" || s.theme === "light" || s.theme === "dark") setTheme(s.theme);
+    } catch {
+      // Демон недоступен — остаются язык и тема, запомненные браузером.
+    }
+  }
+
+  // Поток новостей, состояние, язык и тема из настроек и проверка первого запуска — при открытии окна.
   $effect(() => {
     connect();
     void refreshStatus();
+    void loadInterface();
     void firstRun();
   });
 

@@ -282,6 +282,12 @@ func (f *fullServices) Statuses() []contracts.EventStatus {
 		{EventRef: contracts.EventRef{Project: "work", Event: "report"}, Enabled: f.enabled["work"], Triggers: []string{"manual"}},
 	}
 }
+func (f *fullServices) ValidateProject(p project.Project) error {
+	if p.ID == "work" && f.enabled["broken"] {
+		return errors.New("broken")
+	}
+	return nil
+}
 func (f *fullServices) RunEvent(_ context.Context, p, e string) error {
 	f.mu.Lock()
 	f.ran = append(f.ran, p+"/"+e)

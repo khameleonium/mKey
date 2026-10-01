@@ -216,6 +216,10 @@ type KeyState interface {
 	// кнопку устройства с авто-ID — "UnKey001", "UnKey2.001", "UnKey.A" (FR-DEV-2). Ошибка — *dsl.Error
 	// (dsl.unknown_key, dsl.unknown_device, dsl.unknown_button).
 	ParseKey(name string) (DeviceKey, error)
+	// ParseBindingSource разбирает источник привязки (FR-VD-3): кнопку, как ParseKey, или ось —
+	// стик или курок ("LX" — любого устройства, "Геймпад.LX", "UnKey.Axis01") и ось мыши
+	// ("MouseX", "MouseWheel"). У оси Type — EV_ABS или EV_REL. Ошибка — *dsl.Error.
+	ParseBindingSource(name string) (DeviceKey, error)
 	// IsDown сообщает, зажата ли клавиша сейчас: на любом устройстве или, если в k указано
 	// устройство, только на нём (модификатор без стороны — любой из двух).
 	IsDown(k DeviceKey) bool

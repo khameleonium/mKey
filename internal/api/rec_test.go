@@ -20,6 +20,8 @@ type fakeRecorder struct {
 	converted contracts.ConvertOptions
 	// broken — запись «сломанная» с ошибкой в строке 8 (в списке и при воспроизведении).
 	broken bool
+	// settings — настройки записи.
+	settings contracts.RecordSettings
 }
 
 func (f *fakeRecorder) StartRecording(o contracts.RecordOptions) (contracts.RecordingInfo, error) {
@@ -75,9 +77,48 @@ func (f *fakeRecorder) ConvertRecording(name string, o contracts.ConvertOptions)
 	f.converted = o
 	return "rec-игра", nil
 }
-func (f *fakeRecorder) RecordHotkey() string         { return "^{Ctrl}^{Alt}{R}" }
-func (f *fakeRecorder) SetRecordHotkey(string) error { return nil }
-func (f *fakeRecorder) Playing() int                 { return 0 }
+func (f *fakeRecorder) RecordHotkey() string                     { return "^{Ctrl}^{Alt}{R}" }
+func (f *fakeRecorder) SetRecordHotkey(string) error             { return nil }
+func (f *fakeRecorder) Playing() int                             { return 0 }
+func (f *fakeRecorder) RecordSettings() contracts.RecordSettings { return f.settings }
+func (f *fakeRecorder) SetRecordSettings(s contracts.RecordSettings) error {
+	if len(s.Kinds) == 0 {
+		return contracts.ErrBadRecordSettings
+	}
+	f.settings = s
+	return nil
+}
+
+// TestRecordSettingsAPI проверяет чтение и сохранение настроек записи в config.yaml.
+func TestRecordSettingsAPI(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.cfg.ConfigFile = filepath.Join(t.TempDir(), "config.yaml")
+	rec := &fakeRecorder{settings: contracts.RecordSettings{Kinds: []string{"keyboard"}, Moves: true}}
+	m.svc.recorder, m.svc.player = rec, rec
+	h := m.routes(true)
+
+	// Чтение.
+	if _, out := call(t, h, "GET", "/api/v1/settings/recording", "", nil); out["moves"] != true {
+		t.Fatalf("get: %v", out)
+	}
+
+	// Неверные — 400 с кодом; верные применяются и сохраняются в config.yaml.
+	if code, out := call(t, h, "PUT", "/api/v1/settings/recording", `{"kinds":[]}`, nil); code != 400 ||
+		out["error"].(map[string]any)["code"] != "api.record_settings_bad" {
+		t.Fatalf("bad: %d %v", code, out)
+	}
+	body := `{"kinds":["keyboard","mouse"],"moves":false,"merge_moves_ms":0,"center_pointer":false,"coalesce_ms":4}`
+	if code, out := call(t, h, "PUT", "/api/v1/settings/recording", body, nil); code != 200 || rec.settings.Moves {
+		t.Fatalf("put: %d %v", code, out)
+	}
+	data, _ := os.ReadFile(m.cfg.ConfigFile)
+	for _, want := range []string{"kinds: [keyboard, mouse]", "moves: false", "merge_moves_ms: 0", "center_pointer: false"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("no %q in config:\n%s", want, data)
+		}
+	}
+}
 
 // TestRecordingEndpoints проверяет запись, список, удаление и воспроизведение через API.
 func TestRecordingEndpoints(t *testing.T) {
@@ -217,5 +258,28 @@ func TestRecordingProblem(t *testing.T) {
 	long := contracts.RecordingProblem{Line: 3, Text: strings.Repeat("x", 100), Code: mkrec.ProblemShort}
 	if msg := problemMessage(m.tr.WithLang("ru"), long); !strings.Contains(msg, strings.Repeat("x", maxProblemText)+"…") || strings.Contains(msg, strings.Repeat("x", maxProblemText+1)) {
 		t.Errorf("long: %s", msg)
+	}
+}
+
+// TestInterfaceSettings проверяет язык и тему окна: сохранение в config.yaml и чтение обратно.
+func TestInterfaceSettings(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.cfg.ConfigFile = filepath.Join(t.TempDir(), "config.yaml")
+	h := m.routes(true)
+
+	// Неверная тема — 400; верные значения сохраняются.
+	if code, _ := call(t, h, "PUT", "/api/v1/settings/interface", `{"language":"ru","theme":"pink"}`, nil); code != 400 {
+		t.Fatalf("bad theme: %d", code)
+	}
+	if code, out := call(t, h, "PUT", "/api/v1/settings/interface", `{"language":"en","theme":"dark"}`, nil); code != 200 {
+		t.Fatalf("put: %d %v", code, out)
+	}
+	if _, out := call(t, h, "GET", "/api/v1/settings/interface", "", nil); out["language"] != "en" || out["theme"] != "dark" {
+		t.Fatalf("get: %v", out)
+	}
+	data, _ := os.ReadFile(m.cfg.ConfigFile)
+	if !strings.Contains(string(data), `language: "en"`) || !strings.Contains(string(data), `theme: "dark"`) {
+		t.Fatalf("config:\n%s", data)
 	}
 }

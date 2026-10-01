@@ -41,7 +41,8 @@ func (m *Module) handleProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"dir": m.svc.projects.Dir(), "projects": out})
 }
 
-// handleProjectToggle включает или выключает проект: POST /projects/{id}/enable|disable.
+// handleProjectToggle включает или выключает проект: POST /projects/{id}/enable|disable. Перед
+// включением проект проверяется целиком (ошибка — 400 api.project_invalid, проект не включается).
 func (m *Module) handleProjectToggle(w http.ResponseWriter, r *http.Request) {
 	if m.svc.projects == nil {
 		m.unavailable(w, r)
@@ -52,7 +53,18 @@ func (m *Module) handleProjectToggle(w http.ResponseWriter, r *http.Request) {
 		m.writeError(w, r, http.StatusNotFound, "api.bad_request", map[string]string{"error": "unknown action"})
 		return
 	}
-	if err := m.svc.projects.SetEnabled(r.PathValue("id"), on); err != nil {
+	// Перед включением — полная проверка: проект с ошибкой не включается (иначе движок молча
+	// отказался бы его запускать, а человек думал бы, что он работает).
+	id := r.PathValue("id")
+	if on && m.svc.events != nil {
+		if st, ok := m.svc.projects.Get(id); ok {
+			if err := m.svc.events.ValidateProject(st.Project); err != nil {
+				m.writeProjectError(w, r, st.Project, err)
+				return
+			}
+		}
+	}
+	if err := m.svc.projects.SetEnabled(id, on); err != nil {
 		m.writeError(w, r, http.StatusBadRequest, "api.bad_request", map[string]string{"error": err.Error()})
 		return
 	}

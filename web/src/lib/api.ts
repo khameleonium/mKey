@@ -9,9 +9,13 @@ import type {
   DeviceDetails,
   PlaceInfo,
   RecordingInfo,
+  RecordSettings,
+  VirtualDeviceInfo,
+  VirtualTemplateInfo,
   DoctorCheck,
   EventStatus,
   InputDevice,
+  InterfaceSettings,
   Project,
   ProjectFile,
   ProjectInfo,
@@ -89,6 +93,12 @@ export const api = {
     }>("GET", "/devices"),
   renameDevice: (device: string, control: string, name: string) =>
     request<{ ok: boolean }>("POST", "/devices/rename", { device, control, name }),
+  virtualDevices: () =>
+    request<{
+      devices: VirtualDeviceInfo[];
+      templates: string[];
+      template_info?: VirtualTemplateInfo[];
+    }>("GET", "/devices/virtual"),
   deviceSettings: () => request<{ auto_ids: string }>("GET", "/settings/devices"),
   setDeviceSettings: (autoIds: string) =>
     request<{ auto_ids: string }>("PUT", "/settings/devices", { auto_ids: autoIds }),
@@ -145,6 +155,12 @@ export const api = {
   hotkeys: () => request<{ record?: string; emergency?: string }>("GET", "/settings/hotkeys"),
   setHotkeys: (h: { record?: string; emergency?: string }) =>
     request<{ record?: string; emergency?: string }>("PUT", "/settings/hotkeys", h),
+  recordSettings: () => request<RecordSettings>("GET", "/settings/recording"),
+  setRecordSettings: (s: RecordSettings) =>
+    request<RecordSettings>("PUT", "/settings/recording", s),
+  interfaceSettings: () => request<InterfaceSettings>("GET", "/settings/interface"),
+  setInterfaceSettings: (s: InterfaceSettings) =>
+    request<InterfaceSettings>("PUT", "/settings/interface", s),
 
   // Управление программой.
   stopAll: () => request<{ ok: boolean }>("POST", "/stop", {}),

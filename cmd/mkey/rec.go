@@ -19,7 +19,7 @@ import (
 
 // Команды записи и воспроизведения ввода (этап 6, FR-REC-2, FR-REC-4):
 //
-//	mkey rec [имя]             записать до Ctrl+Alt+R (в любой программе) или Ctrl+C здесь
+//	mkey rec [имя]             записать до левый Ctrl + правый Alt + Пробел (в любой программе) или Ctrl+C здесь
 //	mkey rec list | stop | delete <имя>
 //	mkey play <имя> [--speed 2] [--repeat 5] [--loop] [--no-moves]
 

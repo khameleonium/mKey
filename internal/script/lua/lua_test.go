@@ -70,6 +70,11 @@ func (fakeKeys) Resume()                                            {}
 func (fakeKeys) Suspended() bool                                    { return false }
 
 // ParseKey знает стандартные имена и одну кнопку устройства — UnKey001 (как F8 устройства UnKey).
+// ParseBindingSource — как ParseKey (осей фейк не знает).
+func (f fakeKeys) ParseBindingSource(name string) (contracts.DeviceKey, error) {
+	return f.ParseKey(name)
+}
+
 func (fakeKeys) ParseKey(name string) (contracts.DeviceKey, error) {
 	name = strings.Trim(name, "{}")
 	if name == "UnKey001" {

@@ -53,19 +53,26 @@ type menuEvent struct {
 	Timestamp uint32
 }
 
-// menu — меню значка (с подменю). ID пунктов — номера при обходе дерева в глубину, начиная с 1
-// (0 — корень); после замены пунктов (set) номера считаются заново, панель перечитывает меню.
+// menu — меню значка (с подменю). ID пунктов — номера при обходе дерева в глубину (0 — корень).
+// При каждой замене пунктов (set) номера продолжаются, а не начинаются заново: панель (KDE
+// libdbusmenu-qt) узнаёт пункты по номеру и, если на прежнем номере обычного пункта появилось
+// подменю, оставляет его обычным пунктом — щелчок по нему ничего не делал. Кроме того, щелчок,
+// отправленный панелью по старому меню, не попадёт в другой пункт нового меню.
 type menu struct {
 	conn *dbus.Conn
-	// mu защищает items и revision; revision растёт при каждой смене пунктов.
+	// mu защищает tree, next и revision; revision растёт при каждой смене пунктов;
+	// next — первый номер для следующего набора пунктов.
 	mu       sync.Mutex
-	items    []MenuItem
+	tree     tree
+	next     int32
 	revision uint32
 }
 
 // newMenu создаёт меню с пунктами items.
 func newMenu(conn *dbus.Conn, items []MenuItem) *menu {
-	return &menu{conn: conn, items: items, revision: 1}
+	m := &menu{conn: conn, next: 1, revision: 1}
+	m.tree, m.next = flatten(items, m.next)
+	return m
 }
 
 // export публикует объект меню: методы, свойства протокола и описание.
@@ -115,11 +122,13 @@ func (m *menu) export() error {
 // set заменяет пункты и сообщает панели, что меню изменилось.
 func (m *menu) set(items []MenuItem) {
 	m.mu.Lock()
-	m.items = items
+	m.tree, m.next = flatten(items, m.next)
 	m.revision++
 	rev := m.revision
 	m.mu.Unlock()
-	_ = m.conn.Emit(menuPath, menuIface+".LayoutUpdated", rev, int32(0))
+	if m.conn != nil {
+		_ = m.conn.Emit(menuPath, menuIface+".LayoutUpdated", rev, int32(0))
+	}
 }
 
 // props возвращает свойства пункта в формате протокола.
@@ -145,35 +154,39 @@ func (it MenuItem) props() map[string]dbus.Variant {
 	return p
 }
 
-// tree — пункты меню по ID (обход в глубину с 1) и дети каждого (0 — корень).
+// tree — пункты меню по ID (обход в глубину) и дети каждого (0 — корень); ids — номера по порядку.
 type tree struct {
 	items    map[int32]MenuItem
 	children map[int32][]int32
+	ids      []int32
 }
 
-// flatten нумерует пункты дерева в глубину: пункт, затем его подменю.
-func flatten(items []MenuItem) tree {
+// flatten нумерует пункты дерева в глубину, начиная с start: пункт, затем его подменю.
+// Возвращает дерево и первый свободный номер.
+func flatten(items []MenuItem, start int32) (tree, int32) {
 	t := tree{items: map[int32]MenuItem{}, children: map[int32][]int32{}}
-	next := int32(1)
+	next := start
 	var walk func(parent int32, list []MenuItem)
 	walk = func(parent int32, list []MenuItem) {
 		for _, it := range list {
 			id := next
 			next++
 			t.items[id] = it
+			t.ids = append(t.ids, id)
 			t.children[parent] = append(t.children[parent], id)
 			walk(id, it.Children)
 		}
 	}
 	walk(0, items)
-	return t
+	return t, next
 }
 
-// snapshot возвращает пронумерованные пункты и номер версии меню.
+// snapshot возвращает пронумерованные пункты и номер версии меню (дерево не меняется после
+// построения — set заменяет его целиком).
 func (m *menu) snapshot() (tree, uint32) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return flatten(m.items), m.revision
+	return m.tree, m.revision
 }
 
 // buildLayout строит дерево меню от пункта id (0 — корень) со всеми вложенными пунктами.
@@ -206,7 +219,7 @@ func (o *menuObject) GetLayout(parentID, _ int32, _ []string) (uint32, layout, *
 func (o *menuObject) GetGroupProperties(ids []int32, _ []string) ([]itemProps, *dbus.Error) {
 	t, _ := o.m.snapshot()
 	var out []itemProps
-	for id := int32(1); int(id) <= len(t.items); id++ {
+	for _, id := range t.ids {
 		if len(ids) == 0 || containsID(ids, id) {
 			out = append(out, itemProps{ID: id, Props: t.items[id].props()})
 		}

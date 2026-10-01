@@ -11,7 +11,13 @@
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type { InputDevice, WatchEntry } from "../../lib/types";
+  import type {
+    InputDevice,
+    VirtualDeviceInfo,
+    VirtualTemplateInfo,
+    WatchEntry,
+  } from "../../lib/types";
+  import GamepadWizard from "./GamepadWizard.svelte";
   import DeviceDetails from "../inspector/DeviceDetails.svelte";
   import RenameDialog from "../inspector/RenameDialog.svelte";
 
@@ -23,6 +29,11 @@
   /** autoIds — авто-ID устройств по пути (UnKey…); mode — режим раздачи авто-ID. */
   let autoIds = $state<Record<string, string>>({});
   let mode = $state("");
+  /** virtuals — виртуальные устройства включённых проектов (null — модуль недоступен). */
+  let virtuals = $state<VirtualDeviceInfo[] | null>(null);
+  /** vtemplates — состав шаблонов (для мастера); wizard — открыт мастер «второй геймпад». */
+  let vtemplates = $state<VirtualTemplateInfo[]>([]);
+  let wizard = $state(false);
 
   /** watching — монитор включён; moves — показывать перемещения мыши; log — записи (новые сверху). */
   let watching = $state(false);
@@ -104,6 +115,9 @@
       devices = r.devices;
       denied = r.status?.denied ?? [];
       autoIds = r.auto_ids ?? {};
+      const v = await api.virtualDevices().catch(() => null);
+      virtuals = v?.devices ?? null;
+      vtemplates = v?.template_info ?? [];
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -163,6 +177,7 @@
       "input.device_removed",
       "input.access_changed",
       "inspector.auto_ids_changed",
+      "store.projects_changed",
     ];
     const offs = topics.map((topic) => onTopic(topic, () => void load()));
     return () => offs.forEach((off) => off());
@@ -224,6 +239,43 @@
       </select>
     </label>
   </div>
+{/if}
+
+<!-- Виртуальные устройства проектов (FR-VD-1) -->
+{#if virtuals !== null}
+  <div class="card virtuals">
+    <div class="vhead">
+      <h2>{t("devices.virtual_title")}</h2>
+      {#if vtemplates.length}
+        <button class="primary" onclick={() => (wizard = true)}>🎮 {t("gpw.open_wizard")}</button>
+      {/if}
+    </div>
+    {#if virtuals.length === 0}
+      <p class="muted">{t("devices.virtual_none")}</p>
+      <pre class="snippet">virtual_devices:
+  - name: pad2
+    template: xbox360</pre>
+      <p class="muted">{t("devices.virtual_hint")}</p>
+    {:else}
+      {#each virtuals as v (v.project + "/" + v.name)}
+        <div class="vrow">
+          <code>{v.name}</code>
+          <span>{t("vdev.template." + v.template)}</span>
+          <span class="muted">{t("devices.virtual_project", { project: v.project })}</span>
+          {#if v.error}
+            <span class="error-text">⚠ {v.error}</span>
+          {:else}
+            <span class="muted">{v.system_name}{v.node ? " · " + v.node : ""}</span>
+          {/if}
+        </div>
+      {/each}
+      <p class="muted">{t("devices.virtual_hint")}</p>
+    {/if}
+  </div>
+{/if}
+
+{#if wizard}
+  <GamepadWizard {devices} {autoIds} templates={vtemplates} onclose={() => (wizard = false)} />
 {/if}
 
 {#if denied.length}
@@ -367,5 +419,32 @@
   summary {
     cursor: pointer;
     font-size: 0.85rem;
+  }
+  .virtuals {
+    margin-bottom: 16px;
+  }
+  .vhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .virtuals h2 {
+    margin-top: 0;
+  }
+  .vrow {
+    display: grid;
+    grid-template-columns: minmax(6em, auto) minmax(10em, auto) minmax(10em, auto) 1fr;
+    gap: 12px;
+    padding: 4px 0;
+  }
+  .snippet {
+    font-family: var(--mono);
+    background: var(--surface-2);
+    padding: 6px 10px;
+    border-radius: var(--radius-s);
+  }
+  .error-text {
+    color: var(--danger);
   }
 </style>

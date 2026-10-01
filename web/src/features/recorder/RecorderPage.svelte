@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import { api, ApiError } from "../../lib/api";
+  import { comboText } from "../../lib/combo";
   import Modal from "../../lib/components/Modal.svelte";
   import PlaceHint from "../../lib/components/PlaceHint.svelte";
   import { navigate } from "../../lib/router.svelte";
@@ -24,6 +25,8 @@
   /** playing — какая запись воспроизводится; countdown — секунд до начала (0 — не идёт). */
   let playing = $state("");
   let countdown = $state(0);
+  /** hotkey — сочетание «начать/закончить запись» ("" — выключено) для подсказки. */
+  let hotkey = $state("");
   /** abort — отмена идущего воспроизведения (закрывает запрос — демон останавливает повтор). */
   let abort: AbortController | null = null;
 
@@ -41,6 +44,10 @@
   // Загрузка при открытии и при начале/конце записи (в том числе сочетанием в другой программе).
   $effect(() => {
     void load();
+    api
+      .hotkeys()
+      .then((h) => (hotkey = h.record ?? ""))
+      .catch(() => (hotkey = ""));
     const offs = ["recorder.started", "recorder.stopped"].map((topic) =>
       onTopic(topic, () => void load()),
     );
@@ -142,13 +149,17 @@
   {#if current}
     <div>
       <h2>● {t("rec.recording", { name: current.name })}</h2>
-      <p class="muted">{t("rec.recording_hint", { hotkey: current.stop_hotkey || "—" })}</p>
+      <p class="muted">
+        {t("rec.recording_hint", { hotkey: comboText(current.stop_hotkey || "—", t) })}
+      </p>
     </div>
     <button class="danger" onclick={stop}>■ {t("rec.stop")}</button>
   {:else}
     <div class="grow">
       <h2>{t("rec.new")}</h2>
-      <p class="muted">{t("rec.new_hint")}</p>
+      <p class="muted">
+        {hotkey ? t("rec.new_hint", { hotkey: comboText(hotkey, t) }) : t("rec.new_hint_nohotkey")}
+      </p>
       <div class="row">
         <input bind:value={name} placeholder={t("rec.name_placeholder")} />
         <button class="primary" onclick={start}>⏺ {t("rec.start")}</button>

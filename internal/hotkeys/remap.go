@@ -16,19 +16,22 @@ type remapRule struct {
 	project string
 }
 
-// reloadRemaps перечитывает переназначения из включённых проектов и пересчитывает захват.
+// reloadRemaps перечитывает переназначения и привязки (FR-VD-3) из включённых проектов и
+// пересчитывает захват.
 func (m *Module) reloadRemaps() {
 	// Без хранилища проектов переназначений нет.
 	if m.projects == nil {
 		return
 	}
 
-	// Собираем правила включённых проектов; ошибочные пропускаем с предупреждением.
+	// Собираем правила и привязки включённых проектов; ошибочные пропускаем с предупреждением.
 	var rules []remapRule
+	var binds []*binding
 	for _, st := range m.projects.List() {
 		if !st.Project.IsEnabled() {
 			continue
 		}
+		binds = append(binds, m.compileBindings(st)...)
 		for _, r := range st.Project.Remaps {
 			// Заменять можно и кнопку устройства с авто-ID; заменой — только обычную клавишу
 			// (нажатие уходит в копию того же устройства).
@@ -42,13 +45,18 @@ func (m *Module) reloadRemaps() {
 		}
 	}
 
-	// Применяем.
+	// Применяем; нажатое прежними привязками отпускается (сброс в очереди — до новых нажатий).
 	m.mu.Lock()
 	m.remaps = rules
+	if len(m.bindings) > 0 && !m.bindClosed {
+		m.bindCh <- bindAction{reset: true}
+	}
+	m.bindings = binds
+	clear(m.absRanges)
 	m.updateGrab()
 	m.mu.Unlock()
-	if len(rules) > 0 {
-		m.log.Info("remaps loaded", "count", len(rules))
+	if len(rules)+len(binds) > 0 {
+		m.log.Info("remaps and bindings loaded", "remaps", len(rules), "bindings", len(binds))
 	}
 }
 

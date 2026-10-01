@@ -38,6 +38,10 @@ const (
 	sizeofUinputAbsSetup = 28
 	// uinputMaxNameSize — UINPUT_MAX_NAME_SIZE: длина имени виртуального устройства с нулём.
 	uinputMaxNameSize = 80
+	// sizeofFFEffect, sizeofFFUpload, sizeofFFErase — struct ff_effect, uinput_ff_upload, uinput_ff_erase.
+	sizeofFFEffect = 48
+	sizeofFFUpload = 104
+	sizeofFFErase  = 12
 )
 
 // Номера ioctl evdev (linux/input.h).
@@ -81,6 +85,20 @@ var (
 	uiSetMscBit  = ioc(iocWrite, 'U', 104, 4)
 	uiSetPhys    = ioc(iocWrite, 'U', 108, unsafe.Sizeof(uintptr(0)))
 	uiSetPropBit = ioc(iocWrite, 'U', 110, 4)
+	uiSetFFBit   = ioc(iocWrite, 'U', 107, 4)
+
+	// Ответы на запросы вибрации (force feedback) к виртуальному устройству: загрузка и удаление
+	// эффекта (struct uinput_ff_upload — 104 байта, struct uinput_ff_erase — 12; размеры сверены
+	// с linux/uinput.h компилятором C на x86_64 и arm64).
+	uiBeginFFUpload = ioc(iocRead|iocWrite, 'U', 200, sizeofFFUpload)
+	uiEndFFUpload   = ioc(iocWrite, 'U', 201, sizeofFFUpload)
+	uiBeginFFErase  = ioc(iocRead|iocWrite, 'U', 202, sizeofFFErase)
+	uiEndFFErase    = ioc(iocWrite, 'U', 203, sizeofFFErase)
+
+	// Загрузка и удаление эффекта со стороны программы, читающей устройство (EVIOCSFF, EVIOCRMFF):
+	// так игры просят вибрацию (struct ff_effect — 48 байт).
+	eviocsff  = ioc(iocWrite, 'E', 0x80, sizeofFFEffect)
+	eviocrmff = ioc(iocWrite, 'E', 0x81, 4)
 )
 
 // uiGetSysname — UI_GET_SYSNAME(len): имя созданного устройства в sysfs (например, "input42").

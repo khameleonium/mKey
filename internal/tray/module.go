@@ -298,11 +298,18 @@ func (m *Module) projectsMenu() *sni.MenuItem {
 	}
 	sub := sni.MenuItem{Label: m.tr.T("tray.projects")}
 	for _, st := range m.projects.List() {
-		id, on := st.Project.ID, st.Project.IsEnabled()
+		p, on := st.Project, st.Project.IsEnabled()
 		sub.Children = append(sub.Children, sni.MenuItem{
-			Label: projectTitle(st.Project.Name, id), Checkable: true, Checked: on,
+			Label: projectTitle(p.Name, p.ID), Checkable: true, Checked: on,
 			OnClick: func() {
-				if err := m.projects.SetEnabled(id, !on); err != nil {
+				// Проект с ошибкой не включается: человек видит, что не так.
+				if !on && m.events != nil {
+					if err := m.events.ValidateProject(p); err != nil {
+						m.notify(m.tr.T("tray.project_invalid", contracts.Arg{Name: "project", Value: projectTitle(p.Name, p.ID)}), err.Error())
+						return
+					}
+				}
+				if err := m.projects.SetEnabled(p.ID, !on); err != nil {
 					m.notify(m.tr.T("tray.error"), err.Error())
 				}
 			},
@@ -365,9 +372,11 @@ func (m *Module) recordMenu() []sni.MenuItem {
 				break
 			}
 		}
-		if len(sub.Children) > 0 {
-			items = append(items, sub)
+		// Подменю есть всегда, как «Проекты»: записей нет — так и написано.
+		if len(sub.Children) == 0 {
+			sub.Children = []sni.MenuItem{{Label: m.tr.T("tray.no_recordings"), Disabled: true}}
 		}
+		items = append(items, sub)
 	}
 	return items
 }
@@ -411,7 +420,12 @@ func (m *Module) play(name string) {
 	case <-ctx.Done():
 		return
 	}
-	if err := m.player.Play(ctx, name, contracts.PlayOptions{}); err != nil && !errors.Is(err, context.Canceled) {
+	// Повтор; по окончании — уведомление (чтобы было видно, что запись проиграна целиком).
+	err := m.player.Play(ctx, name, contracts.PlayOptions{})
+	switch {
+	case err == nil:
+		m.notify("mKey", m.tr.T("tray.play_done", contracts.Arg{Name: "name", Value: name}))
+	case !errors.Is(err, context.Canceled):
 		m.notify(m.tr.T("tray.error"), err.Error())
 	}
 }

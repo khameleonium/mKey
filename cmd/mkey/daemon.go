@@ -94,6 +94,14 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	// Настройки из config.yaml: включённые модули и их секции (ошибка в файле — не запускаемся,
 	// чтобы не работать с неожиданными настройками).
 	cfgPath := filepath.Join(paths.Config(os.Getenv), config.FileName)
+
+	// Файл настроек дополняется шаблоном: в нём всегда видны все настройки с пояснениями
+	// (нет файла — создаётся; значения пользователя не меняются). Ошибку в файле покажет Load.
+	if changed, err := config.Complete(cfgPath, app.ConfigTemplate); err != nil {
+		logger.Warn("config not completed", "path", cfgPath, "err", err)
+	} else if changed {
+		logger.Info("config completed", "path", cfgPath)
+	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		return fmt.Errorf("%s: %w", cfgPath, err)

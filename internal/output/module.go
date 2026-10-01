@@ -48,6 +48,19 @@ type Module struct {
 	pointer *device
 	// lastErr — последняя ошибка создания устройств.
 	lastErr error
+
+	// Виртуальные устройства проектов (FR-VD-1): созданные по имени (в нижнем регистре), какие
+	// должны существовать (из включённых проектов) и почему какие-то не созданы.
+	vdevs    map[string]*vdevice
+	want     map[string]wanted
+	vdevErrs map[string]string
+	// conflicts — устройства, не созданные из-за имени, занятого другим проектом.
+	conflicts []contracts.VirtualDeviceInfo
+	// projects — проекты (модуль store; nil — виртуальных устройств проектов нет); bus — шина.
+	projects  contracts.Projects
+	bus       contracts.Bus
+	unsub     func()
+	watchDone chan struct{}
 }
 
 // New создаёт модуль, работающий с настоящим uinput (путь берётся из настроек).
@@ -61,7 +74,8 @@ func New() *Module {
 
 // newModule создаёт модуль с заданной фабрикой устройств и часами (для тестов).
 func newModule(create creator, clk clock.Clock) *Module {
-	return &Module{create: create, clk: clk, cfg: Config{UInputPath: ev.DefaultUInputPath, SettleMS: 500, MaxEventsPerSecond: 2000}}
+	return &Module{create: create, clk: clk, cfg: Config{UInputPath: ev.DefaultUInputPath, SettleMS: 500, MaxEventsPerSecond: 2000},
+		vdevs: map[string]*vdevice{}, want: map[string]wanted{}, vdevErrs: map[string]string{}}
 }
 
 // ID возвращает идентификатор модуля.
@@ -75,7 +89,19 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
 
-	// Публикуем сервис для других модулей.
+	// Проекты (их виртуальные устройства) и шаблоны устройств — в точку расширения (для окна).
+	m.projects, _ = contracts.LookupService[contracts.Projects](host.Services())
+	m.bus = host.Bus()
+	for _, id := range templateOrder {
+		if err := host.Extensions().Register(contracts.PointDeviceTemplate, templateMeta{id: id}); err != nil {
+			return err
+		}
+	}
+
+	// Публикуем сервисы для других модулей.
+	if err := contracts.ProvideService[contracts.VirtualDeviceManager](host.Services(), m); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.VirtualDevices](host.Services(), m)
 }
 
@@ -85,16 +111,34 @@ func (m *Module) Start(context.Context) error {
 	if err := m.ensure(); err != nil {
 		m.log.Warn("virtual devices unavailable", "err", err)
 	}
+
+	// Виртуальные устройства включённых проектов — сейчас и при каждом изменении проектов.
+	m.reconcile()
+	if m.bus != nil {
+		var events <-chan contracts.Event
+		events, m.unsub = m.bus.Subscribe(contracts.TopicProjectsChanged)
+		m.watchDone = make(chan struct{})
+		go m.watchProjects(events)
+	}
 	return nil
 }
 
 // Stop отпускает всё зажатое и уничтожает виртуальные устройства.
 func (m *Module) Stop(context.Context) error {
+	// Перестаём следить за проектами.
+	if m.unsub != nil {
+		m.unsub()
+		<-m.watchDone
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Закрываем устройства, собирая ошибки.
+	// Закрываем устройства (и виртуальные устройства проектов), собирая ошибки.
 	var errs []error
+	for key, d := range m.vdevs {
+		errs = append(errs, d.close())
+		delete(m.vdevs, key)
+	}
 	for _, d := range []*device{m.keyboard, m.mouse, m.pointer} {
 		if d != nil {
 			errs = append(errs, d.close())
@@ -147,6 +191,9 @@ func (m *Module) ReleaseAll() error {
 		if d != nil {
 			errs = append(errs, d.ReleaseAll())
 		}
+	}
+	for _, d := range m.vdevs {
+		errs = append(errs, d.ReleaseAll())
 	}
 	return errors.Join(errs...)
 }

@@ -52,8 +52,8 @@ func (m *Module) Play(ctx context.Context, name string, opts contracts.PlayOptio
 		return fmt.Errorf("play: speed must be between %g and %g", minSpeed, maxSpeed)
 	}
 	frames := rec.Frames
-	if m.cfg.CoalesceMS > 0 {
-		frames = mkrec.CoalesceMoves(frames, time.Duration(m.cfg.CoalesceMS)*time.Millisecond)
+	if ms := m.RecordSettings().CoalesceMS; ms > 0 {
+		frames = mkrec.CoalesceMoves(frames, time.Duration(ms)*time.Millisecond)
 	}
 
 	// Виртуальные клавиатура и мышь.

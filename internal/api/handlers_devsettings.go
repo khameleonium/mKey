@@ -4,22 +4,52 @@ import (
 	"errors"
 	"net/http"
 
+	"mkey/internal/contracts"
 	"mkey/internal/lib/config"
 	"mkey/internal/lib/devmap"
 	"mkey/internal/lib/dsl"
 )
 
-// keyResolver — распознаватель клавиш макросов: кнопки устройств с авто-ID ({UnKey001}, FR-DEV-2)
-// находит инспектор (если он работает), остальные — как обычно.
+// keyResolver — распознаватель клавиш макросов: виртуальные устройства проектов ({pad2.South},
+// FR-VD-1), кнопки физических устройств с авто-ID ({UnKey001}, FR-DEV-2), остальные — как обычно.
 func (m *Module) keyResolver() dsl.Resolver {
-	if m.svc.inspect == nil {
-		return dsl.DeviceResolver{}
+	var r dsl.DeviceResolver
+	if insp := m.svc.inspect; insp != nil {
+		r.Lookup = func(device, button string) (uint16, string, error) {
+			k, err := insp.ResolveKey(device, button)
+			return k.Code, k.Name, err
+		}
 	}
-	insp := m.svc.inspect
-	return dsl.DeviceResolver{Lookup: func(device, button string) (uint16, string, error) {
-		k, err := insp.ResolveKey(device, button)
-		return k.Code, k.Name, err
-	}}
+	if vd := m.svc.vdevs; vd != nil {
+		r.Virtual = func(device, control string) (uint16, bool, bool, error) {
+			code, axis, err := vd.Resolve(device, control)
+			if errors.Is(err, contracts.ErrUnknownVirtual) {
+				return 0, false, false, nil
+			}
+			if err != nil {
+				return 0, false, true, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", device, "button", control)
+			}
+			return code, axis, true, nil
+		}
+	}
+	return r
+}
+
+// handleVirtualDevices возвращает виртуальные устройства включённых проектов и шаблоны (FR-VD-1):
+// {devices: [VirtualDeviceInfo], templates: [...], template_info: [VirtualTemplateInfo]}.
+func (m *Module) handleVirtualDevices(w http.ResponseWriter, r *http.Request) {
+	if m.svc.vdevs == nil {
+		m.unavailable(w, r)
+		return
+	}
+	// Шаблоны: имена и состав (кнопки и оси — для мастера «второй геймпад»).
+	var infos []contracts.VirtualTemplateInfo
+	for _, id := range m.svc.vdevs.Templates() {
+		if info, ok := m.svc.vdevs.TemplateInfo(id); ok {
+			infos = append(infos, info)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.vdevs.List(), "templates": m.svc.vdevs.Templates(), "template_info": infos})
 }
 
 // deviceSettings — настройки устройств в окне: каким устройствам давать авто-ID (FR-DEV-2).

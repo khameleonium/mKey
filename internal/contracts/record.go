@@ -27,10 +27,27 @@ var ErrRecordingNotFound = errors.New("recording not found")
 
 // RecordOptions — параметры новой записи.
 type RecordOptions struct {
-	// Name — имя записи (файл <имя>.mkrec в каталоге записей); пусто — по дате и времени.
+	// Name — имя записи (файл <имя>.mkrec в каталоге записей); пусто — mKeyRec_ДДММГГГГ_ЧЧММСС.
 	Name string `json:"name"`
-	// Kinds — классы записываемых устройств ("keyboard", "mouse", "gamepad"…); пусто — клавиатуры и мыши.
+	// Kinds — классы записываемых устройств ("keyboard", "mouse", "gamepad"…); пусто — из настроек записи.
 	Kinds []string `json:"kinds,omitempty"`
+}
+
+// RecordSettings — настройки записи по умолчанию (секция modules.recorder в config.yaml): с ними
+// запись начинается без вопросов — сочетанием, из меню значка, из окна и командой mkey rec.
+type RecordSettings struct {
+	// Kinds — какие устройства записывать ("keyboard", "mouse", "touchpad", "gamepad"…).
+	Kinds []string `json:"kinds"`
+	// Moves — записывать движения мыши (false — только нажатия кнопок и колесо).
+	Moves bool `json:"moves"`
+	// MergeMovesMS — движения мыши ближе этого (мс) склеиваются в одно при записи: файл короче,
+	// путь курсора тот же (0 — записывать каждое движение).
+	MergeMovesMS int `json:"merge_moves_ms"`
+	// CenterPointer — ставить курсор в центр экрана перед записью (запись движений начинается
+	// от известной точки и повторяется точнее).
+	CenterPointer bool `json:"center_pointer"`
+	// CoalesceMS — движения мыши ближе этого (мс) склеиваются при воспроизведении (0 — нет).
+	CoalesceMS int `json:"coalesce_ms"`
 }
 
 // RecordingInfo — сведения о записи.
@@ -85,6 +102,11 @@ type Recorder interface {
 	RecordHotkey() string
 	// SetRecordHotkey меняет сочетание записи сразу ("" — выключить).
 	SetRecordHotkey(combo string) error
+	// RecordSettings возвращает настройки записи по умолчанию.
+	RecordSettings() RecordSettings
+	// SetRecordSettings проверяет и меняет настройки записи (действуют со следующей записи).
+	// ErrBadRecordSettings — неизвестный класс устройств или значение вне допустимого.
+	SetRecordSettings(s RecordSettings) error
 	// ConvertRecording превращает запись в блоки конструктора (FR-REC-6): создаёт выключенный
 	// проект с одним событием (запуск вручную) и возвращает его ID. ErrRecordingNotFound — нет записи;
 	// ErrRecordingEmpty — в записи нет действий, которые можно превратить.
@@ -99,6 +121,9 @@ type ConvertOptions struct {
 
 // ErrRecordingEmpty — в записи нет действий клавиатуры и мыши, которые можно превратить в блоки.
 var ErrRecordingEmpty = errors.New("recording has no convertible actions")
+
+// ErrBadRecordSettings — настройки записи неверны (неизвестный класс устройств, значение вне допустимого).
+var ErrBadRecordSettings = errors.New("invalid recording settings")
 
 // PlayOptions — параметры воспроизведения.
 type PlayOptions struct {

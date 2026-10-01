@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -40,7 +41,8 @@ const DefaultPort = 17420
 
 // Config — настройки модуля из секции modules.api.
 type Config struct {
-	// Port — TCP-порт на 127.0.0.1 (0 — не открывать TCP, только Unix-сокет).
+	// Port — TCP-порт окна программы на 127.0.0.1 (0 — не открывать TCP, только Unix-сокет;
+	// в консольной сборке без окна не открывается никогда).
 	Port int `json:"port"`
 	// RuntimeDir — каталог сокета и токена; пусто — из модуля platform.
 	RuntimeDir string `json:"runtime_dir"`
@@ -48,6 +50,8 @@ type Config struct {
 	LogFile string `json:"log_file"`
 	// ConfigFile — файл настроек, куда сохраняются системные сочетания (по умолчанию ~/.config/mkey/config.yaml).
 	ConfigFile string `json:"config_file"`
+	// Theme — тема окна программы: system (как в системе, по умолчанию), light или dark.
+	Theme string `json:"theme"`
 }
 
 // Info — содержимое api.json: как подключиться к запущенному демону.
@@ -97,6 +101,7 @@ type services struct {
 	recorder contracts.Recorder
 	player   contracts.Player
 	inspect  contracts.Inspector
+	vdevs    contracts.VirtualDeviceManager
 	ext      contracts.ExtensionRegistry
 }
 
@@ -108,7 +113,7 @@ func New(static fs.FS) *Module {
 	if static == nil {
 		port = 0
 	}
-	return &Module{static: static, cfg: Config{Port: port}}
+	return &Module{static: static, cfg: Config{Port: port, Theme: "system"}}
 }
 
 // ID возвращает идентификатор модуля.
@@ -142,6 +147,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		recorder: lookup[contracts.Recorder](s),
 		player:   lookup[contracts.Player](s),
 		inspect:  lookup[contracts.Inspector](s),
+		vdevs:    lookup[contracts.VirtualDeviceManager](s),
 		ext:      host.Extensions(),
 	}
 
@@ -157,6 +163,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 	if m.cfg.ConfigFile == "" {
 		m.cfg.ConfigFile = filepath.Join(paths.Config(os.Getenv), config.FileName)
+	}
+	if !slices.Contains(interfaceThemes, m.cfg.Theme) {
+		return fmt.Errorf("%s: theme must be one of system, light, dark (got %q)", ModuleID, m.cfg.Theme)
 	}
 
 	// Файл настроек и журнал — в списке «Где что лежит».
@@ -220,8 +229,9 @@ func (m *Module) Start(context.Context) error {
 	}
 	m.serve(ul, m.routes(true))
 
-	// TCP для веб-интерфейса; занятый порт не мешает работе CLI.
-	if m.cfg.Port > 0 {
+	// TCP для веб-интерфейса; занятый порт не мешает работе CLI. Без веб-интерфейса (консольная
+	// сборка) порт не открывается, даже если задан в config.yaml: командам хватает Unix-сокета.
+	if m.cfg.Port > 0 && m.static != nil {
 		tl, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(m.cfg.Port)))
 		if err != nil {
 			m.log.Warn("web interface port unavailable", "port", m.cfg.Port, "err", err)

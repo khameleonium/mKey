@@ -62,7 +62,7 @@ type Module struct {
 
 // New создаёт модуль. Зависимости модуль получает в Init, а не в конструкторе.
 func New() *Module {
-	return &Module{}
+	return &Module{cfg: Config{AutoIDs: string(devmap.ModeSmart)}}
 }
 
 // ID возвращает идентификатор модуля.
@@ -366,6 +366,45 @@ func (m *Module) ResolveKey(device, button string) (contracts.DeviceKey, error) 
 	return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", rec.AutoID, "button", button)
 }
 
+// ResolveAxis находит ось устройства для привязок (contracts.Inspector).
+func (m *Module) ResolveAxis(device, axis string) (contracts.DeviceKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Устройство — по авто-ID или имени.
+	var rec *devmap.Device
+	if m.file != nil {
+		rec = m.file.Lookup(device)
+	}
+	if rec == nil {
+		return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownDevice, "device", device)
+	}
+	key := func(typ, code uint16, name string) contracts.DeviceKey {
+		return contracts.DeviceKey{Key: keys.Key{Name: devmap.Ref(rec.Display(), name), Type: typ, Code: code}, Device: rec.AutoID}
+	}
+
+	// Номер оси ("Axis01", "Rel01") или её имя, данное человеком.
+	for num, c := range rec.Axes {
+		if !strings.EqualFold(num, axis) && (c.Name == "" || !strings.EqualFold(c.Name, axis)) {
+			continue
+		}
+		for _, typ := range []uint16{ev.EvAbs, ev.EvRel} {
+			if code, ok := ev.ParseCode(typ, c.Code); ok {
+				return key(typ, code, rec.ControlDisplay(num)), nil
+			}
+		}
+	}
+
+	// Стандартное имя оси — именно на этом устройстве ({Pad.LX}, {Мышь.MouseX}).
+	if k, ok := keys.LookupAxis(axis); ok {
+		return key(ev.EvAbs, k.Code, k.Name), nil
+	}
+	if k, ok := keys.LookupRel(axis); ok {
+		return key(ev.EvRel, k.Code, k.Name), nil
+	}
+	return contracts.DeviceKey{}, dsl.NewError(dsl.Pos{}, dsl.ErrUnknownButton, "device", rec.AutoID, "button", axis)
+}
+
 // DeviceOf возвращает авто-ID подключённого устройства по пути (contracts.Inspector).
 func (m *Module) DeviceOf(path string) string {
 	m.mu.Lock()
@@ -608,9 +647,10 @@ func details(d contracts.InputDevice, links ev.Links) contracts.DeviceDetails {
 		out.Keys = append(out.Keys, control(ev.EvKey, c, name))
 	}
 
-	// Относительные оси (движение мыши, колёса) — имён в макросах у них нет.
+	// Относительные оси (движение мыши, колёса): имена MouseX, MouseWheel… — для привязок.
 	for _, c := range caps.Codes[ev.EvRel] {
-		out.Rel = append(out.Rel, control(ev.EvRel, c, ""))
+		name, _ := keys.RelNameOf(c)
+		out.Rel = append(out.Rel, control(ev.EvRel, c, name))
 	}
 
 	// Абсолютные оси с диапазонами (значение — на момент подключения устройства).

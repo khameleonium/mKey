@@ -135,6 +135,10 @@ paths:
     post:
       summary: "Дать имя устройству или его кнопке (FR-DEV-3): {device, control, name}; control пусто — устройство; name пусто — убрать имя. Ошибка имени — 400 api.rename_chars|key|auto|taken|unknown|ambiguous"
       responses: { "200": { description: "{ok}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/devices/virtual:
+    get:
+      summary: "Виртуальные устройства включённых проектов (ADR-0028): {devices: [{name, template, project, system_name, node?, error?}], templates: [...], template_info: [{id, buttons: [South…], axes: [LX…]}]} — состав шаблонов для мастера «второй геймпад»"
+      responses: { "200": { description: "{devices, templates, template_info}" }, "503": { $ref: "#/components/responses/Error" } }
   /api/v1/settings/devices:
     get:
       summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"
@@ -356,12 +360,32 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
   /api/v1/settings/hotkeys:
     get:
-      summary: "Системные сочетания mKey: {record, emergency} (запись зажатием, например ^{Ctrl}^{Alt}{R})"
+      summary: "Системные сочетания mKey: {record, emergency} (запись зажатием, например ^{LCtrl}^{RAlt}{Space})"
       responses: { "200": { description: Сочетания } }
     put:
       summary: "Изменить сочетания ({record?, emergency?}): проверяются, применяются сразу, сохраняются в config.yaml"
       responses:
         "200": { description: "{record, emergency}" }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/settings/recording:
+    get:
+      summary: "Настройки записи по умолчанию: {kinds, moves, merge_moves_ms, center_pointer, coalesce_ms}"
+      responses:
+        "200": { description: Настройки записи }
+        "503": { $ref: "#/components/responses/Error" }
+    put:
+      summary: "Изменить настройки записи: проверяются (api.record_settings_bad), действуют со следующей записи, сохраняются в config.yaml (modules.recorder)"
+      responses:
+        "200": { description: Новые настройки }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/settings/interface:
+    get:
+      summary: "Язык и тема окна из config.yaml: {language: ru|en|\"\", theme: system|light|dark}"
+      responses: { "200": { description: Язык и тема } }
+    put:
+      summary: "Сохранить язык (language в начале config.yaml) и тему (modules.api.theme); неверные — 400 api.interface_bad"
+      responses:
+        "200": { description: Сохранённые значения }
         "400": { $ref: "#/components/responses/Error" }
   /api/v1/shutdown:
     post:

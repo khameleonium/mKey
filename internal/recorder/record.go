@@ -29,10 +29,6 @@ const cutRecent = 3 * time.Second
 // nameCleanRe — символы, недопустимые в имени записи (имя — это имя файла).
 var nameCleanRe = regexp.MustCompile(`[^\p{L}\p{N} _\-.()]`)
 
-// recordCoalesce — окно склейки перемещений мыши при записи: мышь 1000 Гц даёт 125 строк
-// в секунду вместо 1000, траектория та же, файл короче и удобнее для правки.
-const recordCoalesce = 8 * time.Millisecond
-
 // downKey — клавиша устройства записи: для отслеживания нажатий.
 type downKey struct {
 	dev  int
@@ -46,6 +42,9 @@ type session struct {
 	start time.Time
 	// kinds — какие классы устройств записываются.
 	kinds map[string]bool
+	// moves — записывать движения мыши; merge — окно их склейки (0 — не склеивать).
+	moves bool
+	merge time.Duration
 	// header — сведения для заголовка (устройства дописываются по мере появления).
 	header mkrec.Header
 	// draft и w — черновик действий на диске (без заголовка); path — итоговый файл.
@@ -111,6 +110,11 @@ func (s *session) add(e contracts.InputEvent, devices func() map[string]contract
 		return
 	}
 
+	// Движения мыши не записываются, если так задано в настройках (колесо записывается).
+	if !s.moves && d.Type == ev.EvRel && (d.Code == ev.RelX || d.Code == ev.RelY) {
+		return
+	}
+
 	// Отпускание клавиши, нажатой до начала записи, не записывается.
 	if d.Type == ev.EvKey {
 		k := downKey{id, d.Code}
@@ -150,7 +154,7 @@ func (s *session) closeFrame(id int) {
 			if last.Device != id {
 				continue
 			}
-			if last.IsMove() && f.T-last.T < recordCoalesce {
+			if last.IsMove() && f.T-last.T < s.merge {
 				last.Events = mkrec.AddMoves(last.Events, f.Events)
 				return
 			}
@@ -215,10 +219,15 @@ func (m *Module) StartRecording(opts contracts.RecordOptions) (contracts.Recordi
 		return contracts.RecordingInfo{}, fmt.Errorf("recording: %w", errNoInput)
 	}
 
-	// Имя записи: заданное (проверенное) или по дате и времени.
+	// Настройки записи — снимок на момент начала (их могут поменять во время записи).
+	m.mu.Lock()
+	cfg := m.cfg
+	m.mu.Unlock()
+
+	// Имя записи: заданное (проверенное) или mKeyRec_ДДММГГГГ_ЧЧММСС.
 	name := strings.TrimSpace(opts.Name)
 	if name == "" {
-		name = m.now().Format("2006-01-02_15-04-05")
+		name = defaultName(m.now())
 	}
 	if !validName(name) {
 		return contracts.RecordingInfo{}, fmt.Errorf("%w: %q", errBadName, name)
@@ -226,7 +235,7 @@ func (m *Module) StartRecording(opts contracts.RecordOptions) (contracts.Recordi
 
 	// Калибровка мыши: указатель — в центр экрана, запись движений начинается от известной точки
 	// (FR-REC-5; работает в любом окружении). До блокировки: устройство может готовиться полсекунды.
-	centered := m.centerPointer()
+	centered := cfg.CenterPointer && m.centerPointer()
 
 	// Черновик действий рядом с итоговым файлом.
 	m.mu.Lock()
@@ -246,10 +255,11 @@ func (m *Module) StartRecording(opts contracts.RecordOptions) (contracts.Recordi
 	// Сессия: классы устройств, сочетания для вырезания, время начала.
 	kinds := opts.Kinds
 	if len(kinds) == 0 {
-		kinds = m.cfg.Kinds
+		kinds = cfg.Kinds
 	}
 	s := &session{
 		start: m.now(), draft: draft, w: mkrec.NewWriter(draft), path: path,
+		moves: cfg.Moves, merge: time.Duration(cfg.MergeMovesMS) * time.Millisecond,
 		kinds: map[string]bool{}, ids: map[string]int{}, open: map[int]*mkrec.Frame{},
 		down: map[downKey]bool{}, cuts: map[string]*chord{}, done: make(chan struct{}),
 		header: mkrec.Header{Centered: centered},

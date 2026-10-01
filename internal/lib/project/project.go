@@ -73,7 +73,70 @@ type Project struct {
 	// ADR-0027): mKey дописывает их при сохранении проекта в файл, а при загрузке проекта такое
 	// же устройство получает эти имена.
 	Devices []devmap.Names `yaml:"devices,omitempty" json:"devices,omitempty"`
+	// VirtualDevices — виртуальные устройства проекта (FR-VD-1, -2, решение владельца): существуют,
+	// пока проект включён; в макросах — {pad2.South}, в системе — «mKey pad2».
+	VirtualDevices []VirtualDevice `yaml:"virtual_devices,omitempty" json:"virtual_devices,omitempty"`
+	// Bindings — привязки «физический ввод → виртуальный выход» (FR-VD-3): работают прямо в потоке
+	// ввода, пока проект включён.
+	Bindings []Binding `yaml:"bindings,omitempty" json:"bindings,omitempty"`
 }
+
+// Binding — привязка: нажатие From передаётся на To.
+//   - кнопка → кнопка: from: "{W}", to: "{pad2.DPadUp}" (или клавиша mKey: to: "{Space}");
+//   - кнопка → ось: from: "{A}", to: "{pad2.LX}", value: -1 — пока From нажата, ось в этом
+//     положении; отпустили — ось в покое (или в положении другой нажатой кнопки этой оси).
+type Binding struct {
+	// From — физическая кнопка, как в горячих клавишах: "{W}", "{Геймпад.Старт}", "{UnKey001}".
+	From string `yaml:"from" json:"from"`
+	// To — кнопка или ось виртуального устройства проекта ("{pad2.South}", "{pad2.LX}") или
+	// клавиша mKey ("{Space}").
+	To string `yaml:"to" json:"to"`
+	// Value — положение оси при нажатии From (для To-оси): −1…1, у курков 0…1.
+	Value float64 `yaml:"value,omitempty" json:"value,omitempty"`
+	// Hide — спрятать нажатие From от системы (устройство захватывается), чтобы программы видели
+	// только виртуальное устройство.
+	Hide bool `yaml:"hide,omitempty" json:"hide,omitempty"`
+
+	// Настройки для осей (docs/projects.md, «Привязки осей»). From может быть осью: стик
+	// ("{Геймпад.LX}", "{UnKey.Axis01}", "{LX}" — любого геймпада) или мышью ("{MouseX}",
+	// "{MouseWheel}").
+
+	// Invert — перевернуть ось-источник (влево ↔ вправо, у курка — отпущен ↔ нажат).
+	Invert bool `yaml:"invert,omitempty" json:"invert,omitempty"`
+	// Deadzone — мёртвая зона стика 0…0.9: отклонения меньше неё считаются центром (стик не
+	// «дрожит»), остальное растягивается на весь ход.
+	Deadzone float64 `yaml:"deadzone,omitempty" json:"deadzone,omitempty"`
+	// Sensitivity — чувствительность 0…10 (0 — 1): ось → ось — множитель отклонения; мышь →
+	// стик — насколько быстрое движение мыши даёт полный наклон.
+	Sensitivity float64 `yaml:"sensitivity,omitempty" json:"sensitivity,omitempty"`
+	// Threshold — ось → кнопка: при каком наклоне нажимать кнопку, −1…1 (знак — направление:
+	// −0.5 — наклон влево/вверх наполовину); у мыши знак задаёт направление движения.
+	Threshold float64 `yaml:"threshold,omitempty" json:"threshold,omitempty"`
+	// RampMS — кнопка → ось: за сколько миллисекунд ось плавно доходит до положения Value
+	// (0 — сразу), 0…5000.
+	RampMS int `yaml:"ramp_ms,omitempty" json:"ramp_ms,omitempty"`
+}
+
+// VirtualDevice — виртуальное устройство проекта.
+type VirtualDevice struct {
+	// Name — имя в макросах ({pad2.South}): буквы, цифры и «_», начинается с буквы.
+	Name string `yaml:"name" json:"name"`
+	// Template — шаблон: xbox360, ds4, joystick, touchscreen, keyboard, mouse или custom.
+	Template string `yaml:"template" json:"template"`
+	// Buttons и Axes — набор кнопок и осей для шаблона custom: кнопки — именами mKey ("South")
+	// или ядра ("BTN_TRIGGER"), оси — именами ("LX", "ABS_THROTTLE") с диапазонами.
+	Buttons []string             `yaml:"buttons,omitempty" json:"buttons,omitempty"`
+	Axes    map[string]AxisRange `yaml:"axes,omitempty" json:"axes,omitempty"`
+}
+
+// AxisRange — диапазон оси виртуального устройства.
+type AxisRange struct {
+	Min int32 `yaml:"min" json:"min"`
+	Max int32 `yaml:"max" json:"max"`
+}
+
+// vdevNameRe — имя виртуального устройства: буква, затем буквы, цифры и «_» (как имена в макросах).
+var vdevNameRe = regexp.MustCompile(`^\p{L}[\p{L}\p{N}_]*$`)
 
 // Remap — переназначение клавиши: нажатие From система видит как To.
 type Remap struct {
@@ -297,6 +360,28 @@ func Check(p Project) error {
 	for i, n := range p.Devices {
 		if err := n.Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("devices #%d: %w", i+1, err))
+		}
+	}
+
+	// Виртуальные устройства: имя по правилам и без повторов, шаблон указан (сам шаблон и набор
+	// кнопок проверяет модуль виртуальных устройств).
+	vnames := map[string]bool{}
+	for i, v := range p.VirtualDevices {
+		switch {
+		case !vdevNameRe.MatchString(v.Name):
+			errs = append(errs, fmt.Errorf("virtual_devices #%d: invalid name %q (letters, digits and _, starting with a letter)", i+1, v.Name))
+		case vnames[strings.ToLower(v.Name)]:
+			errs = append(errs, fmt.Errorf("virtual_devices #%d: duplicate name %q", i+1, v.Name))
+		case v.Template == "":
+			errs = append(errs, fmt.Errorf("virtual_devices #%d: missing template", i+1))
+		}
+		vnames[strings.ToLower(v.Name)] = true
+	}
+
+	// Привязки: обе стороны указаны.
+	for i, b := range p.Bindings {
+		if strings.TrimSpace(b.From) == "" || strings.TrimSpace(b.To) == "" {
+			errs = append(errs, fmt.Errorf("bindings #%d: both from and to are required", i+1))
 		}
 	}
 

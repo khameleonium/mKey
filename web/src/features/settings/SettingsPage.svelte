@@ -1,10 +1,12 @@
 <!--
   SettingsPage — настройки (FR-UI-1.8): язык, тема оформления, системные сочетания mKey
-  (запись, экстренная остановка) и удаление программы (с сохранением настроек или полностью, FR-INST-5).
-  Props: нет.
+  (запись, экстренная остановка), настройки записи по умолчанию и удаление программы
+  (с сохранением настроек или полностью, FR-INST-5). Всё, кроме удаления, хранится в config.yaml —
+  его можно править и в текстовом редакторе. Props: нет.
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
+  import { comboText } from "../../lib/combo";
   import KeyCapture from "../../lib/components/KeyCapture.svelte";
   import Modal from "../../lib/components/Modal.svelte";
   import PlacesList from "../../lib/components/PlacesList.svelte";
@@ -12,6 +14,56 @@
   import { LANGS, type Lang } from "../../lib/i18n/translate";
   import { setTheme, theme, type Theme } from "../../lib/theme.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
+  import type { RecordSettings } from "../../lib/types";
+
+  /** KINDS — устройства, которые можно записывать (порядок — как в списке). */
+  const KINDS = [
+    "keyboard",
+    "mouse",
+    "touchpad",
+    "touchscreen",
+    "tablet",
+    "gamepad",
+    "joystick",
+    "other",
+  ];
+
+  /** saveInterface запоминает язык и тему в config.yaml (их же видят команды и меню значка). */
+  function saveInterface(): void {
+    api
+      .setInterfaceSettings({ language: lang(), theme: theme() })
+      .catch((e: unknown) => toast(errorText(e), "error"));
+  }
+
+  /** Настройки записи: rec — загруженные (null — ещё нет или запись недоступна); recError — ошибка. */
+  let rec = $state<RecordSettings | null>(null);
+  let recError = $state("");
+
+  // Загружаем настройки записи при открытии.
+  $effect(() => {
+    api
+      .recordSettings()
+      .then((s) => (rec = s))
+      .catch((e: unknown) => (recError = errorText(e)));
+  });
+
+  /** toggleKind включает или выключает запись устройств вида kind. */
+  function toggleKind(kind: string, on: boolean): void {
+    if (!rec) return;
+    rec.kinds = on ? [...rec.kinds, kind] : rec.kinds.filter((k) => k !== kind);
+  }
+
+  /** saveRecord проверяет и сохраняет настройки записи (действуют со следующей записи). */
+  async function saveRecord(): Promise<void> {
+    if (!rec) return;
+    recError = "";
+    try {
+      rec = await api.setRecordSettings(rec);
+      toast(t("settings.rec_saved"));
+    } catch (e) {
+      recError = errorText(e);
+    }
+  }
 
   /** Системные сочетания: record — запись (пусто — выключено), emergency — экстренная остановка. */
   let record = $state("");
@@ -63,17 +115,32 @@
 </script>
 
 <h1>{t("settings.title")}</h1>
+<p class="muted">{t("settings.file_hint")}</p>
 
 <div class="card grid">
   <!-- Язык интерфейса -->
   <label for="lang">{t("settings.language")}</label>
-  <select id="lang" value={lang()} onchange={(e) => setLang(e.currentTarget.value as Lang)}>
+  <select
+    id="lang"
+    value={lang()}
+    onchange={(e) => {
+      setLang(e.currentTarget.value as Lang);
+      saveInterface();
+    }}
+  >
     {#each LANGS as l (l)}<option value={l}>{t("settings.lang." + l)}</option>{/each}
   </select>
 
   <!-- Тема оформления -->
   <label for="theme">{t("settings.theme")}</label>
-  <select id="theme" value={theme()} onchange={(e) => setTheme(e.currentTarget.value as Theme)}>
+  <select
+    id="theme"
+    value={theme()}
+    onchange={(e) => {
+      setTheme(e.currentTarget.value as Theme);
+      saveInterface();
+    }}
+  >
     <option value="system">{t("settings.theme.system")}</option>
     <option value="light">{t("settings.theme.light")}</option>
     <option value="dark">{t("settings.theme.dark")}</option>
@@ -89,6 +156,7 @@
     <span class="row">
       <KeyCapture value={record} combo onchange={(v) => (record = v)} />
       {#if record}
+        <span class="muted">{comboText(record, t)}</span>
         <button class="small ghost" onclick={() => (record = "")}>{t("settings.hotkey_off")}</button
         >
       {:else}
@@ -100,6 +168,58 @@
   </div>
   {#if hkError}<div class="note error">{hkError}</div>{/if}
   <button class="primary" onclick={saveHotkeys}>{t("common.save")}</button>
+</div>
+
+<!-- Запись действий: с какими настройками запись начинается без вопросов -->
+<div class="card hotkeys">
+  <h2>{t("settings.rec")}</h2>
+  <p class="muted">{t("settings.rec_hint")}</p>
+  {#if rec}
+    <div class="grid">
+      <span>{t("settings.rec_kinds")}</span>
+      <span class="kinds">
+        {#each KINDS as k (k)}
+          <label class="check"
+            ><input
+              type="checkbox"
+              checked={rec.kinds.includes(k)}
+              onchange={(e) => toggleKind(k, e.currentTarget.checked)}
+            />
+            {t("devices.kind." + k)}</label
+          >
+        {/each}
+      </span>
+      <span>{t("settings.rec_moves")}</span>
+      <label class="check"
+        ><input type="checkbox" bind:checked={rec.moves} />
+        <span class="muted">{t("settings.rec_moves_hint")}</span></label
+      >
+      <span>{t("settings.rec_merge")}</span>
+      <label class="check"
+        ><input
+          type="number"
+          min="0"
+          max="1000"
+          step="1"
+          disabled={!rec.moves}
+          bind:value={rec.merge_moves_ms}
+        />
+        <span class="muted">{t("settings.rec_merge_hint")}</span></label
+      >
+      <span>{t("settings.rec_center")}</span>
+      <label class="check"
+        ><input type="checkbox" bind:checked={rec.center_pointer} />
+        <span class="muted">{t("settings.rec_center_hint")}</span></label
+      >
+      <span>{t("settings.rec_coalesce")}</span>
+      <label class="check"
+        ><input type="number" min="0" max="1000" step="1" bind:value={rec.coalesce_ms} />
+        <span class="muted">{t("settings.rec_coalesce_hint")}</span></label
+      >
+    </div>
+  {/if}
+  {#if recError}<div class="note error">{recError}</div>{/if}
+  {#if rec}<button class="primary" onclick={saveRecord}>{t("common.save")}</button>{/if}
 </div>
 
 <!-- Где что лежит: папки и файлы mKey -->
@@ -180,6 +300,19 @@
   .hotkeys .grid {
     margin: 0;
     grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+  }
+  .check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .check input[type="number"] {
+    width: 6em;
   }
   .danger-zone {
     border-left: 6px solid var(--danger);

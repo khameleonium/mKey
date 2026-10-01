@@ -42,7 +42,10 @@ func describeProblem(tr contracts.Translator, p project.Project, err error) (str
 		}
 		if details == nil {
 			details = &problemDetails{Event: pr.Event, Part: pr.Part, Index: pr.Index}
-			where = append(where, eventTitle(tr, p, pr.Event))
+			// Привязки и виртуальные устройства — не в событиях: место без названия события.
+			if pr.Event != "" {
+				where = append(where, eventTitle(tr, p, pr.Event))
+			}
 		}
 		if pr.Part != "" && pr.Index >= 0 {
 			where = append(where, tr.T("project.problem."+pr.Part,
