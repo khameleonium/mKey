@@ -15,6 +15,7 @@
   import DiagnosticsPage from "./features/diagnostics/DiagnosticsPage.svelte";
   import EditorPage from "./features/editor/EditorPage.svelte";
   import HomePage from "./features/home/HomePage.svelte";
+  import PluginsPage from "./features/plugins/PluginsPage.svelte";
   import ProjectsPage from "./features/projects/ProjectsPage.svelte";
   import RecorderPage from "./features/recorder/RecorderPage.svelte";
   import SettingsPage from "./features/settings/SettingsPage.svelte";
@@ -26,6 +27,7 @@
     { name: "projects", icon: "▦" },
     { name: "recordings", icon: "⏺" },
     { name: "devices", icon: "⌨" },
+    { name: "plugins", icon: "⧉" },
     { name: "diagnostics", icon: "✚" },
     { name: "settings", icon: "⚙" },
   ];
@@ -114,6 +116,8 @@
       <RecorderPage />
     {:else if route().name === "devices"}
       <DevicesPage />
+    {:else if route().name === "plugins"}
+      <PluginsPage />
     {:else if route().name === "diagnostics"}
       <DiagnosticsPage />
     {:else if route().name === "settings"}

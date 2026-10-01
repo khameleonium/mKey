@@ -45,12 +45,24 @@ type EventFinished struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Template — шаблон проекта (название и описание — i18n-ключи template.<id>.name и .description).
+// Template — шаблон проекта (название и описание — i18n-ключи template.<id>.name и .description,
+// у шаблонов из плагинов — Names и Descriptions на языках).
 type Template struct {
 	// ID — идентификатор шаблона.
 	ID string `json:"id"`
 	// Content — содержимое файла проекта.
 	Content string `json:"content"`
+	// Names и Descriptions — название и описание на языках ("ru" → текст), если у шаблона нет
+	// ключей перевода mKey.
+	Names        map[string]string `json:"names,omitempty"`
+	Descriptions map[string]string `json:"descriptions,omitempty"`
+}
+
+// ProjectTemplate — шаблон проекта в точке расширения PointProjectTemplate (плагины-данные).
+type ProjectTemplate interface {
+	Extension
+	// Template возвращает шаблон.
+	Template() Template
 }
 
 // ProjectState — загруженный проект и сведения о файле.

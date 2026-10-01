@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -80,3 +81,15 @@ func (e *Extensions) List(point contracts.ExtensionPoint) []contracts.Extension 
 
 // Проверка на этапе компиляции, что Extensions реализует контракт.
 var _ contracts.ExtensionRegistry = (*Extensions)(nil)
+
+// Unregister убирает расширение id из точки point; false — такого не было.
+func (e *Extensions) Unregister(point contracts.ExtensionPoint, id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, ok := e.points[point][id]; !ok {
+		return false
+	}
+	delete(e.points[point], id)
+	e.order[point] = slices.DeleteFunc(e.order[point], func(x string) bool { return x == id })
+	return true
+}

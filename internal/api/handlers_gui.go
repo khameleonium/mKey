@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -381,7 +382,12 @@ func (m *Module) handleTemplates(w http.ResponseWriter, r *http.Request) {
 	}
 	var out []tpl
 	for _, t := range m.svc.projects.Templates() {
-		out = append(out, tpl{ID: t.ID, Name: tr.T("template." + t.ID + ".name"), Description: tr.T("template." + t.ID + ".description"), Content: t.Content})
+		// Встроенный — по ключам перевода; из плагина — по текстам на языках.
+		name, desc := tr.T("template."+t.ID+".name"), tr.T("template."+t.ID+".description")
+		if len(t.Names) > 0 {
+			name, desc = cmp.Or(pickLang(t.Names, tr.Lang()), t.ID), pickLang(t.Descriptions, tr.Lang())
+		}
+		out = append(out, tpl{ID: t.ID, Name: name, Description: desc, Content: t.Content})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"templates": out})
 }

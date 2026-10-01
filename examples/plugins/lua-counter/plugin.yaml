@@ -1,0 +1,12 @@
+# Пример Lua-плагина mKey (docs/plugins.md): работает внутри mKey, без отдельной программы.
+id: io.mkey.example.counter
+name: { ru: "Пример: счётчик", en: "Example: counter" }
+description: { ru: "Действие «Прибавить к счётчику» и условие «Счётчик дошёл до…»", en: "Add to counter, counter reached" }
+version: 1.0.0
+plugin_api: 1
+kind: lua
+entry: main.lua
+permissions: [notify]
+provides:
+  actions: [counter_add, counter_reset]
+  conditions: [counter_reached]

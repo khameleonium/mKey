@@ -1,0 +1,13 @@
+# Пример плагина mKey на Go (docs/plugins.md). Перед установкой соберите: go build -o go-hello-action .
+id: io.mkey.example.hello
+name: { ru: "Пример: привет", en: "Example: hello" }
+description: { ru: "Действие «Поздороваться», условие «Будний день», триггер «Каждые N секунд»", en: "Say hello, weekday, every N seconds" }
+version: 1.0.0
+plugin_api: 1
+kind: process
+entry: ./go-hello-action
+permissions: [output.send]
+provides:
+  actions: [hello]
+  conditions: [weekday]
+  triggers: [every_seconds]

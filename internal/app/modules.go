@@ -9,6 +9,7 @@ import (
 	"mkey/internal/inspector"
 	"mkey/internal/output"
 	"mkey/internal/platform"
+	"mkey/internal/pluginhost"
 	"mkey/internal/recorder"
 	"mkey/internal/registry"
 	"mkey/internal/script/lua"
@@ -53,6 +54,8 @@ func Modules() []registry.Entry {
 		{Module: recorder.New(), Core: false},
 		// Диагностика и настройка.
 		{Module: setup.New(), Core: false},
+		// Плагины: добавляют виды действий, условий и триггеров (после модулей со встроенными видами).
+		{Module: pluginhost.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой
 		// (до API: API получает сервисы модулей при запуске).
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.

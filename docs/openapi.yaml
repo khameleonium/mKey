@@ -387,6 +387,29 @@ paths:
       responses:
         "200": { description: Сохранённые значения }
         "400": { $ref: "#/components/responses/Error" }
+  /api/v1/plugins:
+    get:
+      summary: "Плагины (ADR-0029): {plugins: [{id, version, kind, name, description, dir, system, permissions, active, state, error, actions, conditions, triggers, templates}], dir}"
+      responses: { "200": { description: "{plugins, dir}" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/plugins/install:
+    post:
+      summary: "Установить плагин (выключенным): JSON {path} — папка или .zip на этом компьютере, либо тело application/zip — загруженный архив"
+      responses:
+        "200": { description: Сведения о плагине }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/plugins/{id}/{action}:
+    post:
+      summary: "enable | disable — включить или выключить; список включённых сохраняется в config.yaml (modules.plugins.active)"
+      responses: { "200": { description: "{ok}" }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/plugins/{id}:
+    delete:
+      summary: "Удалить плагин пользователя (системный — 400 api.plugin_system)"
+      responses: { "200": { description: "{ok}" }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/plugins/{id}/log:
+    get:
+      summary: "Журнал плагина (stderr): ?lines=N (200) → {lines}"
+      responses: { "200": { description: "{lines}" } }
   /api/v1/shutdown:
     post:
       summary: Корректно завершить демон

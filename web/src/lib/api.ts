@@ -8,6 +8,7 @@ import type {
   CapturedKey,
   DeviceDetails,
   PlaceInfo,
+  PluginInfo,
   RecordingInfo,
   RecordSettings,
   VirtualDeviceInfo,
@@ -79,6 +80,27 @@ async function request<T>(
   return data as T;
 }
 
+/** upload отправляет файл (архив .zip) телом запроса и возвращает разобранный JSON. */
+async function upload<T>(path: string, file: Blob): Promise<T> {
+  let resp: Response;
+  try {
+    resp = await fetch("/api/v1" + path, {
+      method: "POST",
+      headers: { "Accept-Language": lang(), "Content-Type": "application/zip" },
+      body: file,
+      credentials: "same-origin",
+    });
+  } catch {
+    throw new ApiError(0, { code: "net", message: "mKey is not running" });
+  }
+  const data: unknown = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const err = (data as { error?: ApiErrorBody }).error;
+    throw new ApiError(resp.status, err ?? { code: "http", message: resp.statusText });
+  }
+  return data as T;
+}
+
 /** api — методы API, которыми пользуется интерфейс. */
 export const api = {
   status: () => request<Status>("GET", "/status"),
@@ -107,6 +129,16 @@ export const api = {
   registry: () => request<Registry>("GET", "/registry"),
   places: () => request<{ places: PlaceInfo[] }>("GET", "/places"),
   logs: (lines: number) => request<{ lines: string[] }>("GET", `/logs?lines=${lines}`),
+
+  // Плагины.
+  plugins: () => request<{ plugins: PluginInfo[]; dir: string }>("GET", "/plugins"),
+  installPlugin: (path: string) => request<PluginInfo>("POST", "/plugins/install", { path }),
+  uploadPlugin: (file: Blob) => upload<PluginInfo>("/plugins/install", file),
+  setPluginActive: (id: string, on: boolean) =>
+    request<{ ok: boolean }>("POST", `/plugins/${enc(id)}/${on ? "enable" : "disable"}`, {}),
+  removePlugin: (id: string) => request<{ ok: boolean }>("DELETE", `/plugins/${enc(id)}`),
+  pluginLog: (id: string) =>
+    request<{ lines: string[] }>("GET", `/plugins/${enc(id)}/log?lines=300`),
 
   // Проекты.
   projects: () => request<{ dir: string; projects: ProjectInfo[] }>("GET", "/projects"),

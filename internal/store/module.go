@@ -39,10 +39,11 @@ type Config struct {
 
 // Module — хранилище проектов, реализует contracts.Projects.
 type Module struct {
-	// log — логгер; bus — шина; cfg — настройки.
+	// log — логгер; bus — шина; cfg — настройки; ext — реестр (шаблоны проектов из плагинов).
 	log *slog.Logger
 	bus contracts.Bus
 	cfg Config
+	ext contracts.ExtensionRegistry
 
 	// ctx живёт до Stop; wg ждёт фоновые горутины; watcher следит за каталогом.
 	ctx     context.Context
@@ -80,6 +81,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 
 	// Папка проектов — в списке «Где что лежит».
+	m.ext = host.Extensions()
 	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
 		M: contracts.ExtensionMeta{ID: contracts.PlaceProjects, NameKey: "place.projects", DescriptionKey: "place.projects.description", Provider: ModuleID},
 		P: m.cfg.Dir, Dir: true, N: 20,
@@ -300,8 +302,19 @@ func (m *Module) Delete(id string) error {
 	return nil
 }
 
-// Templates возвращает встроенные шаблоны проектов.
-func (m *Module) Templates() []contracts.Template { return slices.Clone(templates) }
+// Templates возвращает шаблоны проектов: встроенные, затем из плагинов (PointProjectTemplate).
+func (m *Module) Templates() []contracts.Template {
+	out := slices.Clone(templates)
+	if m.ext == nil {
+		return out
+	}
+	for _, e := range m.ext.List(contracts.PointProjectTemplate) {
+		if t, ok := e.(contracts.ProjectTemplate); ok {
+			out = append(out, t.Template())
+		}
+	}
+	return out
+}
 
 // validID сообщает, что ID проекта безопасен как имя файла (без путей и служебных символов).
 func validID(id string) bool {

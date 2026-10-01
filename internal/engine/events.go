@@ -54,7 +54,7 @@ type eventRuntime struct {
 	cancels  map[*run]context.CancelFunc
 }
 
-// reloadAll перестраивает все проекты (при старте).
+// reloadAll перестраивает все проекты (при старте и при смене набора видов).
 func (m *Module) reloadAll() {
 	if m.projects == nil {
 		return

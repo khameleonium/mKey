@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"testing"
 
 	"mkey/internal/bus"
@@ -260,5 +261,33 @@ func TestExtensions(t *testing.T) {
 	}
 	if err := e.Register(contracts.PointAction, testExt{""}); err == nil {
 		t.Fatal("empty id must be rejected")
+	}
+}
+
+// TestUnregister проверяет удаление расширения: пропадает из Get и List, порядок остальных сохраняется.
+func TestUnregister(t *testing.T) {
+	t.Parallel()
+	e := NewExtensions()
+	for _, id := range []string{"a", "b", "c"} {
+		if err := e.Register(contracts.PointAction, testExt{id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !e.Unregister(contracts.PointAction, "b") || e.Unregister(contracts.PointAction, "b") {
+		t.Fatal("unregister result")
+	}
+	if _, ok := e.Get(contracts.PointAction, "b"); ok {
+		t.Fatal("b still registered")
+	}
+	var ids []string
+	for _, x := range e.List(contracts.PointAction) {
+		ids = append(ids, x.Meta().ID)
+	}
+	if strings.Join(ids, ",") != "a,c" {
+		t.Fatalf("list = %v", ids)
+	}
+	// Можно зарегистрировать снова (плагин перезапущен).
+	if err := e.Register(contracts.PointAction, testExt{"b"}); err != nil {
+		t.Fatal(err)
 	}
 }

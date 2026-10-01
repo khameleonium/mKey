@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +33,8 @@ type Config struct {
 // Module — модуль скриптов Lua.
 type Module struct {
 	cfg Config
+	// log — журнал (строки mkey.log Lua-плагинов при загрузке).
+	log *slog.Logger
 	// Необязательные сервисы для функций mkey.is_down, mkey.notify, mkey.run.
 	keyState contracts.KeyState
 	notifier contracts.Notifier
@@ -45,6 +49,7 @@ func (m *Module) ID() string { return ModuleID }
 
 // Init читает настройки, получает сервисы и регистрирует действие lua.
 func (m *Module) Init(_ context.Context, host contracts.Host) error {
+	m.log = host.Logger()
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
@@ -60,6 +65,10 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		M: contracts.ExtensionMeta{ID: contracts.PlaceLuaScripts, NameKey: "place.lua_scripts", DescriptionKey: "place.lua_scripts.description", Provider: ModuleID},
 		P: m.cfg.ScriptsDir, Dir: true, N: 40,
 	}); err != nil {
+		return err
+	}
+	// Загрузчик Lua-плагинов — модулю plugins (ADR-0029).
+	if err := contracts.ProvideService[contracts.LuaPluginLoader](host.Services(), m); err != nil {
 		return err
 	}
 	return host.Extensions().Register(contracts.PointAction, luaAction{m})
@@ -161,33 +170,53 @@ type luaAPI struct {
 	rc     contracts.RunContext
 	ctx    context.Context
 	onStop []*glua.LFunction
+	// perms — разрешения Lua-плагина (nil — скрипт самого пользователя: можно всё).
+	perms []string
+}
+
+// guard оборачивает функцию mkey.*, которой нужно разрешение perm (только для Lua-плагинов).
+func (api *luaAPI) guard(perm string, fn glua.LGFunction) glua.LGFunction {
+	if api.perms == nil || perm == "" {
+		return fn
+	}
+	return func(ls *glua.LState) int {
+		if !slices.Contains(api.perms, perm) {
+			ls.RaiseError("permission %q is not declared in plugin.yaml", perm)
+		}
+		return fn(ls)
+	}
 }
 
 // table собирает таблицу mkey (docs/lua-api.md).
 func (api *luaAPI) table(ls *glua.LState) *glua.LTable {
 	t := ls.NewTable()
-	ls.SetFuncs(t, map[string]glua.LGFunction{
-		"send":     api.send,
-		"tap":      api.keyFn(""),
-		"down":     api.keyFn("^"),
-		"up":       api.keyFn("~"),
-		"hold":     api.hold,
-		"sleep":    api.sleep,
-		"type":     api.typeText,
-		"move_rel": api.moveRel,
-		"move":     api.unsupported("absolute_move"),
-		"click":    api.click,
-		"is_down":  api.isDown,
-		"window":   api.nilResult,
-		"cursor":   api.nilResult,
-		"pixel":    api.unsupported("pixel"),
-		"notify":   api.notify,
-		"run":      api.run,
-		"log":      api.log,
-		"toggled":  func(ls *glua.LState) int { ls.Push(glua.LBool(api.rc.Toggled())); return 1 },
-		"held":     func(ls *glua.LState) int { ls.Push(glua.LBool(api.rc.Held())); return 1 },
-		"on_stop":  api.onStopFn,
-	})
+	for name, f := range map[string]struct {
+		perm string
+		fn   glua.LGFunction
+	}{
+		"send":     {"output.send", api.send},
+		"tap":      {"output.send", api.keyFn("")},
+		"down":     {"output.send", api.keyFn("^")},
+		"up":       {"output.send", api.keyFn("~")},
+		"hold":     {"output.send", api.hold},
+		"sleep":    {"", api.sleep},
+		"type":     {"output.send", api.typeText},
+		"move_rel": {"output.send", api.moveRel},
+		"move":     {"", api.unsupported("absolute_move")},
+		"click":    {"output.send", api.click},
+		"is_down":  {"input.read", api.isDown},
+		"window":   {"", api.nilResult},
+		"cursor":   {"", api.nilResult},
+		"pixel":    {"", api.unsupported("pixel")},
+		"notify":   {"notify", api.notify},
+		"run":      {"output.send", api.run},
+		"log":      {"", api.log},
+		"toggled":  {"", func(ls *glua.LState) int { ls.Push(glua.LBool(api.rc.Toggled())); return 1 }},
+		"held":     {"", func(ls *glua.LState) int { ls.Push(glua.LBool(api.rc.Held())); return 1 }},
+		"on_stop":  {"", api.onStopFn},
+	} {
+		t.RawSetString(name, ls.NewFunction(api.guard(f.perm, f.fn)))
+	}
 
 	// Сведения о событии.
 	ev := ls.NewTable()
@@ -200,7 +229,7 @@ func (api *luaAPI) table(ls *glua.LState) *glua.LTable {
 	// Переменные проекта: mkey.var.x читает, mkey.var.x = 1 записывает.
 	vars := ls.NewTable()
 	meta := ls.NewTable()
-	ls.SetFuncs(meta, map[string]glua.LGFunction{"__index": api.varGet, "__newindex": api.varSet})
+	ls.SetFuncs(meta, map[string]glua.LGFunction{"__index": api.guard("vars.read", api.varGet), "__newindex": api.guard("vars.write", api.varSet)})
 	ls.SetMetatable(vars, meta)
 	t.RawSetString("var", vars)
 	return t

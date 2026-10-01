@@ -33,8 +33,13 @@ func (m *Module) handleRegistry(w http.ResponseWriter, r *http.Request) {
 			entry := registryEntry{ExtensionMeta: meta, Name: meta.ID}
 			if s, ok := lookupText(tr, meta.NameKey); ok {
 				entry.Name = s
+			} else if s := pickLang(meta.Names, tr.Lang()); s != "" {
+				entry.Name = s
 			}
 			entry.Description, _ = lookupText(tr, meta.DescriptionKey)
+			if entry.Description == "" {
+				entry.Description = pickLang(meta.Descriptions, tr.Lang())
+			}
 			if meta.Category != "" {
 				entry.CategoryName, _ = lookupText(tr, "category."+meta.Category)
 			}
@@ -45,6 +50,19 @@ func (m *Module) handleRegistry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// pickLang выбирает текст на языке lang, иначе английский, иначе любой (тексты плагинов).
+func pickLang(texts map[string]string, lang string) string {
+	for _, l := range []string{lang, "en", "ru"} {
+		if s := texts[l]; s != "" {
+			return s
+		}
+	}
+	for _, s := range texts {
+		return s
+	}
+	return ""
 }
 
 // lookupText возвращает перевод ключа; false — перевода нет (или ключ пуст).

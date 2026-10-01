@@ -386,9 +386,10 @@ func TestEmergencyTopic(t *testing.T) {
 	projCh, a := r.bus.Subscribe(contracts.TopicProjectsChanged)
 	emerCh, b := r.bus.Subscribe(contracts.TopicEmergency)
 	resCh, c := r.bus.Subscribe(contracts.TopicResumed)
-	r.m.unsub = []func(){a, b, c}
+	extCh, d := r.bus.Subscribe(contracts.TopicExtensionsChanged)
+	r.m.unsub = []func(){a, b, c, d}
 	r.m.wg.Add(1)
-	go r.m.listen(projCh, emerCh, resCh)
+	go r.m.listen(projCh, emerCh, resCh, extCh)
 
 	r.load(t, "p", `events: [ { id: hold, trigger: { type: test }, actions: [ { send: "^{Mouse0}[3600s]" } ] } ]`)
 	r.trig.fire(t, "hold", contracts.Fire{})

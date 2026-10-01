@@ -46,6 +46,8 @@ const (
 	PointRouteProvider ExtensionPoint = "route_provider"
 	// PointPlace — папки и файлы пользователя («Где что лежит»: проекты, записи, настройки…).
 	PointPlace ExtensionPoint = "place"
+	// PointProjectTemplate — дополнительные шаблоны проектов (плагины-данные, ADR-0029).
+	PointProjectTemplate ExtensionPoint = "project_template"
 )
 
 // AllExtensionPoints возвращает список всех известных точек расширения в стабильном порядке.
@@ -54,7 +56,7 @@ func AllExtensionPoints() []ExtensionPoint {
 		PointTrigger, PointCondition, PointAction, PointDSLCommand,
 		PointDesktopAdapter, PointDeviceTemplate, PointDeviceProfile,
 		PointInitSystem, PointElevator, PointDeviceAccess, PointPackageManager,
-		PointLuaExtension, PointRouteProvider, PointPlace,
+		PointLuaExtension, PointRouteProvider, PointPlace, PointProjectTemplate,
 	}
 }
 
@@ -77,7 +79,15 @@ type ExtensionMeta struct {
 	RequiredCaps []string `json:"required_caps,omitempty"`
 	// Provider — ID модуля или плагина, который зарегистрировал тип.
 	Provider string `json:"provider"`
+	// Names и Descriptions — название и описание на языках ("ru" → текст) для видов, у которых
+	// нет ключей перевода mKey (виды плагинов, ADR-0029); используются, если NameKey пуст.
+	Names        map[string]string `json:"names,omitempty"`
+	Descriptions map[string]string `json:"descriptions,omitempty"`
 }
+
+// TopicExtensionsChanged — набор зарегистрированных видов изменился (плагин включён, выключен
+// или перезапущен); движок перепроверяет проекты, окно перечитывает палитру. Payload: nil.
+const TopicExtensionsChanged = "registry.extensions_changed"
 
 // Extension — зарегистрированная реализация в точке расширения.
 type Extension interface {
@@ -94,4 +104,7 @@ type ExtensionRegistry interface {
 	// List возвращает все расширения точки point в порядке регистрации (так их задумал автор
 	// модуля: например, палитра конструктора показывает «Нажать», затем «Зажать», «Отпустить»).
 	List(point ExtensionPoint) []Extension
+	// Unregister убирает расширение id из точки point (плагин выключен или упал, ADR-0029);
+	// false — такого не было.
+	Unregister(point ExtensionPoint, id string) bool
 }

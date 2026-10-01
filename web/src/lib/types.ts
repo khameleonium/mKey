@@ -323,3 +323,25 @@ export interface InterfaceSettings {
   /** theme — "system", "light", "dark" или "" (как в системе). */
   theme: string;
 }
+
+/** PluginInfo — плагин (GET /plugins, ADR-0029). */
+export interface PluginInfo {
+  id: string;
+  version?: string;
+  /** kind — process, lua или data. */
+  kind: string;
+  /** name и description — на языках ("ru" → текст). */
+  name?: Record<string, string>;
+  description?: Record<string, string>;
+  dir: string;
+  system?: boolean;
+  permissions?: string[];
+  active: boolean;
+  /** state — off, starting, running, restarting, failed, broken. */
+  state: string;
+  error?: string;
+  actions?: string[];
+  conditions?: string[];
+  triggers?: string[];
+  templates?: string[];
+}

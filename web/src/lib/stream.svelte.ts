@@ -45,6 +45,7 @@ const TOPICS = [
   "recorder.started",
   "recorder.stopped",
   "inspector.auto_ids_changed",
+  "registry.extensions_changed",
 ];
 
 /** connect открывает поток и переподключается при обрыве (демон перезапущен). */

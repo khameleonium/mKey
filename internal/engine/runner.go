@@ -153,9 +153,10 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	projCh, u1 := m.bus.Subscribe(contracts.TopicProjectsChanged)
 	emerCh, u2 := m.bus.Subscribe(contracts.TopicEmergency)
 	resCh, u3 := m.bus.Subscribe(contracts.TopicResumed)
-	m.unsub = []func(){u1, u2, u3}
+	extCh, u4 := m.bus.Subscribe(contracts.TopicExtensionsChanged)
+	m.unsub = []func(){u1, u2, u3, u4}
 	m.wg.Add(1)
-	go m.listen(projCh, emerCh, resCh)
+	go m.listen(projCh, emerCh, resCh, extCh)
 
 	// Сервисы.
 	if err := contracts.ProvideService[contracts.SequenceRunner](host.Services(), m); err != nil {
@@ -191,9 +192,9 @@ func (m *Module) Stop(context.Context) error {
 	return nil
 }
 
-// listen обрабатывает события шины: перезагрузка изменённых проектов, экстренная остановка
-// и возобновление работы.
-func (m *Module) listen(projects, emergency, resumed <-chan contracts.Event) {
+// listen обрабатывает события шины: перезагрузка изменённых проектов, экстренная остановка,
+// возобновление работы и смена набора видов (плагины).
+func (m *Module) listen(projects, emergency, resumed, extensions <-chan contracts.Event) {
 	defer m.wg.Done()
 	for {
 		select {
@@ -222,6 +223,13 @@ func (m *Module) listen(projects, emergency, resumed <-chan contracts.Event) {
 			}
 			m.log.Info("triggers resumed")
 			m.suspended.Store(false)
+		case _, ok := <-extensions:
+			if !ok {
+				return
+			}
+			// Появились или пропали виды плагинов: проекты, которые не взводились из-за
+			// неизвестного вида, пробуем снова (взведённые и неизменные не трогаются).
+			m.reloadAll()
 		}
 	}
 }

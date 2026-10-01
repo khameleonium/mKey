@@ -1,0 +1,12 @@
+# Пример плагина mKey на Python без SDK (docs/plugins.md): протокол JSON-RPC 2.0 написан вручную.
+id: io.mkey.example.webhook
+name: { ru: "Пример: вебхук", en: "Example: webhook" }
+description: { ru: "Действие «HTTP-запрос» и триггер «Вебхук» (событие по запросу на адрес)", en: "HTTP request action and webhook trigger" }
+version: 1.0.0
+plugin_api: 1
+kind: process
+entry: ./main.py
+permissions: [net]
+provides:
+  actions: [http_request]
+  triggers: [http_webhook]

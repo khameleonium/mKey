@@ -50,4 +50,6 @@ const (
 	PlaceShellScripts = "shell_scripts"
 	// PlaceLog — журнал работы.
 	PlaceLog = "log"
+	// PlacePlugins — папка плагинов пользователя.
+	PlacePlugins = "plugins"
 )
