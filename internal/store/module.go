@@ -78,6 +78,14 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if m.cfg.Dir == "" {
 		m.cfg.Dir = filepath.Join(paths.Config(os.Getenv), "projects")
 	}
+
+	// Папка проектов — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceProjects, NameKey: "place.projects", DescriptionKey: "place.projects.description", Provider: ModuleID},
+		P: m.cfg.Dir, Dir: true, N: 20,
+	}); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.Projects](host.Services(), m)
 }
 

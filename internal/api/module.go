@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/config"
 	"mkey/internal/lib/paths"
 )
 
@@ -151,6 +152,19 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 	if m.cfg.LogFile == "" {
 		m.cfg.LogFile = filepath.Join(paths.State(os.Getenv), "mkey.log")
+	}
+	if m.cfg.ConfigFile == "" {
+		m.cfg.ConfigFile = filepath.Join(paths.Config(os.Getenv), config.FileName)
+	}
+
+	// Файл настроек и журнал — в списке «Где что лежит».
+	for _, p := range []contracts.StaticPlace{
+		{M: contracts.ExtensionMeta{ID: contracts.PlaceConfig, NameKey: "place.config", DescriptionKey: "place.config.description", Provider: ModuleID}, P: m.cfg.ConfigFile, N: 10},
+		{M: contracts.ExtensionMeta{ID: contracts.PlaceLog, NameKey: "place.log", DescriptionKey: "place.log.description", Provider: ModuleID}, P: m.cfg.LogFile, N: 90},
+	} {
+		if err := host.Extensions().Register(contracts.PointPlace, p); err != nil {
+			return err
+		}
 	}
 
 	// Адрес веб-интерфейса нужен значку в трее.

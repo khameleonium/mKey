@@ -52,6 +52,7 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		newUninstallCmd(tr),
 		newDaemonCmd(tr),
 		newLogsCmd(tr),
+		newPathsCmd(tr),
 		newVersionCmd(tr),
 		newPrivilegedCmd(tr),
 		newDebugCmd(tr),

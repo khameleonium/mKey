@@ -73,6 +73,14 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		m.socket = filepath.Join(p.Info().RuntimeDir, "mkey.sock")
 	}
 	m.exe, _ = os.Executable()
+
+	// Папка скриптов bash — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceShellScripts, NameKey: "place.shell_scripts", DescriptionKey: "place.shell_scripts.description", Provider: ModuleID},
+		P: m.cfg.ScriptsDir, Dir: true, N: 41,
+	}); err != nil {
+		return err
+	}
 	return host.Extensions().Register(contracts.PointAction, shellAction{m})
 }
 

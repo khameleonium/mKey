@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
+  import PlaceHint from "../../lib/components/PlaceHint.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { href } from "../../lib/router.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
@@ -117,6 +118,7 @@
     <span class="spacer"></span>
     <button class="small" onclick={loadLogs}>↻</button>
   </div>
+  <PlaceHint id="log" />
   <pre class="logs">{(logs ?? []).join("\n")}</pre>
 </details>
 

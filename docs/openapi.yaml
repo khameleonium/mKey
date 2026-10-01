@@ -284,9 +284,13 @@ paths:
     get:
       summary: Последние строки журнала (?lines=N, по умолчанию 200, не больше 2000)
       responses: { "200": { description: "{lines: [...]}" } }
+  /api/v1/places:
+    get:
+      summary: "Где mKey хранит файлы пользователя ({places: [{id, ids, name, description, path, display, is_dir, exists}]}); места регистрируют модули (точка расширения place), порядок — по Order; места с одинаковым путём — одной строкой (ids); display — путь с «~» вместо домашней папки"
+      responses: { "200": { description: Места } }
   /api/v1/recordings:
     get:
-      summary: "Записи ввода ({recordings: [RecordingInfo], current?: RecordingInfo})"
+      summary: "Записи ввода ({recordings: [RecordingInfo], current?: RecordingInfo, dir: папка записей}); у файла с ошибкой — problem {line, text, code, arg, message}"
       responses: { "200": { description: Записи } }
   /api/v1/recordings/{name}:
     delete:
@@ -319,9 +323,10 @@ paths:
       responses: { "200": { description: RecordingInfo }, "409": { $ref: "#/components/responses/Error" } }
   /api/v1/play:
     post:
-      summary: "Воспроизвести запись и ждать окончания ({name, speed, repeat, skip_moves}); разрыв соединения останавливает"
+      summary: "Воспроизвести запись и ждать окончания ({name, speed, repeat, skip_moves}); разрыв соединения останавливает; ошибка в файле — 400 api.recording_bad, details — RecordingProblem"
       responses:
         "200": { description: Готово }
+        "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
   /api/v1/settings/hotkeys:

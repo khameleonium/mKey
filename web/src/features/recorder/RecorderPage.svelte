@@ -7,6 +7,7 @@
 <script lang="ts">
   import { api, ApiError } from "../../lib/api";
   import Modal from "../../lib/components/Modal.svelte";
+  import PlaceHint from "../../lib/components/PlaceHint.svelte";
   import { navigate } from "../../lib/router.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
@@ -182,22 +183,36 @@
     <div class="card item">
       <div class="info">
         <b>{r.name}</b>
-        <span class="muted">
-          {t("rec.info", { seconds: (r.duration_ms / 1000).toFixed(1), events: r.events })} ·
-          {new Date(r.created).toLocaleString()}
-        </span>
+        {#if r.problem}
+          <!-- Файл не читается: что и в какой строке поправить (совет — только для ошибки в строке). -->
+          <span class="problem"
+            >⚠ {t(r.problem.line ? "rec.problem" : "rec.problem_file", {
+              problem: r.problem.message ?? "",
+            })}</span
+          >
+        {:else}
+          <span class="muted">
+            {t("rec.info", { seconds: (r.duration_ms / 1000).toFixed(1), events: r.events })} ·
+            {new Date(r.created).toLocaleString()}
+          </span>
+        {/if}
       </div>
       <span class="spacer"></span>
-      <button class="primary" disabled={playing !== "" || current !== null} onclick={() => play(r)}>
+      <button
+        class="primary"
+        disabled={playing !== "" || current !== null || !!r.problem}
+        onclick={() => play(r)}
+      >
         ▶ {t("rec.play")}
       </button>
-      <button title={t("rec.convert_hint")} onclick={() => openConvert(r)}
+      <button title={t("rec.convert_hint")} disabled={!!r.problem} onclick={() => openConvert(r)}
         >⧉ {t("rec.convert")}</button
       >
       <button class="ghost" title={t("common.delete")} onclick={() => remove(r)}>✕</button>
     </div>
   {/each}
 </div>
+<PlaceHint id="recordings" />
 <p class="muted small">{t("rec.cli_hint")}</p>
 
 {#if converting}
@@ -266,5 +281,8 @@
   .small {
     margin-top: 14px;
     font-size: 0.85rem;
+  }
+  .problem {
+    color: var(--danger);
   }
 </style>

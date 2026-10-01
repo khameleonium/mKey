@@ -48,6 +48,21 @@ type RecordingInfo struct {
 	Devices []string `json:"devices,omitempty"`
 	// StopHotkey — сочетание, которым можно закончить идущую запись из любой программы ("" — нет).
 	StopHotkey string `json:"stop_hotkey,omitempty"`
+	// Problem — файл не читается (ошибка после ручной правки или запись первой версии); nil — всё в порядке.
+	Problem *RecordingProblem `json:"problem,omitempty"`
+}
+
+// RecordingProblem — ошибка в файле записи: где она и что не так.
+type RecordingProblem struct {
+	// Line — номер строки с 1 (0 — файл целиком); Text — сама строка, как в файле.
+	Line int    `json:"line,omitempty"`
+	Text string `json:"text,omitempty"`
+	// Code — вид ошибки (mkrec.Problem*: key, action, old_format…; read — файл не прочитан);
+	// Arg — неверное слово, клавиша или номер.
+	Code string `json:"code"`
+	Arg  string `json:"arg,omitempty"`
+	// Message — понятное сообщение на языке клиента (заполняет API).
+	Message string `json:"message,omitempty"`
 }
 
 // Recorder — запись ввода с физических устройств (модуль recorder).

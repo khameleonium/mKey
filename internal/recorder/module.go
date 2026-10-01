@@ -113,6 +113,14 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if err := host.Extensions().Register(contracts.PointAction, centerAction{m: m}); err != nil {
 		return err
 	}
+
+	// Папка записей — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceRecordings, NameKey: "place.recordings", DescriptionKey: "place.recordings.description", Provider: ModuleID},
+		P: m.cfg.Dir, Dir: true, N: 30,
+	}); err != nil {
+		return err
+	}
 	return host.Extensions().Register(contracts.PointAction, playAction{m: m})
 }
 

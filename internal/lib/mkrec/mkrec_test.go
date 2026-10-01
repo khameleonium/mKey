@@ -83,18 +83,30 @@ func TestEditedFile(t *testing.T) {
 	if len(rec.Frames) != 2 || rec.Frames[0].T != 200*time.Millisecond || len(rec.Frames[0].Events) != 2 || rec.Duration != 1500*time.Millisecond {
 		t.Fatalf("rec = %+v", rec)
 	}
-	for src, line := range map[string]string{
-		"hello\n":                   "line 1",
-		"mkrec 9\n":                 "line 1",
-		"mkrec 1\n0.1 0 ^{Mous0}\n": "line 2",
-		"mkrec 1\n0.1 0 move 5\n":   "line 2",
-		"mkrec 1\n0.1 x ^{A}\n":     "line 2",
-		"mkrec 1\n0.1 0 jump 1\n":   "line 2",
-		"mkrec 1\npointer 1 2\n":    "line 2",
-		"":                          "empty",
+	// Ошибки: вид, строка (с 1) и неверное слово — по ним пишется понятное сообщение.
+	for _, c := range []struct {
+		src, code, arg string
+		line           int
+	}{
+		{"hello\n", ProblemHeader, "hello", 1},
+		{"mkrec 9\n", ProblemVersion, "9", 1},
+		{"# комментарий\n\nmkrec 1\n0.1 0 ^{Mous0}\n", ProblemKey, "Mous0", 4},
+		{"mkrec 1\n0.1 0 move 5\n", ProblemNumbers, "move", 2},
+		{"mkrec 1\n0.1 x ^{A}\n", ProblemDeviceNumber, "x", 2},
+		{"mkrec 1\n0.1 0 jump 1\n", ProblemAction, "jump", 2},
+		{"mkrec 1\n0.1 0\n", ProblemShort, "", 2},
+		{"mkrec 1\nstart 1\n", ProblemLine, "start", 2},
+		{"mkrec 1\npointer 1 2\n", ProblemPointer, "", 2},
+		{"mkrec 1\ndevice 0 mouse\n", ProblemDevice, "", 2},
+		{"mkrec 1\ncreated вчера\n", ProblemCreated, "", 2},
+		{"mkrec 1\n0.1 0 ^{#x}\n", ProblemKey, "#x", 2},
+		{"{\"format\":\"mkrec\",\"version\":1}\n[1,0,2,0,1]\n", ProblemOldFormat, "", 0},
+		{"", ProblemEmpty, "", 0},
 	} {
-		if _, err := Read(strings.NewReader(src)); !errors.Is(err, ErrFormat) || !strings.Contains(err.Error(), line) {
-			t.Errorf("%q: err = %v", src, err)
+		_, err := Read(strings.NewReader(c.src))
+		var p *Problem
+		if !errors.Is(err, ErrFormat) || !errors.As(err, &p) || p.Code != c.code || p.Arg != c.arg || p.Line != c.line {
+			t.Errorf("%q: err = %#v", c.src, err)
 		}
 	}
 }

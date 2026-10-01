@@ -443,15 +443,26 @@ func (m *Module) Recordings() ([]contracts.RecordingInfo, error) {
 				info.Devices = append(info.Devices, d.Name)
 			}
 		} else {
-			// Файл испорчен (например, после ручной правки) — показываем с датой изменения.
+			// Файл не читается (ошибка после ручной правки, запись первой версии) — показываем
+			// с датой изменения и описанием ошибки, чтобы человек знал, что и где поправить.
 			if fi, err := e.Info(); err == nil {
 				info.Created = fi.ModTime()
 			}
+			info.Problem = recordingProblem(err)
 		}
 		out = append(out, info)
 	}
 	slices.SortFunc(out, func(a, b contracts.RecordingInfo) int { return b.Created.Compare(a.Created) })
 	return out, nil
+}
+
+// recordingProblem описывает ошибку чтения файла записи для списка записей.
+func recordingProblem(err error) *contracts.RecordingProblem {
+	var p *mkrec.Problem
+	if errors.As(err, &p) {
+		return &contracts.RecordingProblem{Line: p.Line, Text: p.Text, Code: p.Code, Arg: p.Arg}
+	}
+	return &contracts.RecordingProblem{Code: "read", Arg: err.Error()}
 }
 
 // DeleteRecording удаляет запись (contracts.Recorder).

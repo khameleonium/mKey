@@ -7,6 +7,7 @@
   import { api } from "../../lib/api";
   import KeyCapture from "../../lib/components/KeyCapture.svelte";
   import Modal from "../../lib/components/Modal.svelte";
+  import PlacesList from "../../lib/components/PlacesList.svelte";
   import { lang, setLang, t } from "../../lib/i18n/index.svelte";
   import { LANGS, type Lang } from "../../lib/i18n/translate";
   import { setTheme, theme, type Theme } from "../../lib/theme.svelte";
@@ -99,6 +100,13 @@
   </div>
   {#if hkError}<div class="note error">{hkError}</div>{/if}
   <button class="primary" onclick={saveHotkeys}>{t("common.save")}</button>
+</div>
+
+<!-- Где что лежит: папки и файлы mKey -->
+<div class="card places">
+  <h2>{t("places.title")}</h2>
+  <p class="muted">{t("places.hint")}</p>
+  <PlacesList />
 </div>
 
 <!-- Удаление программы -->

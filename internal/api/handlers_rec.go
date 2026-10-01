@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/mkrec"
 )
 
 // Запись и воспроизведение ввода (этап 6): команды `mkey rec`, `mkey play` и окно программы.
@@ -35,7 +36,14 @@ func (m *Module) handleRecordings(w http.ResponseWriter, r *http.Request) {
 		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
 		return
 	}
-	resp := map[string]any{"recordings": list}
+	// Ошибки в файлах — понятным текстом на языке клиента.
+	tr := m.translator(r)
+	for i := range list {
+		if p := list[i].Problem; p != nil {
+			p.Message = problemMessage(tr, *p)
+		}
+	}
+	resp := map[string]any{"recordings": list, "dir": m.placePath(contracts.PlaceRecordings)}
 	if cur, ok := m.svc.recorder.Recording(); ok {
 		resp["current"] = cur
 	}
@@ -156,9 +164,34 @@ func (m *Module) handlePlay(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// maxProblemText — сколько символов строки файла показывать в сообщении об ошибке
+// (строка с множеством действий может быть очень длинной).
+const maxProblemText = 60
+
+// problemMessage — понятное сообщение об ошибке в файле записи на языке tr:
+// «строка 8 («0.100 0 ~{Hh}»): неизвестная клавиша «Hh»».
+func problemMessage(tr contracts.Translator, p contracts.RecordingProblem) string {
+	reason := tr.T("rec.problem."+p.Code, contracts.Arg{Name: "arg", Value: p.Arg})
+	if p.Line == 0 {
+		return reason
+	}
+	text := p.Text
+	if r := []rune(text); len(r) > maxProblemText {
+		text = string(r[:maxProblemText]) + "…"
+	}
+	return tr.T("rec.problem.at", contracts.Arg{Name: "line", Value: p.Line}, contracts.Arg{Name: "text", Value: text},
+		contracts.Arg{Name: "reason", Value: reason})
+}
+
 // writeRecError переводит ошибку записи или воспроизведения в ответ API.
+// Ошибка в файле записи (api.recording_bad) — с номером строки и понятным описанием в details.
 func (m *Module) writeRecError(w http.ResponseWriter, r *http.Request, err error) {
+	var bad *mkrec.Problem
 	switch {
+	case errors.As(err, &bad):
+		p := contracts.RecordingProblem{Line: bad.Line, Text: bad.Text, Code: bad.Code, Arg: bad.Arg}
+		p.Message = problemMessage(m.translator(r), p)
+		m.writeErrorDetails(w, r, http.StatusBadRequest, "api.recording_bad", map[string]string{"problem": p.Message}, p)
 	case errors.Is(err, contracts.ErrRecordingNotFound):
 		m.writeError(w, r, http.StatusNotFound, "api.recording_not_found", nil)
 	case errors.Is(err, contracts.ErrRecordingEmpty):

@@ -6,6 +6,7 @@
 <script lang="ts">
   import { api } from "../../lib/api";
   import Modal from "../../lib/components/Modal.svelte";
+  import PlaceHint from "../../lib/components/PlaceHint.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { href, navigate } from "../../lib/router.svelte";
@@ -15,7 +16,6 @@
 
   /** Данные страницы. */
   let projects = $state<ProjectInfo[]>([]);
-  let dir = $state("");
   let loaded = $state(false);
   /** Окна: создание и шаблоны. */
   let creating = $state(false);
@@ -27,7 +27,6 @@
     try {
       const r = await api.projects();
       projects = r.projects;
-      dir = r.dir;
     } catch (e) {
       toast(errorText(e), "error");
     } finally {
@@ -160,12 +159,7 @@
   {/each}
 </div>
 
-{#if dir}
-  <details class="muted small">
-    <summary>{t("common.more")}</summary>
-    {t("projects.dir", { dir })}
-  </details>
-{/if}
+<PlaceHint id="projects" />
 
 {#if creating}
   <Modal title={t("projects.new")} onclose={() => (creating = false)}>
@@ -257,9 +251,5 @@
     text-align: left;
     padding: 12px;
     gap: 4px;
-  }
-  .small {
-    margin-top: 16px;
-    font-size: 0.85rem;
   }
 </style>

@@ -239,6 +239,68 @@ func keyName(code uint16) string {
 // ErrFormat — файл не является записью mKey или в нём ошибка (с номером строки).
 var ErrFormat = errors.New("not a valid mKey recording")
 
+// Виды ошибок в файле записи (Problem.Code): по ним программа пишет человеку понятное
+// сообщение на его языке (i18n-ключи "rec.problem.<вид>").
+const (
+	// ProblemEmpty — в файле нет ни одной значимой строки.
+	ProblemEmpty = "empty"
+	// ProblemOldFormat — запись первой версии mKey (до текстового формата), её нужно записать заново.
+	ProblemOldFormat = "old_format"
+	// ProblemHeader — первая значимая строка не «mkrec 1»; Arg — что там написано.
+	ProblemHeader = "header"
+	// ProblemVersion — запись новее этой версии mKey; Arg — версия.
+	ProblemVersion = "version"
+	// ProblemLine — непонятное начало строки (не время, не device/created/pointer); Arg — первое слово.
+	ProblemLine = "line"
+	// ProblemCreated — дата в строке created не разобрана.
+	ProblemCreated = "created"
+	// ProblemDevice — строка device не по образцу.
+	ProblemDevice = "device"
+	// ProblemPointer — после pointer должно быть center.
+	ProblemPointer = "pointer"
+	// ProblemShort — после времени нет номера устройства или действий.
+	ProblemShort = "short"
+	// ProblemDeviceNumber — номер устройства не число; Arg — что написано.
+	ProblemDeviceNumber = "device_number"
+	// ProblemKey — неизвестная клавиша; Arg — имя.
+	ProblemKey = "key"
+	// ProblemAction — неизвестное действие; Arg — слово.
+	ProblemAction = "action"
+	// ProblemNumbers — после слова не хватает чисел или число неверное; Arg — слово.
+	ProblemNumbers = "numbers"
+)
+
+// Problem — ошибка в файле записи: где она и что не так. Возвращается из Read; errors.Is(err, ErrFormat) — да.
+type Problem struct {
+	// Line — номер строки с 1 (0 — файл целиком); Text — сама строка, как в файле.
+	Line int
+	Text string
+	// Code — вид ошибки (Problem*); Arg — неверное слово, клавиша или номер.
+	Code string
+	Arg  string
+}
+
+// Error описывает ошибку по-английски (для журнала); человеку сообщение пишет API по Code.
+func (p *Problem) Error() string {
+	msg := ErrFormat.Error() + ": " + p.Code
+	if p.Arg != "" {
+		msg += " " + strconv.Quote(p.Arg)
+	}
+	if p.Line > 0 {
+		msg = fmt.Sprintf("%s: line %d", msg, p.Line)
+	}
+	return msg
+}
+
+// Unwrap позволяет проверять ошибку через errors.Is(err, ErrFormat).
+func (p *Problem) Unwrap() error { return ErrFormat }
+
+// problem создаёт ошибку вида code (строку и её номер дописывает Read).
+func problem(code, arg string) error { return &Problem{Code: code, Arg: arg} }
+
+// oldFormatPrefix — начало первой строки записи первой версии (JSON).
+const oldFormatPrefix = `{"format":"mkrec"`
+
 // Read читает запись. Действия упорядочиваются по времени (время можно править вручную).
 func Read(r io.Reader) (*Recording, error) {
 	sc := bufio.NewScanner(r)
@@ -251,17 +313,28 @@ func Read(r io.Reader) (*Recording, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		bad := func(what string) error { return fmt.Errorf("%w: line %d: %s", ErrFormat, n, what) }
+		// bad дописывает к ошибке номер строки и саму строку.
+		bad := func(err error) error {
+			var p *Problem
+			if !errors.As(err, &p) {
+				p = &Problem{Code: ProblemLine, Arg: err.Error()}
+			}
+			p.Line, p.Text = n, line
+			return p
+		}
 
-		// Первая значимая строка — «mkrec <версия>».
+		// Первая значимая строка — «mkrec <версия>» (или запись первой версии в JSON).
 		fields := strings.Fields(line)
 		if !started {
+			if strings.HasPrefix(line, oldFormatPrefix) {
+				return nil, &Problem{Code: ProblemOldFormat}
+			}
 			if len(fields) != 2 || fields[0] != "mkrec" {
-				return nil, bad(`expected "mkrec 1"`)
+				return nil, bad(problem(ProblemHeader, fields[0]))
 			}
 			v, err := strconv.Atoi(fields[1])
 			if err != nil || v < 1 || v > Version {
-				return nil, bad("unsupported version " + fields[1])
+				return nil, bad(problem(ProblemVersion, fields[1]))
 			}
 			rec.Header.Version, started = v, true
 			continue
@@ -269,14 +342,14 @@ func Read(r io.Reader) (*Recording, error) {
 
 		// Сведения заголовка или действие.
 		if err := readLine(rec, line, fields); err != nil {
-			return nil, bad(err.Error())
+			return nil, bad(err)
 		}
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
 	}
 	if !started {
-		return nil, fmt.Errorf("%w: empty file", ErrFormat)
+		return nil, &Problem{Code: ProblemEmpty}
 	}
 
 	// Порядок по времени; длительность — не меньше времени последнего действия.
@@ -292,17 +365,20 @@ func readLine(rec *Recording, line string, f []string) error {
 	switch f[0] {
 	case "created":
 		t, err := time.Parse(time.RFC3339, strings.TrimSpace(strings.TrimPrefix(line, "created")))
+		if err != nil {
+			return problem(ProblemCreated, "")
+		}
 		rec.Header.Created = t
-		return err
+		return nil
 	case "device":
 		// device <номер> <классы> "<имя>"
 		parts := strings.SplitN(line, " ", 4)
 		if len(parts) < 4 {
-			return errors.New("device: expected: device <id> <kinds> \"<name>\"")
+			return problem(ProblemDevice, "")
 		}
 		id, err := strconv.Atoi(parts[1])
 		if err != nil {
-			return fmt.Errorf("device id: %w", err)
+			return problem(ProblemDevice, parts[1])
 		}
 		name, err := strconv.Unquote(strings.TrimSpace(parts[3]))
 		if err != nil {
@@ -312,7 +388,7 @@ func readLine(rec *Recording, line string, f []string) error {
 		return nil
 	case "pointer":
 		if len(f) != 2 || f[1] != "center" {
-			return errors.New(`expected "pointer center"`)
+			return problem(ProblemPointer, "")
 		}
 		rec.Header.Centered = true
 		return nil
@@ -321,7 +397,7 @@ func readLine(rec *Recording, line string, f []string) error {
 	// Действие: <время> <устройство> <действия…> или <время> end.
 	t, err := strconv.ParseFloat(f[0], 64)
 	if err != nil || t < 0 {
-		return fmt.Errorf("unknown line %q", f[0])
+		return problem(ProblemLine, f[0])
 	}
 	at := time.Duration(t*1000+0.5) * time.Millisecond
 	if len(f) == 2 && f[1] == "end" {
@@ -329,11 +405,11 @@ func readLine(rec *Recording, line string, f []string) error {
 		return nil
 	}
 	if len(f) < 3 {
-		return errors.New("expected: <time> <device> <actions>")
+		return problem(ProblemShort, "")
 	}
 	dev, err := strconv.Atoi(f[1])
 	if err != nil {
-		return fmt.Errorf("device number %q", f[1])
+		return problem(ProblemDeviceNumber, f[1])
 	}
 	frame := Frame{T: at, Device: dev}
 	if frame.Events, err = ParseEvents(f[2:]); err != nil {
@@ -351,13 +427,13 @@ func ParseEvents(tokens []string) ([]ev.Event, error) {
 		// need возвращает n целых чисел после слова.
 		need := func(n int) ([]int64, error) {
 			if i+n >= len(tokens) {
-				return nil, fmt.Errorf("%s: expected %d numbers", tok, n)
+				return nil, problem(ProblemNumbers, tok)
 			}
 			vals := make([]int64, n)
 			for j := range n {
 				v, err := strconv.ParseInt(tokens[i+1+j], 10, 32)
 				if err != nil {
-					return nil, fmt.Errorf("%s: bad number %q", tok, tokens[i+1+j])
+					return nil, problem(ProblemNumbers, tok)
 				}
 				vals[j] = v
 			}
@@ -395,7 +471,7 @@ func ParseEvents(tokens []string) ([]ev.Event, error) {
 		default:
 			code, ok := wordRel(tok)
 			if !ok {
-				return nil, fmt.Errorf("unknown action %q", tok)
+				return nil, problem(ProblemAction, tok)
 			}
 			v, err := need(1)
 			if err != nil {
@@ -421,11 +497,14 @@ func wordRel(word string) (uint16, bool) {
 func keyCode(s string) (uint16, error) {
 	name, ok := strings.CutSuffix(s, "}")
 	if !ok || name == "" {
-		return 0, fmt.Errorf("bad key %q", s)
+		return 0, problem(ProblemKey, s)
 	}
 	if n, ok := strings.CutPrefix(name, "#"); ok {
 		v, err := strconv.ParseUint(n, 10, 16)
-		return uint16(v), err
+		if err != nil {
+			return 0, problem(ProblemKey, name)
+		}
+		return uint16(v), nil
 	}
 	if k, ok := keys.Lookup(name); ok && k.Type == ev.EvKey {
 		return k.Code, nil
@@ -433,7 +512,7 @@ func keyCode(s string) (uint16, error) {
 	if k, ok := keys.LookupGamepad(name); ok {
 		return k.Code, nil
 	}
-	return 0, fmt.Errorf("unknown key %q", name)
+	return 0, problem(ProblemKey, name)
 }
 
 // CoalesceMoves склеивает идущие подряд перемещения одного устройства, попавшие в окно window:

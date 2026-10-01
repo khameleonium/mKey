@@ -442,3 +442,35 @@ func TestConvertRecording(t *testing.T) {
 		t.Fatalf("missing: %v", err)
 	}
 }
+
+// TestRecordingsProblem проверяет, что файл с ошибкой (после ручной правки) или запись первой
+// версии остаются в списке с описанием ошибки, а не с нулевой длительностью без объяснений.
+func TestRecordingsProblem(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newTestModule(t)
+	writeRecording(t, m.cfg.Dir, "ok", "0.100 0 ^{A}\n0.200 0 ~{A}\n")
+	writeRecording(t, m.cfg.Dir, "опечатка", "0.100 0 ^{A}\n0.200 0 ~{Hh}\n")
+	old := `{"format":"mkrec","version":1,"devices":[]}` + "\n[1350712,0,2,0,1]\n"
+	if err := os.WriteFile(filepath.Join(m.cfg.Dir, "старая"+mkrec.FileExt), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ошибки — у двух записей: вид, строка и неверное слово.
+	list, err := m.Recordings()
+	if err != nil || len(list) != 3 {
+		t.Fatalf("recordings = %+v, %v", list, err)
+	}
+	got := map[string]*contracts.RecordingProblem{}
+	for _, r := range list {
+		got[r.Name] = r.Problem
+	}
+	if got["ok"] != nil {
+		t.Errorf("ok: %+v", got["ok"])
+	}
+	if p := got["опечатка"]; p == nil || p.Code != mkrec.ProblemKey || p.Arg != "Hh" || p.Text != "0.200 0 ~{Hh}" || p.Line == 0 {
+		t.Errorf("опечатка: %+v", p)
+	}
+	if p := got["старая"]; p == nil || p.Code != mkrec.ProblemOldFormat {
+		t.Errorf("старая: %+v", p)
+	}
+}

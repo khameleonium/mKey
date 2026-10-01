@@ -257,6 +257,7 @@ func newLogsCmd(tr *i18n.Translator) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: tr.T("cli.logs.short"),
+		Long:  tr.T("cli.logs.long", i18n.A("path", logPath())),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()

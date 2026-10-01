@@ -54,6 +54,7 @@ func (m *Module) registerGUIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/doctor/fix", m.handleDoctorFix)
 	mux.HandleFunc("POST /api/v1/uninstall", m.handleUninstall)
 	mux.HandleFunc("GET /api/v1/logs", m.handleLogs)
+	mux.HandleFunc("GET /api/v1/places", m.handlePlaces)
 	mux.HandleFunc("POST /api/v1/dsl/to_actions", m.handleDSLToActions)
 	mux.HandleFunc("POST /api/v1/actions/to_dsl", m.handleActionsToDSL)
 }

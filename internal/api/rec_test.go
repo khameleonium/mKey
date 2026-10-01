@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/mkrec"
 )
 
 // fakeRecorder — запись и воспроизведение в памяти.
@@ -17,6 +18,8 @@ type fakeRecorder struct {
 	opts      contracts.PlayOptions
 	stopped   int
 	converted contracts.ConvertOptions
+	// broken — запись «сломанная» с ошибкой в строке 8 (в списке и при воспроизведении).
+	broken bool
 }
 
 func (f *fakeRecorder) StartRecording(o contracts.RecordOptions) (contracts.RecordingInfo, error) {
@@ -40,6 +43,9 @@ func (f *fakeRecorder) WaitRecording(context.Context) (contracts.RecordingInfo, 
 	return contracts.RecordingInfo{}, contracts.ErrNotRecording
 }
 func (f *fakeRecorder) Recordings() ([]contracts.RecordingInfo, error) {
+	if f.broken {
+		return []contracts.RecordingInfo{{Name: "сломанная", Problem: &contracts.RecordingProblem{Line: 8, Text: "0.100 0 ~{Hh}", Code: mkrec.ProblemKey, Arg: "Hh"}}}, nil
+	}
 	return []contracts.RecordingInfo{{Name: "игра"}}, nil
 }
 func (f *fakeRecorder) DeleteRecording(name string) error {
@@ -49,6 +55,9 @@ func (f *fakeRecorder) DeleteRecording(name string) error {
 	return nil
 }
 func (f *fakeRecorder) Play(_ context.Context, name string, o contracts.PlayOptions) error {
+	if f.broken {
+		return &mkrec.Problem{Line: 8, Text: "0.100 0 ~{Hh}", Code: mkrec.ProblemKey, Arg: "Hh"}
+	}
 	if name != "игра" {
 		return contracts.ErrRecordingNotFound
 	}
@@ -172,5 +181,41 @@ func TestSystemHotkeys(t *testing.T) {
 	data, _ := os.ReadFile(m.cfg.ConfigFile)
 	if !strings.Contains(string(data), `emergency_stop: "^{LCtrl}^{LAlt}{Pause}"`) || !strings.Contains(string(data), `hotkey: "{F9}"`) {
 		t.Fatalf("config = %s", data)
+	}
+}
+
+// TestRecordingProblem проверяет понятное сообщение об ошибке в файле записи: в списке
+// (problem.message) и при воспроизведении (api.recording_bad с номером строки).
+func TestRecordingProblem(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	rec := &fakeRecorder{broken: true}
+	m.svc.recorder, m.svc.player = rec, rec
+	h := m.routes(true)
+	ru := map[string]string{"Accept-Language": "ru"}
+	want := `строка 8 («0.100 0 ~{Hh}») — неизвестная клавиша «Hh»`
+
+	// Список: ошибка описана на языке клиента.
+	_, out := call(t, h, "GET", "/api/v1/recordings", "", ru)
+	list, _ := out["recordings"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("list: %v", out)
+	}
+	p, _ := list[0].(map[string]any)["problem"].(map[string]any)
+	if msg, _ := p["message"].(string); !strings.HasPrefix(msg, want) || p["line"] != float64(8) || p["code"] != "key" {
+		t.Errorf("problem: %v", p)
+	}
+
+	// Воспроизведение: 400 api.recording_bad, в сообщении — строка и причина.
+	code, out := call(t, h, "POST", "/api/v1/play", `{"name":"сломанная"}`, ru)
+	e, _ := out["error"].(map[string]any)
+	if msg, _ := e["message"].(string); code != 400 || e["code"] != "api.recording_bad" || !strings.Contains(msg, want) {
+		t.Errorf("play: %d %v", code, out)
+	}
+
+	// Длинная строка обрезается.
+	long := contracts.RecordingProblem{Line: 3, Text: strings.Repeat("x", 100), Code: mkrec.ProblemShort}
+	if msg := problemMessage(m.tr.WithLang("ru"), long); !strings.Contains(msg, strings.Repeat("x", maxProblemText)+"…") || strings.Contains(msg, strings.Repeat("x", maxProblemText+1)) {
+		t.Errorf("long: %s", msg)
 	}
 }

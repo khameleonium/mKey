@@ -181,6 +181,23 @@ export interface InputDevice {
 }
 
 /** Запись ввода (GET /recordings). */
+/** Место на диске, где mKey хранит файлы пользователя (GET /places, «Где что лежит»). */
+export interface PlaceInfo {
+  /** Идентификатор: config, projects, recordings, lua_scripts, shell_scripts, log…;
+   * ids — все места с этим путём (скрипты Lua и bash в одной папке — одна строка). */
+  id: string;
+  ids: string[];
+  /** Название и описание на языке интерфейса. */
+  name: string;
+  description?: string;
+  /** Полный путь и тот же путь с «~» вместо домашней папки. */
+  path: string;
+  display: string;
+  /** Папка (иначе файл); есть ли она уже на диске. */
+  is_dir: boolean;
+  exists: boolean;
+}
+
 export interface RecordingInfo {
   name: string;
   path: string;
@@ -189,6 +206,17 @@ export interface RecordingInfo {
   events: number;
   devices?: string[];
   stop_hotkey?: string;
+  /** Файл не читается (ошибка после ручной правки, запись первой версии); нет — всё в порядке. */
+  problem?: RecordingProblem;
+}
+
+/** Ошибка в файле записи: строка, вид, понятное сообщение на языке интерфейса. */
+export interface RecordingProblem {
+  line?: number;
+  text?: string;
+  code: string;
+  arg?: string;
+  message?: string;
 }
 
 /** Результат «Нажмите клавишу…». */

@@ -54,6 +54,14 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.keyState, _ = contracts.LookupService[contracts.KeyState](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
 	m.events, _ = contracts.LookupService[contracts.Events](host.Services())
+
+	// Папка скриптов Lua — в списке «Где что лежит».
+	if err := host.Extensions().Register(contracts.PointPlace, contracts.StaticPlace{
+		M: contracts.ExtensionMeta{ID: contracts.PlaceLuaScripts, NameKey: "place.lua_scripts", DescriptionKey: "place.lua_scripts.description", Provider: ModuleID},
+		P: m.cfg.ScriptsDir, Dir: true, N: 40,
+	}); err != nil {
+		return err
+	}
 	return host.Extensions().Register(contracts.PointAction, luaAction{m})
 }
 

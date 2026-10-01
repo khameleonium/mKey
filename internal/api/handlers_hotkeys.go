@@ -3,13 +3,10 @@ package api
 import (
 	"errors"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 
 	"mkey/internal/lib/config"
 	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/paths"
 )
 
 // Системные сочетания mKey (решение владельца: задаются пользователем): «начать/закончить запись»
@@ -78,9 +75,6 @@ func (m *Module) handleHotkeysPut(w http.ResponseWriter, r *http.Request) {
 
 	// Применяем и сохраняем.
 	cfgPath := m.cfg.ConfigFile
-	if cfgPath == "" {
-		cfgPath = filepath.Join(paths.Config(os.Getenv), config.FileName)
-	}
 	if req.Record != nil && m.svc.recorder != nil {
 		if err := m.svc.recorder.SetRecordHotkey(record); err != nil {
 			m.writeHotkeyError(w, r, err)

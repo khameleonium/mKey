@@ -56,11 +56,16 @@ func newRecCmd(tr *i18n.Translator) *cobra.Command {
 			var resp struct {
 				Recordings []contracts.RecordingInfo `json:"recordings"`
 				Current    *contracts.RecordingInfo  `json:"current"`
+				Dir        string                    `json:"dir"`
 			}
 			if err := c.do(cmd.Context(), "GET", "/api/v1/recordings", nil, &resp); err != nil {
 				return userError(formatAPIError(tr, err, ""))
 			}
+			// Где лежат файлы записей: их можно открыть любым текстовым редактором.
 			out := cmd.OutOrStdout()
+			if resp.Dir != "" {
+				printf(out, "%s\n\n", tr.T("cli.rec.list.dir", i18n.A("dir", resp.Dir)))
+			}
 			if resp.Current != nil {
 				printf(out, "%s\n\n", tr.T("cli.rec.list.current", i18n.A("name", resp.Current.Name)))
 			}
@@ -69,6 +74,11 @@ func newRecCmd(tr *i18n.Translator) *cobra.Command {
 				return nil
 			}
 			for _, r := range resp.Recordings {
+				// Файл с ошибкой: что и в какой строке поправить.
+				if r.Problem != nil {
+					printf(out, "  %-24s %s\n", r.Name, tr.T("cli.rec.list.problem", i18n.A("problem", r.Problem.Message)))
+					continue
+				}
 				printf(out, "  %-24s %8s   %s\n", r.Name, seconds(r.DurationMS),
 					tr.T("cli.rec.list.row", i18n.A("events", r.Events), i18n.A("date", r.Created.Local().Format("02.01.2006 15:04"))))
 			}
@@ -201,7 +211,7 @@ func runRec(cmd *cobra.Command, tr *i18n.Translator, name string, countdown int,
 // printSaved печатает итог записи и подсказку, как её повторить.
 func printSaved(out io.Writer, tr *i18n.Translator, info contracts.RecordingInfo) {
 	printf(out, "%s\n", tr.T("cli.rec.saved", i18n.A("name", info.Name), i18n.A("seconds", seconds(info.DurationMS)),
-		i18n.A("events", info.Events), i18n.A("play", "mkey play "+shellQuote(info.Name))))
+		i18n.A("events", info.Events), i18n.A("play", "mkey play "+shellQuote(info.Name)), i18n.A("file", info.Path)))
 }
 
 // newPlayCmd создаёт команду `mkey play <имя>`.

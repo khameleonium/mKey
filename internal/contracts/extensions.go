@@ -43,6 +43,8 @@ const (
 	PointLuaExtension ExtensionPoint = "lua_extension"
 	// PointRouteProvider — дополнительные маршруты HTTP API модулей.
 	PointRouteProvider ExtensionPoint = "route_provider"
+	// PointPlace — папки и файлы пользователя («Где что лежит»: проекты, записи, настройки…).
+	PointPlace ExtensionPoint = "place"
 )
 
 // AllExtensionPoints возвращает список всех известных точек расширения в стабильном порядке.
@@ -51,7 +53,7 @@ func AllExtensionPoints() []ExtensionPoint {
 		PointTrigger, PointCondition, PointAction, PointDSLCommand,
 		PointDesktopAdapter, PointDeviceTemplate, PointDeviceProfile,
 		PointInitSystem, PointElevator, PointDeviceAccess, PointPackageManager,
-		PointLuaExtension, PointRouteProvider,
+		PointLuaExtension, PointRouteProvider, PointPlace,
 	}
 }
 
