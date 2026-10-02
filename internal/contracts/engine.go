@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -65,3 +66,35 @@ type Lifecycle interface {
 	// вместо него программу exe с теми же аргументами (после обновления mKey, ADR-0030).
 	Restart(exe string)
 }
+
+// Timing — интервалы нажатий по умолчанию (секция modules.engine в config.yaml): с ними
+// выполняются все макросы, если в макросе не задано иное ({A 500}).
+type Timing struct {
+	// KeyHoldMS — сколько держать клавишу при обычном нажатии {A}, мс.
+	KeyHoldMS int `json:"key_hold_ms"`
+	// KeyDelayMS — пауза после каждого нажатия и каждого символа текста, мс.
+	KeyDelayMS int `json:"key_delay_ms"`
+	// LayoutSwitchMS — пауза после переключения раскладки при наборе текста, мс.
+	LayoutSwitchMS int `json:"layout_switch_ms"`
+}
+
+// Пределы интервалов нажатий: больше — макрос выглядел бы зависшим.
+const (
+	// MaxKeyHoldMS и MaxKeyDelayMS — наибольшие удержание и пауза после нажатия, мс.
+	MaxKeyHoldMS  = 1000
+	MaxKeyDelayMS = 1000
+	// MaxLayoutSwitchMS — наибольшая пауза после переключения раскладки, мс.
+	MaxLayoutSwitchMS = 5000
+)
+
+// TimingSettings — интервалы нажатий по умолчанию (модуль engine).
+type TimingSettings interface {
+	// Timing возвращает текущие интервалы.
+	Timing() Timing
+	// SetTiming проверяет и меняет интервалы; действуют для следующих нажатий сразу.
+	// ErrBadTiming — значение вне пределов.
+	SetTiming(t Timing) error
+}
+
+// ErrBadTiming — интервал нажатий вне допустимых пределов.
+var ErrBadTiming = errors.New("invalid key timing")
