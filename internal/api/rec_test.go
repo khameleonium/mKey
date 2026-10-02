@@ -120,6 +120,52 @@ func TestRecordSettingsAPI(t *testing.T) {
 	}
 }
 
+// fakeTiming — интервалы нажатий для тестов API: проверка пределов как у движка.
+type fakeTiming struct{ tm contracts.Timing }
+
+// Timing возвращает текущие интервалы.
+func (f *fakeTiming) Timing() contracts.Timing { return f.tm }
+
+// SetTiming отклоняет отрицательные значения.
+func (f *fakeTiming) SetTiming(tm contracts.Timing) error {
+	if tm.KeyHoldMS < 0 || tm.KeyDelayMS < 0 || tm.LayoutSwitchMS < 0 {
+		return contracts.ErrBadTiming
+	}
+	f.tm = tm
+	return nil
+}
+
+// TestTimingSettings проверяет интервалы нажатий через API: чтение, отказ, сохранение в config.yaml.
+func TestTimingSettings(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.cfg.ConfigFile = filepath.Join(t.TempDir(), "config.yaml")
+	tm := &fakeTiming{tm: contracts.Timing{KeyHoldMS: 20, KeyDelayMS: 10, LayoutSwitchMS: 60}}
+	m.svc.timing = tm
+	h := m.routes(true)
+
+	// Чтение.
+	if _, out := call(t, h, "GET", "/api/v1/settings/timing", "", nil); out["key_hold_ms"] != 20.0 {
+		t.Fatalf("get: %v", out)
+	}
+
+	// Неверные — 400 с кодом; верные применяются и сохраняются в modules.engine.
+	if code, out := call(t, h, "PUT", "/api/v1/settings/timing", `{"key_hold_ms":-1}`, nil); code != 400 ||
+		out["error"].(map[string]any)["code"] != "api.timing_bad" {
+		t.Fatalf("bad: %d %v", code, out)
+	}
+	body := `{"key_hold_ms":35,"key_delay_ms":5,"layout_switch_ms":100}`
+	if code, out := call(t, h, "PUT", "/api/v1/settings/timing", body, nil); code != 200 || tm.tm.KeyHoldMS != 35 {
+		t.Fatalf("put: %d %v", code, out)
+	}
+	data, _ := os.ReadFile(m.cfg.ConfigFile)
+	for _, want := range []string{"engine:", "key_hold_ms: 35", "key_delay_ms: 5", "layout_switch_ms: 100"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("no %q in config:\n%s", want, data)
+		}
+	}
+}
+
 // TestRecordingEndpoints проверяет запись, список, удаление и воспроизведение через API.
 func TestRecordingEndpoints(t *testing.T) {
 	t.Parallel()

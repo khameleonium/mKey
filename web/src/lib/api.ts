@@ -26,6 +26,7 @@ import type {
   Registry,
   Status,
   Template,
+  Timing,
 } from "./types";
 
 /** ApiError — ошибка ответа API с кодом и понятным сообщением. */
@@ -206,6 +207,8 @@ export const api = {
   hotkeys: () => request<{ record?: string; emergency?: string }>("GET", "/settings/hotkeys"),
   setHotkeys: (h: { record?: string; emergency?: string }) =>
     request<{ record?: string; emergency?: string }>("PUT", "/settings/hotkeys", h),
+  timing: () => request<Timing>("GET", "/settings/timing"),
+  setTiming: (s: Timing) => request<Timing>("PUT", "/settings/timing", s),
   recordSettings: () => request<RecordSettings>("GET", "/settings/recording"),
   setRecordSettings: (s: RecordSettings) =>
     request<RecordSettings>("PUT", "/settings/recording", s),

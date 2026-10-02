@@ -51,7 +51,7 @@ func (m *Module) touch(ctx context.Context, r *run, s dsl.Step) error {
 
 	// Касание: удержание (заданное или как у нажатия клавиши), затем отрыв.
 	if s.Kind == dsl.StepTouch {
-		hold := time.Duration(m.cfg.KeyHoldMS) * time.Millisecond
+		hold := time.Duration(m.Timing().KeyHoldMS) * time.Millisecond
 		if s.HoldMS > 0 {
 			hold = time.Duration(s.HoldMS) * time.Millisecond
 		}

@@ -99,6 +99,7 @@ type services struct {
 	keyState contracts.KeyState
 	convert  contracts.ActionConverter
 	dryRun   contracts.DryRunner
+	timing   contracts.TimingSettings
 	recorder contracts.Recorder
 	player   contracts.Player
 	inspect  contracts.Inspector
@@ -148,6 +149,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		keyState: lookup[contracts.KeyState](s),
 		convert:  lookup[contracts.ActionConverter](s),
 		dryRun:   lookup[contracts.DryRunner](s),
+		timing:   lookup[contracts.TimingSettings](s),
 		recorder: lookup[contracts.Recorder](s),
 		player:   lookup[contracts.Player](s),
 		inspect:  lookup[contracts.Inspector](s),

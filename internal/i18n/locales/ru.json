@@ -161,6 +161,7 @@
   "api.rename_taken": "Имя «{name}» уже занято ({other}). Имена не должны повторяться (регистр не важен).",
   "api.rename_unknown": "Не найдено: «{name}». Устройства — mkey devices, кнопки устройства — mkey devices inspect.",
   "api.stopped": "макрос остановлен",
+  "api.timing_bad": "Интервалы нажатий не подходят: {error}",
   "api.unauthorized": "нет доступа: откройте интерфейс командой mkey gui",
   "api.unavailable": "эта функция сейчас недоступна (модуль отключён или не запущен)",
   "api.update_cannot": "mKey не может обновить себя сам: {reason}",

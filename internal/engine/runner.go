@@ -55,6 +55,8 @@ type Module struct {
 
 	// mu защищает runs.
 	mu sync.Mutex
+	// tmu защищает интервалы нажатий в cfg (KeyHoldMS, KeyDelayMS, LayoutSwitchMS): их меняет окно.
+	tmu sync.RWMutex
 	// runs — выполняющиеся сейчас макросы и события.
 	runs map[*run]struct{}
 
@@ -165,6 +167,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 
 	// Сервисы.
 	if err := contracts.ProvideService[contracts.SequenceRunner](host.Services(), m); err != nil {
+		return err
+	}
+	if err := contracts.ProvideService[contracts.TimingSettings](host.Services(), m); err != nil {
 		return err
 	}
 	if err := contracts.ProvideService[contracts.DryRunner](host.Services(), m); err != nil {
@@ -399,7 +404,7 @@ func (m *Module) tap(ctx context.Context, r *run, s dsl.Step) error {
 	// Удержание: заданное в макросе или по умолчанию.
 	hold := time.Duration(s.HoldMS) * time.Millisecond
 	if s.HoldMS == 0 {
-		hold = m.ms(m.cfg.KeyHoldMS)
+		hold = m.ms(m.Timing().KeyHoldMS)
 	}
 
 	for range s.Count {
@@ -419,7 +424,7 @@ func (m *Module) tap(ctx context.Context, r *run, s dsl.Step) error {
 		}
 
 		// Пауза после нажатия (и между повторами).
-		if err := m.clk.Sleep(ctx, m.ms(m.cfg.KeyDelayMS)); err != nil {
+		if err := m.clk.Sleep(ctx, m.ms(m.Timing().KeyDelayMS)); err != nil {
 			return err
 		}
 	}
@@ -583,7 +588,7 @@ func (m *Module) wheel(ctx context.Context, s dsl.Step) error {
 		); err != nil {
 			return err
 		}
-		if err := m.clk.Sleep(ctx, m.ms(m.cfg.KeyDelayMS)); err != nil {
+		if err := m.clk.Sleep(ctx, m.ms(m.Timing().KeyDelayMS)); err != nil {
 			return err
 		}
 	}
@@ -661,7 +666,7 @@ func (m *Module) typeText(ctx context.Context, r *run, s dsl.Step) error {
 			if err := m.layouts.Switch(ctx, next.Name); err != nil {
 				return fmt.Errorf("switch keyboard layout to %s: %w", next.Name, err)
 			}
-			if err := m.clk.Sleep(ctx, m.ms(m.cfg.LayoutSwitchMS)); err != nil {
+			if err := m.clk.Sleep(ctx, m.ms(m.Timing().LayoutSwitchMS)); err != nil {
 				return err
 			}
 			current, stroke = next, st

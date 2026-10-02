@@ -1,6 +1,6 @@
 <!--
   SettingsPage — настройки (FR-UI-1.8): язык, тема оформления, системные сочетания mKey
-  (запись, экстренная остановка), настройки записи по умолчанию и удаление программы
+  (запись, экстренная остановка), интервалы нажатий, настройки записи по умолчанию и удаление программы
   (с сохранением настроек или полностью, FR-INST-5). Всё, кроме удаления, хранится в config.yaml —
   его можно править и в текстовом редакторе. Props: нет.
 -->
@@ -15,7 +15,7 @@
   import { setTheme, theme, type Theme } from "../../lib/theme.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
   import UpdateCard from "../update/UpdateCard.svelte";
-  import type { RecordSettings } from "../../lib/types";
+  import type { RecordSettings, Timing } from "../../lib/types";
 
   /** KINDS — устройства, которые можно записывать (порядок — как в списке). */
   const KINDS = [
@@ -63,6 +63,33 @@
       toast(t("settings.rec_saved"));
     } catch (e) {
       recError = errorText(e);
+    }
+  }
+
+  /** DEFAULT_TIMING — интервалы нажатий по умолчанию (как в config.yaml новой установки). */
+  const DEFAULT_TIMING: Timing = { key_hold_ms: 20, key_delay_ms: 10, layout_switch_ms: 60 };
+
+  /** Интервалы нажатий: timing — загруженные (null — ещё нет или недоступны); timingError — ошибка. */
+  let timing = $state<Timing | null>(null);
+  let timingError = $state("");
+
+  // Загружаем интервалы при открытии.
+  $effect(() => {
+    api
+      .timing()
+      .then((s) => (timing = s))
+      .catch((e: unknown) => (timingError = errorText(e)));
+  });
+
+  /** saveTiming проверяет и сохраняет интервалы (действуют сразу). */
+  async function saveTiming(): Promise<void> {
+    if (!timing) return;
+    timingError = "";
+    try {
+      timing = await api.setTiming(timing);
+      toast(t("settings.timing_saved"));
+    } catch (e) {
+      timingError = errorText(e);
     }
   }
 
@@ -169,6 +196,61 @@
   </div>
   {#if hkError}<div class="note error">{hkError}</div>{/if}
   <button class="primary" onclick={saveHotkeys}>{t("common.save")}</button>
+</div>
+
+<!-- Нажатия mKey: интервалы по умолчанию для всех макросов -->
+<div class="card hotkeys">
+  <h2>{t("settings.timing")}</h2>
+  <p class="muted">{t("settings.timing_hint")}</p>
+  {#if timing}
+    <div class="grid">
+      <label for="key-hold">{t("settings.timing_hold")}</label>
+      <span class="check"
+        ><input
+          id="key-hold"
+          type="number"
+          min="0"
+          max="1000"
+          step="1"
+          bind:value={timing.key_hold_ms}
+        />
+        <span class="muted">{t("settings.timing_hold_hint")}</span></span
+      >
+      <label for="key-delay">{t("settings.timing_delay")}</label>
+      <span class="check"
+        ><input
+          id="key-delay"
+          type="number"
+          min="0"
+          max="1000"
+          step="1"
+          bind:value={timing.key_delay_ms}
+        />
+        <span class="muted">{t("settings.timing_delay_hint")}</span></span
+      >
+      <label for="layout-switch">{t("settings.timing_layout")}</label>
+      <span class="check"
+        ><input
+          id="layout-switch"
+          type="number"
+          min="0"
+          max="5000"
+          step="1"
+          bind:value={timing.layout_switch_ms}
+        />
+        <span class="muted">{t("settings.timing_layout_hint")}</span></span
+      >
+    </div>
+  {/if}
+  {#if timingError}<div class="note error">{timingError}</div>{/if}
+  {#if timing}
+    <div class="row">
+      <button class="primary" onclick={saveTiming}>{t("common.save")}</button>
+      <button onclick={() => (timing = { ...DEFAULT_TIMING })}
+        >{t("settings.timing_defaults")}</button
+      >
+    </div>
+  {/if}
 </div>
 
 <!-- Запись действий: с какими настройками запись начинается без вопросов -->
@@ -317,6 +399,7 @@
   }
   .check input[type="number"] {
     width: 6em;
+    flex: none;
   }
   .danger-zone {
     border-left: 6px solid var(--danger);

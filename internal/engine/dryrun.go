@@ -154,7 +154,8 @@ func (d *dryRun) Send(src string) error {
 
 // steps добавляет шаги макроса и сдвигает время так же, как их выполнял бы раннер.
 func (d *dryRun) steps(steps []dsl.Step) error {
-	hold, delay := int64(d.m.cfg.KeyHoldMS), int64(d.m.cfg.KeyDelayMS)
+	tm := d.m.Timing()
+	hold, delay := int64(tm.KeyHoldMS), int64(tm.KeyDelayMS)
 	for _, s := range steps {
 		// Повтор внутри макроса — группа с телом один раз.
 		if s.Kind == dsl.StepLoop {

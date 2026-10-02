@@ -26,6 +26,45 @@ func (m *Module) registerRecRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/settings/hotkeys", m.handleHotkeysPut)
 	mux.HandleFunc("GET /api/v1/settings/recording", m.handleRecordSettingsGet)
 	mux.HandleFunc("PUT /api/v1/settings/recording", m.handleRecordSettingsPut)
+	mux.HandleFunc("GET /api/v1/settings/timing", m.handleTimingGet)
+	mux.HandleFunc("PUT /api/v1/settings/timing", m.handleTimingPut)
+}
+
+// handleTimingGet возвращает интервалы нажатий по умолчанию (contracts.Timing).
+func (m *Module) handleTimingGet(w http.ResponseWriter, r *http.Request) {
+	if m.svc.timing == nil {
+		m.unavailable(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, m.svc.timing.Timing())
+}
+
+// handleTimingPut меняет интервалы нажатий: действуют сразу и сохраняются в config.yaml
+// (modules.engine). Значение вне пределов — 400 api.timing_bad.
+func (m *Module) handleTimingPut(w http.ResponseWriter, r *http.Request) {
+	if m.svc.timing == nil {
+		m.unavailable(w, r)
+		return
+	}
+	var req contracts.Timing
+	if !m.readJSON(w, r, &req) {
+		return
+	}
+
+	// Применяем и сохраняем в config.yaml одной записью.
+	if err := m.svc.timing.SetTiming(req); err != nil {
+		m.writeError(w, r, http.StatusBadRequest, "api.timing_bad", map[string]string{"error": err.Error()})
+		return
+	}
+	tm := m.svc.timing.Timing()
+	if err := config.SetModuleValues(m.cfg.ConfigFile, "engine", []config.KeyValue{
+		{Key: "key_hold_ms", Value: tm.KeyHoldMS}, {Key: "key_delay_ms", Value: tm.KeyDelayMS},
+		{Key: "layout_switch_ms", Value: tm.LayoutSwitchMS},
+	}); err != nil {
+		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, tm)
 }
 
 // handleRecordSettingsGet возвращает настройки записи по умолчанию.

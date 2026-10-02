@@ -161,6 +161,7 @@
   "api.rename_taken": "The name «{name}» is already taken ({other}). Names must not repeat (case does not matter).",
   "api.rename_unknown": "Not found: «{name}». Devices — mkey devices, a device's buttons — mkey devices inspect.",
   "api.stopped": "the macro was stopped",
+  "api.timing_bad": "Key timing is not valid: {error}",
   "api.unauthorized": "unauthorized: open the interface with mkey gui",
   "api.unavailable": "this feature is unavailable (module disabled or not running)",
   "api.update_cannot": "mKey cannot update itself: {reason}",

@@ -304,6 +304,16 @@ export interface CapturedKey {
   device_name: string;
 }
 
+/** Timing — интервалы нажатий по умолчанию (GET/PUT /settings/timing, modules.engine в config.yaml). */
+export interface Timing {
+  /** key_hold_ms — сколько держать клавишу при обычном нажатии, мс (0–1000). */
+  key_hold_ms: number;
+  /** key_delay_ms — пауза после каждого нажатия и символа текста, мс (0–1000). */
+  key_delay_ms: number;
+  /** layout_switch_ms — пауза после переключения раскладки, мс (0–5000). */
+  layout_switch_ms: number;
+}
+
 /** RecordSettings — настройки записи по умолчанию (GET/PUT /settings/recording, config.yaml). */
 export interface RecordSettings {
   /** kinds — какие устройства записывать ("keyboard", "mouse", "gamepad"…). */

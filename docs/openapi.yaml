@@ -264,6 +264,14 @@ paths:
     post:
       summary: "Проверить проект ({project} или {raw}), не сохраняя"
       responses: { "200": { description: Ошибок нет }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/settings/timing:
+    get:
+      summary: "Интервалы нажатий по умолчанию: {key_hold_ms, key_delay_ms, layout_switch_ms}"
+      responses: { "200": { description: Интервалы } }
+    put:
+      summary: "Изменить интервалы нажатий (действуют сразу, сохраняются в config.yaml, modules.engine)"
+      description: "Пределы: key_hold_ms и key_delay_ms — 0…1000, layout_switch_ms — 0…5000 мс; вне пределов — 400 api.timing_bad."
+      responses: { "200": { description: Новые интервалы }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/{id}/events/{event}/dry_run:
     post:
       summary: "Сухой прогон события ({project} — проект в том виде, в каком он в окне; можно несохранённый)"
