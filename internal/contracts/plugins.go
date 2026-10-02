@@ -104,7 +104,14 @@ type LuaPlugin interface {
 	RunAction(ctx context.Context, rc RunContext, typ string, params any) error
 	// CheckCondition вычисляет условие typ.
 	CheckCondition(ctx context.Context, rc RunContext, typ string, params any) (bool, error)
-	// Close освобождает состояние Lua.
+	// Triggers — триггеры, которые плагин зарегистрировал (mkey.register_trigger).
+	Triggers() []PluginType
+	// ArmTrigger начинает опрашивать триггер typ события ev: функция poll плагина вызывается раз
+	// в интервал вида, и каждый раз, когда она вернула истину или таблицу, вызывается fire
+	// (vars — значения таблицы для действий). Опрос идёт до снятия (возвращённая функция) или
+	// отмены ctx. Ошибка — неизвестный вид.
+	ArmTrigger(ctx context.Context, ev EventRef, typ string, params any, fire func(vars map[string]any)) (disarm func(), err error)
+	// Close освобождает состояние Lua (опросы триггеров прекращаются).
 	Close()
 }
 
