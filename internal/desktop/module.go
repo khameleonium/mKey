@@ -22,6 +22,9 @@ type Config struct {
 	Layouts []string `json:"layouts"`
 	// Layout — текущая раскладка для таких окружений (по умолчанию — первая из Layouts).
 	Layout string `json:"layout"`
+	// Screen — размер рабочего стола в пикселях ("1920x1080") для касаний в пикселях
+	// ({Touch 960 540}); пусто — неизвестен (проценты работают всегда).
+	Screen string `json:"screen"`
 }
 
 // Module — модуль десктоп-адаптеров; сейчас публикует contracts.LayoutProvider.
@@ -64,6 +67,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		return fmt.Errorf("%s: %w", ModuleID, err)
 	}
 	m.fallback = configLayouts{cfg: m.cfg}
+	if _, _, err := parseScreen(m.cfg.Screen); err != nil {
+		return fmt.Errorf("%s: screen: %w", ModuleID, err)
+	}
 
 	// Окружение из модуля session (если он отключён — работаем на настройках).
 	if s, err := contracts.LookupService[contracts.Session](host.Services()); err == nil {
@@ -83,6 +89,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		return err
 	}
 	if err := contracts.ProvideService[contracts.URLOpener](host.Services(), m); err != nil {
+		return err
+	}
+	if err := contracts.ProvideService[contracts.ScreenInfo](host.Services(), m); err != nil {
 		return err
 	}
 	return contracts.ProvideService[contracts.Notifier](host.Services(), m)

@@ -41,6 +41,10 @@ const (
 	ErrBindingOption    = "dsl.binding_option"     // {name}, {option}: настройка не подходит к привязке
 	ErrBindingRange     = "dsl.binding_range"      // {name}, {option}, {min}, {max}: значение вне пределов
 	ErrNotSupported     = "dsl.not_supported"      // {what}: возможность появится позже
+	ErrNoTouchscreen    = "dsl.no_touchscreen"     // нет виртуального сенсорного экрана
+	ErrManyTouchscreens = "dsl.many_touchscreens"  // {list}: экранов несколько — нужно имя
+	ErrNotTouchscreen   = "dsl.not_touchscreen"    // {device}: устройство — не сенсорный экран
+	ErrScreenUnknown    = "dsl.screen_unknown"     // размер экрана неизвестен — пиксели нельзя
 	ErrUntypeable       = "dsl.untypeable_char"    // {char}, {layouts}: символа нет в раскладках
 	ErrChord            = "dsl.chord_in_braces"    // {keys}, {macro}, {hotkey}: {Ctrl+C} — в скобках одна клавиша
 	ErrBraceKey         = "dsl.brace_key"          // {char}: {{} или {}} — такой клавиши нет
@@ -55,7 +59,7 @@ var AllErrorCodes = []string{
 	ErrUnclosedGroup, ErrUnexpectedClose, ErrUnclosedText, ErrBadEscape, ErrEmptyBraces,
 	ErrUnknownKey, ErrUnknownKeyHint, ErrBadNumber, ErrBadDuration, ErrTooLong, ErrBadRepeat,
 	ErrPrefixNotAllowed, ErrStarOnlyRelease, ErrRepeatAndHold, ErrPauseRange, ErrAxisChord,
-	ErrBadCommandArgs, ErrUnknownDevice, ErrUnknownButton, ErrCannotSend, ErrAxisAsKey, ErrAxisExpected, ErrBindingValue, ErrBindingThreshold, ErrBindingOption, ErrBindingRange, ErrNotSupported, ErrUntypeable,
+	ErrBadCommandArgs, ErrUnknownDevice, ErrUnknownButton, ErrCannotSend, ErrAxisAsKey, ErrAxisExpected, ErrBindingValue, ErrBindingThreshold, ErrBindingOption, ErrBindingRange, ErrNotSupported, ErrNoTouchscreen, ErrManyTouchscreens, ErrNotTouchscreen, ErrScreenUnknown, ErrUntypeable,
 	ErrChord, ErrBraceKey, ErrAlreadyHeld, ErrNotHeld, ErrBadHotkey,
 }
 

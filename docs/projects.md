@@ -166,6 +166,8 @@ bindings:
 | `mouse_move` | `{dx, dy}` (относительно) | `mouse_move: { dx: 10, dy: -5 }` |
 | `mouse_click` | кнопка (`Left` по умолчанию) | `mouse_click: Right` |
 | `wheel` | `{direction, count}` | `wheel: { direction: Down, count: 3 }` |
+| `touch` | `{x, y, hold_ms?, device?}` — точка в процентах (`"50%"`) или пикселях | `touch: { x: "50%", y: "80%" }` |
+| `swipe` | `{x1, y1, x2, y2, ms?, device?}` | `swipe: { x1: "50%", y1: "80%", x2: "50%", y2: "20%", ms: 300 }` |
 | `pointer_center` | — | `pointer_center: {}` — курсор в центр экрана (калибровка, docs/recording.md) |
 | `repeat` | ровно одно из `times`, `while` (`toggled`, `held`, `forever`), `conditions`; `do` | см. пример выше |
 | `if` | `{conditions, then, else}` | |

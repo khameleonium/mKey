@@ -101,3 +101,105 @@ func TestTemplatesInKernel(t *testing.T) {
 		})
 	}
 }
+
+// TestTouchInKernel проверяет касания настоящего виртуального сенсорного экрана: касание, движение,
+// отрыв (номер касания −1) и что «отпустить всё» без касания не создаёт касания. Безопасно для
+// живой сессии: экран сразу захватывается тестом (EVIOCGRAB) — события получает только тест,
+// рабочий стол касаний не видит.
+func TestTouchInKernel(t *testing.T) {
+	m := newModule(func(s ev.Setup) (eventWriter, error) { return ev.CreateUInput(ev.DefaultUInputPath, s) }, clock.Real{})
+	m.log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	m.cfg.SettleMS = 0
+
+	// Экран, открытый и захваченный тестом до первого касания.
+	d, err := m.createVirtual(wanted{spec: project.VirtualDevice{Name: "ittouch", Template: "touchscreen"}, project: "it"})
+	if err != nil {
+		t.Skipf("uinput unavailable: %v", err)
+	}
+	defer func() { _ = d.close() }()
+	time.Sleep(200 * time.Millisecond)
+	dev, err := ev.Open(d.node)
+	if err != nil {
+		t.Skipf("cannot open %s: %v", d.node, err)
+	}
+	defer func() { _ = dev.Close() }()
+	if err := dev.Grab(); err != nil {
+		t.Skipf("cannot grab %s: %v", d.node, err)
+	}
+
+	// Чтение событий в фоне.
+	events := make(chan ev.Event, 64)
+	go func() {
+		buf := make([]ev.Event, 16)
+		for {
+			got, err := dev.ReadEvents(buf)
+			if err != nil {
+				return
+			}
+			for _, e := range got {
+				events <- e
+			}
+		}
+	}()
+	collect := func() []ev.Event {
+		var out []ev.Event
+		for {
+			select {
+			case e := <-events:
+				out = append(out, e)
+			case <-time.After(100 * time.Millisecond):
+				return out
+			}
+		}
+	}
+	find := func(list []ev.Event, typ, code uint16) (int32, bool) {
+		for _, e := range list {
+			if e.Type == typ && e.Code == code {
+				return e.Value, true
+			}
+		}
+		return 0, false
+	}
+	ctx := context.Background()
+
+	// «Отпустить всё» без касания — ни одного события касания (раньше здесь возникало фантомное).
+	if err := d.ReleaseAll(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := find(collect(), ev.EvAbs, ev.AbsMtTrackingId); ok {
+		t.Fatal("ReleaseAll without a touch sent a tracking id")
+	}
+
+	// Касание в середине: номер касания ≥ 0, BTN_TOUCH 1, X — середина диапазона.
+	if err := d.TouchDown(ctx, 0.5, 0.25); err != nil {
+		t.Fatal(err)
+	}
+	got := collect()
+	if id, ok := find(got, ev.EvAbs, ev.AbsMtTrackingId); !ok || id < 0 {
+		t.Fatalf("touch down: %v", got)
+	}
+	if v, _ := find(got, ev.EvKey, ev.BtnTouch); v != 1 {
+		t.Fatalf("BTN_TOUCH = %d", v)
+	}
+	if x, _ := find(got, ev.EvAbs, ev.AbsMtPositionX); x < 16300 || x > 16500 {
+		t.Fatalf("x = %d", x)
+	}
+
+	// Движение и отрыв: номер касания −1, BTN_TOUCH 0; повторный отрыв — без событий.
+	if err := d.TouchMove(ctx, 0.6, 0.25); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.TouchUp(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got = collect()
+	if id, ok := find(got, ev.EvAbs, ev.AbsMtTrackingId); !ok || id != -1 {
+		t.Fatalf("touch up: %v", got)
+	}
+	if err := d.TouchUp(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if extra := collect(); len(extra) != 0 {
+		t.Fatalf("second TouchUp sent %v", extra)
+	}
+}

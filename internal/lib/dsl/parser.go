@@ -445,7 +445,12 @@ func (p *parser) command(start Pos, name string) (Node, error) {
 			if err != nil {
 				return Node{}, err
 			}
-			n.Args = append(n.Args, Arg{Number: v, Signed: signed})
+			// Число может быть процентом экрана: {Touch 50% 80%}.
+			percent := p.peek() == '%'
+			if percent {
+				p.next()
+			}
+			n.Args = append(n.Args, Arg{Number: v, Signed: signed, Percent: percent})
 		case isWordStart(r):
 			n.Args = append(n.Args, Arg{Word: p.word()})
 		default:

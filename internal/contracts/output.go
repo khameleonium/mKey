@@ -102,6 +102,26 @@ type VirtualTemplateInfo struct {
 	Axes    []string `json:"axes"`
 }
 
+// TouchSetter — сенсорный экран (виртуальное устройство шаблона touchscreen): одно касание
+// пальцем. Координаты — доли экрана 0…1 (0,0 — левый верхний угол). TouchDown начинает касание
+// (или переносит палец, если он уже касается), TouchMove двигает палец, TouchUp отрывает его
+// (без касания — ничего не делает). ReleaseAll устройства тоже отрывает палец.
+type TouchSetter interface {
+	TouchDown(ctx context.Context, x, y float64) error
+	TouchMove(ctx context.Context, x, y float64) error
+	TouchUp(ctx context.Context) error
+}
+
+// TemplateTouchscreen — шаблон виртуального сенсорного экрана.
+const TemplateTouchscreen = "touchscreen"
+
+// ScreenInfo — размер рабочего стола в пикселях (для координат касаний в пикселях). Модуль
+// desktop берёт его из настроек (modules.desktop.screen), адаптеры окружений (фаза 8) — сами.
+// ErrUnsupported — размер неизвестен.
+type ScreenInfo interface {
+	ScreenSize(ctx context.Context) (width, height int, err error)
+}
+
 // AxisSetter — устройство с осями (виртуальный геймпад, джойстик): SetAxis ставит ось code в
 // положение value — от −1 до 1 (стики, крестовина) или от 0 до 1 (курки).
 type AxisSetter interface {

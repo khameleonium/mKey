@@ -19,6 +19,8 @@ func TestDSLRoundTrip(t *testing.T) {
 		{`{Mouse0}[50]`, `[{"type":"tap","value":"Mouse0"},{"type":"pause","value":50}]`, `{Mouse0}[50]`},
 		{`{Space 500}[100..300]`, `[{"type":"hold","value":{"key":"Space","ms":500}},{"type":"pause","value":{"max_ms":300,"min_ms":100}}]`, `{Space 500}[100..300]`},
 		{`{Move +10 -5}{Click right}{Wheel down 3}`, `[{"type":"mouse_move","value":{"dx":10,"dy":-5}},{"type":"mouse_click","value":"Right"},{"type":"wheel","value":{"count":3,"direction":"Down"}}]`, `{Move +10 -5}{Click Right}{Wheel Down 3}`},
+		// Касания: проценты, пиксели с устройством, свайп с длительностью.
+		{`{Touch 50% 80%}{Touch scr 960 540 500}{Swipe 10% 90% 10% 20% 250}`, `[{"type":"touch","value":{"x":"50%","y":"80%"}},{"type":"touch","value":{"device":"scr","hold_ms":500,"x":"960","y":"540"}},{"type":"swipe","value":{"ms":250,"x1":"10%","x2":"10%","y1":"90%","y2":"20%"}}]`, `{Touch 50% 80%}{Touch scr 960 540 500}{Swipe 10% 90% 10% 20% 250}`},
 		// Повтор и группы остаются макросом; соседние фрагменты склеиваются.
 		{`{A*3}({B}[10])*2{C}`, `[{"type":"send","value":"{A*3}({B}[10])*2"},{"type":"tap","value":"C"}]`, `{A*3}({B}[10])*2{C}`},
 		{`^{Ctrl}{C}~{Ctrl}`, `[{"type":"key_down","value":"Ctrl"},{"type":"tap","value":"C"},{"type":"key_up","value":"Ctrl"}]`, `^{Ctrl}{C}~{Ctrl}`},

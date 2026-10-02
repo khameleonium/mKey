@@ -44,3 +44,19 @@ func TestFallbackToConfig(t *testing.T) {
 		t.Fatalf("defaults = %+v", info)
 	}
 }
+
+// TestScreenSize проверяет размер экрана из настроек: задан, не задан, записан неверно.
+func TestScreenSize(t *testing.T) {
+	t.Parallel()
+	m := &Module{cfg: Config{Screen: "1920x1080"}}
+	if w, h, err := m.ScreenSize(context.Background()); err != nil || w != 1920 || h != 1080 {
+		t.Fatalf("size = %d %d %v", w, h, err)
+	}
+	m.cfg.Screen = ""
+	if _, _, err := m.ScreenSize(context.Background()); !errors.Is(err, contracts.ErrUnsupported) {
+		t.Fatalf("unknown: %v", err)
+	}
+	if _, _, err := parseScreen("1920*1080"); err == nil {
+		t.Fatal("bad format accepted")
+	}
+}

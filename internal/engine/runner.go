@@ -66,7 +66,9 @@ type Module struct {
 	// inspect — авто-ID устройств: отправка кнопок {UnKey001} (nil — модуль отключён).
 	inspect contracts.Inspector
 	// vdevs — виртуальные устройства проектов ({pad2.South}); nil — модуль вывода их не даёт.
-	vdevs    contracts.VirtualDeviceManager
+	vdevs contracts.VirtualDeviceManager
+	// screen — размер экрана для касаний в пикселях (nil — модуль desktop выключен).
+	screen   contracts.ScreenInfo
 	notifier contracts.Notifier
 	// root живёт до Stop: от него наследуются контексты проектов.
 	root       context.Context
@@ -94,6 +96,8 @@ type run struct {
 	held map[string][]uint16
 	// axes — оси виртуальных устройств, которые сдвинул макрос: в конце они возвращаются в покой.
 	axes map[string][]uint16
+	// touched — сенсорные экраны, которых касается макрос: в конце палец отрывается.
+	touched map[string]bool
 }
 
 // New создаёт модуль с настоящими часами.
@@ -138,6 +142,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
 	m.vdevs, _ = contracts.LookupService[contracts.VirtualDeviceManager](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	m.screen, _ = contracts.LookupService[contracts.ScreenInfo](host.Services())
 	if m.cfg.VarsFile != "" {
 		m.persist.path = m.cfg.VarsFile
 	}
@@ -303,7 +308,7 @@ func (m *Module) resolver() dsl.DeviceResolver {
 // что раннер зажал, и снимает его с учёта; его нужно вызвать всегда.
 func (m *Module) newRun(parent context.Context) (context.Context, *run, func()) {
 	ctx, cancel := context.WithCancel(parent)
-	r := &run{cancel: cancel, held: map[string][]uint16{}, axes: map[string][]uint16{}}
+	r := &run{cancel: cancel, held: map[string][]uint16{}, axes: map[string][]uint16{}, touched: map[string]bool{}}
 	m.mu.Lock()
 	m.runs[r] = struct{}{}
 	m.mu.Unlock()
@@ -363,6 +368,8 @@ func (m *Module) step(ctx context.Context, r *run, s dsl.Step) error {
 		return m.releaseAll(r)
 	case dsl.StepAxis:
 		return m.axis(ctx, r, s)
+	case dsl.StepTouch, dsl.StepSwipe:
+		return m.touch(ctx, r, s)
 	case dsl.StepTap:
 		return m.tap(ctx, r, s)
 	case dsl.StepWait:
@@ -451,14 +458,25 @@ func (m *Module) release(ctx context.Context, r *run, device string, code uint16
 // releaseAll отпускает всё, что зажал раннер, в обратном порядке, и возвращает в покой сдвинутые
 // им оси виртуальных устройств. Работает и после отмены.
 func (m *Module) releaseAll(r *run) error {
-	// Забираем списки зажатого и сдвинутых осей под блокировкой.
+	// Забираем списки зажатого, сдвинутых осей и касаний под блокировкой.
 	r.mu.Lock()
-	held, axes := r.held, r.axes
-	r.held, r.axes = map[string][]uint16{}, map[string][]uint16{}
+	held, axes, touched := r.held, r.axes, r.touched
+	r.held, r.axes, r.touched = map[string][]uint16{}, map[string][]uint16{}, map[string]bool{}
 	r.mu.Unlock()
 
-	// Оси, сдвинутые макросом, — в покой (центр стиков, отпущенные курки).
+	// Пальцы, оставшиеся на сенсорных экранах, — оторвать.
 	var errs []error
+	for device := range touched {
+		if dev, err := m.device(device); err == nil {
+			if ts, ok := dev.(contracts.TouchSetter); ok {
+				if err := ts.TouchUp(context.Background()); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+
+	// Оси, сдвинутые макросом, — в покой (центр стиков, отпущенные курки).
 	for device, codes := range axes {
 		dev, err := m.device(device)
 		if err != nil {

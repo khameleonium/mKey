@@ -163,6 +163,10 @@ const (
 	StepWheel StepKind = "wheel"
 	// StepAxis — поставить оси Targets в положение Value (−1…1, у курков 0…1).
 	StepAxis StepKind = "axis"
+	// StepTouch — коснуться сенсорного экрана Device в точке Points[0] на HoldMS (0 — по умолчанию).
+	StepTouch StepKind = "touch"
+	// StepSwipe — провести по сенсорному экрану Device от Points[0] до Points[1] за HoldMS.
+	StepSwipe StepKind = "swipe"
 	// StepLoop — повторить Body Count раз.
 	StepLoop StepKind = "loop"
 )
@@ -189,12 +193,28 @@ type Step struct {
 	DY int32 `json:"dy,omitempty"`
 	// Value — положение оси (axis).
 	Value float64 `json:"value,omitempty"`
+	// Device — сенсорный экран (touch, swipe): имя виртуального устройства; пусто — единственный.
+	Device string `json:"device,omitempty"`
+	// Points — точки касания (touch — одна, swipe — начало и конец).
+	Points []Point `json:"points,omitempty"`
 	// Body — вложенные шаги (loop).
 	Body []Step `json:"body,omitempty"`
 }
 
+// Coord — координата точки экрана: процент ширины или высоты (Percent) или пиксели.
+type Coord struct {
+	Value   float64 `json:"value"`
+	Percent bool    `json:"percent,omitempty"`
+}
+
+// Point — точка экрана.
+type Point struct {
+	X Coord `json:"x"`
+	Y Coord `json:"y"`
+}
+
 // Compile превращает дерево разбора в план выполнения, находя устройства и коды клавиш.
-// Команды, которые появятся позже (абсолютные координаты, тач), дают ErrNotSupported.
+// Команды, которые появятся позже (абсолютные координаты курсора), дают ErrNotSupported.
 func Compile(nodes []Node, r Resolver) ([]Step, error) {
 	steps := make([]Step, 0, len(nodes))
 	for _, n := range nodes {
@@ -271,7 +291,59 @@ const (
 	usageMove  = "{Move +dx +dy}"
 	usageClick = "{Click} / {Click Right}"
 	usageWheel = "{Wheel Up 3}"
+	usageTouch = "{Touch 50% 80%} / {Touch 50% 80% 500} / {Touch экран 960 860}"
+	usageSwipe = "{Swipe 50% 80% 50% 20% 300}"
 )
+
+// Пределы касаний: координата в пикселях и длительность касания или свайпа.
+const (
+	maxPixel   = 100000
+	maxTouchMS = 60000
+	// defaultSwipeMS — длительность свайпа, если она не указана.
+	defaultSwipeMS = 300
+)
+
+// touchArgs разбирает аргументы касания: необязательное имя устройства, points точек (по два
+// числа: проценты 0…100 или пиксели без знака) и необязательную длительность в мс.
+func touchArgs(args []Arg, points int) (device string, pts []Point, ms int64, ok bool) {
+	// Имя сенсорного экрана — слово в начале.
+	if len(args) > 0 && args[0].Word != "" {
+		device, args = args[0].Word, args[1:]
+	}
+	if len(args) != points*2 && len(args) != points*2+1 {
+		return "", nil, 0, false
+	}
+
+	// Координаты.
+	coord := func(a Arg) (Coord, bool) {
+		if a.Word != "" || a.Signed || a.Number < 0 {
+			return Coord{}, false
+		}
+		if a.Percent {
+			return Coord{Value: a.Number, Percent: true}, a.Number <= 100
+		}
+		return Coord{Value: a.Number}, a.Number == math.Trunc(a.Number) && a.Number <= maxPixel
+	}
+	for i := range points {
+		x, okX := coord(args[i*2])
+		y, okY := coord(args[i*2+1])
+		if !okX || !okY {
+			return "", nil, 0, false
+		}
+		pts = append(pts, Point{X: x, Y: y})
+	}
+
+	// Длительность (мс, целое без знака и процента).
+	if len(args) == points*2+1 {
+		a := args[points*2]
+		v, okV := toInt32(a.Number)
+		if a.Word != "" || a.Signed || a.Percent || !okV || v < 1 || v > maxTouchMS {
+			return "", nil, 0, false
+		}
+		ms = int64(v)
+	}
+	return device, pts, ms, true
+}
 
 // compileCommand компилирует встроенную команду.
 func compileCommand(n Node, r Resolver) (Step, error) {
@@ -346,10 +418,24 @@ func compileCommand(n Node, r Resolver) (Step, error) {
 		}
 		return s, nil
 
-	// Касания из макросов не сделаны: виртуальный сенсорный экран есть (шаблон touchscreen),
-	// команды {Touch}/{Swipe} — будущая возможность.
-	case "Touch", "Swipe":
-		return Step{}, newError(n.Pos, ErrNotSupported, "what", "touch")
+	// Касание сенсорного экрана: точка и необязательное удержание (долгое нажатие).
+	case "Touch":
+		dev, pts, ms, ok := touchArgs(n.Args, 1)
+		if !ok {
+			return bad(usageTouch)
+		}
+		return Step{Kind: StepTouch, Pos: n.Pos, Device: dev, Points: pts, HoldMS: ms}, nil
+
+	// Свайп: от точки до точки за заданное время.
+	case "Swipe":
+		dev, pts, ms, ok := touchArgs(n.Args, 2)
+		if !ok {
+			return bad(usageSwipe)
+		}
+		if ms == 0 {
+			ms = defaultSwipeMS
+		}
+		return Step{Kind: StepSwipe, Pos: n.Pos, Device: dev, Points: pts, HoldMS: ms}, nil
 	}
 	return Step{}, newError(n.Pos, ErrNotSupported, "what", n.Command)
 }

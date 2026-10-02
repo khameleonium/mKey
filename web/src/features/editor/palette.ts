@@ -2,7 +2,7 @@
 import type { RegistryEntry } from "../../lib/types";
 
 /** Порядок известных категорий; остальные (от плагинов) идут следом по алфавиту. */
-const ORDER = ["keyboard", "mouse", "time", "logic", "system", "script"];
+const ORDER = ["keyboard", "mouse", "touch", "time", "logic", "system", "script"];
 
 /** Group — категория палитры и её виды блоков. */
 export interface Group {

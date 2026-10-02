@@ -31,6 +31,8 @@ func (m *Module) builtinActions() []contracts.ActionType {
 		m.dslAction("mouse_move", "mouse", `{"type":"object","required":["dx","dy"],"properties":{"dx":{"type":"integer","default":0},"dy":{"type":"integer","default":0}}}`, moveDSL),
 		m.dslAction("mouse_click", "mouse", `{"enum":["Left","Right","Middle","Back","Forward"],"default":"Left"}`, clickDSL),
 		m.dslAction("wheel", "mouse", `{"type":"object","required":["direction"],"properties":{"direction":{"enum":["Up","Down","Left","Right"],"default":"Down"},"count":{"type":"integer","minimum":1,"default":1}}}`, wheelDSL),
+		m.dslAction("touch", "touch", `{"type":"object","required":["x","y"],"properties":{"x":{"type":"string","default":"50%"},"y":{"type":"string","default":"50%"},"hold_ms":{"type":"integer","minimum":0,"default":0,"x-widget":"ms"},"device":{"type":"string","x-advanced":true}}}`, touchDSL("Touch")),
+		m.dslAction("swipe", "touch", `{"type":"object","required":["x1","y1","x2","y2"],"properties":{"x1":{"type":"string","default":"50%"},"y1":{"type":"string","default":"80%"},"x2":{"type":"string","default":"50%"},"y2":{"type":"string","default":"20%"},"ms":{"type":"integer","minimum":1,"default":300,"x-widget":"ms"},"device":{"type":"string","x-advanced":true}}}`, touchDSL("Swipe")),
 
 		// Логика и переменные.
 		m.repeatAction(),
@@ -98,6 +100,44 @@ func keyDSL(prefix string) func(any) (string, error) {
 			return "", project.Required("action", "", "")
 		}
 		return prefix + braces(s), nil
+	}
+}
+
+// touchDSL — действия touch и swipe: координаты строками ("50%" — процент экрана, "960" — пиксели),
+// необязательные длительность и имя сенсорного экрана → {Touch [экран] x y [мс]} или {Swipe …}.
+func touchDSL(command string) func(any) (string, error) {
+	return func(v any) (string, error) {
+		var p struct {
+			X, Y, X1, Y1, X2, Y2 string
+			HoldMS               int `json:"hold_ms"`
+			MS                   int
+			Device               string
+		}
+		if err := project.Decode(v, &p); err != nil {
+			return "", err
+		}
+
+		// Координаты по порядку; пустая — незаполненное поле.
+		coords := []struct{ name, v string }{{"x", p.X}, {"y", p.Y}}
+		ms := p.HoldMS
+		if command == "Swipe" {
+			coords = []struct{ name, v string }{{"x1", p.X1}, {"y1", p.Y1}, {"x2", p.X2}, {"y2", p.Y2}}
+			ms = p.MS
+		}
+		parts := []string{command}
+		if d := strings.TrimSpace(p.Device); d != "" {
+			parts = append(parts, d)
+		}
+		for _, c := range coords {
+			if strings.TrimSpace(c.v) == "" {
+				return "", project.Required("action", strings.ToLower(command), c.name)
+			}
+			parts = append(parts, strings.ReplaceAll(strings.TrimSpace(c.v), " ", ""))
+		}
+		if ms > 0 {
+			parts = append(parts, strconv.Itoa(ms))
+		}
+		return "{" + strings.Join(parts, " ") + "}", nil
 	}
 }
 

@@ -214,9 +214,98 @@ type vdevice struct {
 	project string
 	node    string
 
-	// mu защищает held — нажатые кнопки в кодах макросов.
-	mu   sync.Mutex
-	held map[uint16]bool
+	// mu защищает held — нажатые кнопки в кодах макросов, touching — палец касается экрана
+	// и nextTrack — номер следующего касания (ABS_MT_TRACKING_ID).
+	mu        sync.Mutex
+	held      map[uint16]bool
+	touching  bool
+	nextTrack int32
+}
+
+// isTouch сообщает, что устройство — сенсорный экран (multitouch, protocol B).
+func (v *vdevice) isTouch() bool {
+	_, ok := v.setup.Abs[ev.AbsMtTrackingId]
+	return ok
+}
+
+// touchPos переводит долю экрана f (0…1) в значение оси code.
+func (v *vdevice) touchPos(code uint16, f float64) int32 {
+	info := v.setup.Abs[code]
+	f = max(0, min(1, f))
+	return info.Minimum + int32(math.Round(f*float64(info.Maximum-info.Minimum)))
+}
+
+// touchEvents — положение пальца в слоте 0: позиция multitouch и обычные оси (для программ,
+// которые понимают только одно касание).
+func (v *vdevice) touchEvents(x, y float64) []ev.Event {
+	px, py := v.touchPos(ev.AbsMtPositionX, x), v.touchPos(ev.AbsMtPositionY, y)
+	return []ev.Event{
+		{Type: ev.EvAbs, Code: ev.AbsMtPositionX, Value: px}, {Type: ev.EvAbs, Code: ev.AbsMtPositionY, Value: py},
+		{Type: ev.EvAbs, Code: ev.AbsX, Value: px}, {Type: ev.EvAbs, Code: ev.AbsY, Value: py},
+	}
+}
+
+// TouchDown касается экрана в точке (x, y) — долях экрана (contracts.TouchSetter). Палец уже
+// касается — переносится в эту точку.
+func (v *vdevice) TouchDown(ctx context.Context, x, y float64) error {
+	if !v.isTouch() {
+		return fmt.Errorf("%s: %w: not a touchscreen", v.name, contracts.ErrUnknownControl)
+	}
+	v.mu.Lock()
+	if v.touching {
+		v.mu.Unlock()
+		return v.TouchMove(ctx, x, y)
+	}
+	id := v.nextTrack
+	v.nextTrack = (v.nextTrack + 1) % 65536
+	v.mu.Unlock()
+
+	// Новое касание в слоте 0: номер касания, место, «палец на экране».
+	events := append([]ev.Event{
+		{Type: ev.EvAbs, Code: ev.AbsMtSlot, Value: 0},
+		{Type: ev.EvAbs, Code: ev.AbsMtTrackingId, Value: id},
+	}, v.touchEvents(x, y)...)
+	events = append(events, ev.Event{Type: ev.EvKey, Code: ev.BtnTouch, Value: ev.ValueDown})
+	if err := v.Emit(ctx, events...); err != nil {
+		return err
+	}
+	v.mu.Lock()
+	v.touching = true
+	v.mu.Unlock()
+	return nil
+}
+
+// TouchMove двигает касающийся палец в точку (x, y) (contracts.TouchSetter).
+func (v *vdevice) TouchMove(ctx context.Context, x, y float64) error {
+	v.mu.Lock()
+	touching := v.touching
+	v.mu.Unlock()
+	if !touching {
+		return v.TouchDown(ctx, x, y)
+	}
+	return v.Emit(ctx, append([]ev.Event{{Type: ev.EvAbs, Code: ev.AbsMtSlot, Value: 0}}, v.touchEvents(x, y)...)...)
+}
+
+// TouchUp отрывает палец от экрана (contracts.TouchSetter).
+func (v *vdevice) TouchUp(ctx context.Context) error {
+	v.mu.Lock()
+	touching := v.touching
+	v.touching = false
+	v.mu.Unlock()
+	if !touching {
+		return nil
+	}
+	return v.Emit(ctx, liftEvents()...)
+}
+
+// liftEvents — события «палец оторван» для слота 0: номер касания −1 (по протоколу ядра
+// multitouch B это конец касания) и BTN_TOUCH = 0.
+func liftEvents() []ev.Event {
+	return []ev.Event{
+		{Type: ev.EvAbs, Code: ev.AbsMtSlot, Value: 0},
+		{Type: ev.EvAbs, Code: ev.AbsMtTrackingId, Value: -1},
+		{Type: ev.EvKey, Code: ev.BtnTouch, Value: ev.ValueUp},
+	}
 }
 
 // Press зажимает кнопку code (код макросов).
@@ -315,10 +404,20 @@ func (v *vdevice) ReleaseAll() error {
 	// Кнопки — как у обычного устройства.
 	err := v.device.ReleaseAll()
 
-	// Оси — в положение покоя (центр стиков, отпущенные курки), одним пакетом.
+	// Оси — в положение покоя (центр стиков, отпущенные курки), одним пакетом. У сенсорного
+	// экрана оси не сбрасываются: номер касания 0 означал бы новое касание — только отрываем палец.
 	events := make([]ev.Event, 0, len(v.setup.Abs)+1)
-	for _, code := range slices.Sorted(maps.Keys(v.setup.Abs)) {
-		events = append(events, ev.Event{Type: ev.EvAbs, Code: code, Value: v.setup.Abs[code].Value})
+	if v.isTouch() {
+		v.mu.Lock()
+		if v.touching {
+			events = append(events, liftEvents()...)
+			v.touching = false
+		}
+		v.mu.Unlock()
+	} else {
+		for _, code := range slices.Sorted(maps.Keys(v.setup.Abs)) {
+			events = append(events, ev.Event{Type: ev.EvAbs, Code: code, Value: v.setup.Abs[code].Value})
+		}
 	}
 	if len(events) > 0 {
 		events = append(events, ev.Sync())
@@ -338,4 +437,5 @@ func (v *vdevice) ReleaseAll() error {
 var (
 	_ contracts.VirtualDevice = (*vdevice)(nil)
 	_ contracts.AxisSetter    = (*vdevice)(nil)
+	_ contracts.TouchSetter   = (*vdevice)(nil)
 )

@@ -239,7 +239,11 @@ func TestCompileErrors(t *testing.T) {
 	cases := map[string]string{
 		`{Move 100 200}`:   ErrNotSupported,
 		`{Click 10 20}`:    ErrNotSupported,
-		`{Touch 1 2}`:      ErrNotSupported,
+		`{Touch 1}`:        ErrBadCommandArgs,
+		`{Touch 150% 2}`:   ErrBadCommandArgs,
+		`{Touch -1 2}`:     ErrBadCommandArgs,
+		`{Swipe 1 2 3}`:    ErrBadCommandArgs,
+		`{Touch 1 2 0}`:    ErrBadCommandArgs,
 		`{pad2.South}`:     ErrUnknownDevice,
 		`{pad2.LX=0.5}`:    ErrUnknownDevice,
 		`{Move +1}`:        ErrBadCommandArgs,
@@ -254,6 +258,33 @@ func TestCompileErrors(t *testing.T) {
 		if !errors.As(err, &de) || de.Code != code {
 			t.Errorf("Compile(%q) = %v, want %s", in, err, code)
 		}
+	}
+}
+
+// TestTouch проверяет касания: проценты и пиксели, устройство, удержание, свайп с длительностью
+// по умолчанию, и обратную запись текстом.
+func TestTouch(t *testing.T) {
+	t.Parallel()
+	steps, err := compile(t, `{Touch 50% 80%}{Touch экран 960 860 500}{Swipe 50% 80% 50% 20%}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 3 {
+		t.Fatalf("steps = %+v", steps)
+	}
+	a, b, c := steps[0], steps[1], steps[2]
+	if a.Kind != StepTouch || a.Device != "" || !a.Points[0].X.Percent || a.Points[0].Y.Value != 80 || a.HoldMS != 0 {
+		t.Errorf("touch = %+v", a)
+	}
+	if b.Device != "экран" || b.Points[0].X.Percent || b.Points[0].X.Value != 960 || b.HoldMS != 500 {
+		t.Errorf("touch with device = %+v", b)
+	}
+	if c.Kind != StepSwipe || len(c.Points) != 2 || c.Points[1].Y.Value != 20 || c.HoldMS != defaultSwipeMS {
+		t.Errorf("swipe = %+v", c)
+	}
+	nodes, _ := Parse(`{Touch 50% 80.5%}`)
+	if got := Format(nodes); got != `{Touch 50% 80.5%}` {
+		t.Errorf("format = %q", got)
 	}
 }
 

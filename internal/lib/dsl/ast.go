@@ -49,6 +49,8 @@ type Arg struct {
 	Number float64 `json:"number,omitempty"`
 	// Signed — у числа был явный знак "+" или "-" ({Move +10 -5}).
 	Signed bool `json:"signed,omitempty"`
+	// Percent — число со знаком процента: доля экрана ({Touch 50% 80%}).
+	Percent bool `json:"percent,omitempty"`
 	// Word — слово ({Wheel Up}); пусто для чисел.
 	Word string `json:"word,omitempty"`
 }

@@ -52,7 +52,7 @@ func formatNode(b *strings.Builder, n Node) {
 	case KindCommand:
 		b.WriteString("{" + n.Command)
 		for _, a := range n.Args {
-			b.WriteString(" " + formatArg(a))
+			b.WriteString(" " + FormatArg(a))
 		}
 		b.WriteString("}")
 	case KindGroup:
@@ -98,18 +98,23 @@ func formatNumber(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// formatArg записывает аргумент команды; число со знаком сохраняет явный знак ("+10", "-5", "-0").
-func formatArg(a Arg) string {
+// FormatArg записывает аргумент команды; число со знаком сохраняет явный знак ("+10", "-5", "-0"),
+// процент — знак "%".
+func FormatArg(a Arg) string {
 	if a.Word != "" {
 		return a.Word
 	}
+	suffix := ""
+	if a.Percent {
+		suffix = "%"
+	}
 	if !a.Signed {
-		return formatNumber(a.Number)
+		return formatNumber(a.Number) + suffix
 	}
 	if math.Signbit(a.Number) {
-		return "-" + formatNumber(math.Abs(a.Number))
+		return "-" + formatNumber(math.Abs(a.Number)) + suffix
 	}
-	return "+" + formatNumber(a.Number)
+	return "+" + formatNumber(a.Number) + suffix
 }
 
 // quoteText записывает текст в кавычках: экранируются кавычка, обратная косая черта

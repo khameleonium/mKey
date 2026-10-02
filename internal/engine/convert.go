@@ -129,8 +129,42 @@ func commandAction(n dsl.Node) (project.Action, bool) {
 			count = int(args[1].Number)
 		}
 		return project.Action{Type: "wheel", Value: map[string]any{"direction": capitalize(args[0].Word), "count": count}}, true
+
+	// Касание и свайп: устройство (если есть), координаты, длительность.
+	case n.Command == "Touch" || n.Command == "Swipe":
+		return touchAction(n)
 	}
 	return project.Action{}, false
+}
+
+// touchAction переводит {Touch …} и {Swipe …} в блоки touch и swipe (только правильные записи —
+// неправильные остаются макросом, чтобы ошибку показала проверка).
+func touchAction(n dsl.Node) (project.Action, bool) {
+	args := n.Args
+	v := map[string]any{}
+	if len(args) > 0 && args[0].Word != "" {
+		v["device"], args = args[0].Word, args[1:]
+	}
+	names := []string{"x", "y"}
+	msKey := "hold_ms"
+	typ := "touch"
+	if n.Command == "Swipe" {
+		names, msKey, typ = []string{"x1", "y1", "x2", "y2"}, "ms", "swipe"
+	}
+	if len(args) != len(names) && len(args) != len(names)+1 {
+		return project.Action{}, false
+	}
+	for i, name := range names {
+		a := args[i]
+		if a.Word != "" {
+			return project.Action{}, false
+		}
+		v[name] = dsl.FormatArg(a)
+	}
+	if len(args) == len(names)+1 {
+		v[msKey] = int(args[len(names)].Number)
+	}
+	return project.Action{Type: typ, Value: v}, true
 }
 
 // keysName возвращает клавишу узла без скобок: "C", "pad2.South".

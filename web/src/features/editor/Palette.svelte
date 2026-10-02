@@ -83,6 +83,9 @@
   .cat-mouse {
     --cat: #0f9d8a;
   }
+  .cat-touch {
+    --cat: #db2777;
+  }
   .cat-time {
     --cat: #d98a00;
   }
