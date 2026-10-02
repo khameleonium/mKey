@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -30,9 +32,13 @@ type watchEvent struct {
 }
 
 // newDevicesWatchCmd создаёт команду `mkey devices watch` — показывать нажатия на всех устройствах
-// непрерывно, пока не нажат Ctrl+C (FR-DEV-8). Нажатия никуда не сохраняются.
+// (или на одном: --device) непрерывно, пока не нажат Ctrl+C (FR-DEV-8). Нажатия сохраняются
+// в файл, только если человек сам попросил об этом (--out).
 func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
-	var moves bool
+	var (
+		moves       bool
+		device, out string
+	)
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: tr.T("cli.watch.short"),
@@ -46,29 +52,61 @@ func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
 			if err := ensureDaemon(ctx, c, tr, true); err != nil {
 				return err
 			}
-			out := cmd.OutOrStdout()
-			printf(out, "%s\n\n", tr.T("cli.watch.started"))
-
-			// Поток событий от демона: строки «data: {…}».
-			path := "/api/v1/input/watch"
-			if moves {
-				path += "?moves=1"
+			// Файл журнала, если его попросили: создаётся заново, читать может только владелец.
+			var file *os.File
+			if out != "" {
+				f, err := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+				if err != nil {
+					return err
+				}
+				defer func() { _ = f.Close() }()
+				file = f
 			}
-			err := c.stream(ctx, path, func(data []byte) {
+			screen := cmd.OutOrStdout()
+
+			// Поток событий от демона: строки «data: {…}»; каждая — на экран и в файл. Подсказка —
+			// когда демон принял поток (устройство нашлось).
+			opened := func() { printf(screen, "%s\n\n", tr.T("cli.watch.started")) }
+			err := c.stream(ctx, watchPath(moves, device), opened, func(data []byte) {
 				var e watchEvent
-				if json.Unmarshal(data, &e) == nil {
-					printf(out, "%s\n", formatWatch(tr, e))
+				if json.Unmarshal(data, &e) != nil {
+					return
+				}
+				line := formatWatch(tr, e)
+				printf(screen, "%s\n", line)
+				if file != nil {
+					_, _ = fmt.Fprintln(file, line)
 				}
 			})
 			if ctx.Err() != nil {
-				printf(out, "\n%s\n", tr.T("cli.watch.stopped"))
+				printf(screen, "\n%s\n", tr.T("cli.watch.stopped"))
+				if file != nil {
+					printf(screen, "%s\n", tr.T("cli.watch.saved", i18n.A("path", out)))
+				}
 				return nil
 			}
 			return err
 		},
 	}
 	cmd.Flags().BoolVar(&moves, "moves", false, tr.T("cli.watch.flag.moves"))
+	cmd.Flags().StringVar(&device, "device", "", tr.T("cli.watch.flag.device"))
+	cmd.Flags().StringVar(&out, "out", "", tr.T("cli.watch.flag.out"))
 	return cmd
+}
+
+// watchPath — адрес потока монитора: перемещения мыши (moves) и фильтр по устройству (device).
+func watchPath(moves bool, device string) string {
+	q := url.Values{}
+	if moves {
+		q.Set("moves", "1")
+	}
+	if device != "" {
+		q.Set("device", device)
+	}
+	if len(q) == 0 {
+		return "/api/v1/input/watch"
+	}
+	return "/api/v1/input/watch?" + q.Encode()
 }
 
 // formatWatch записывает событие одной строкой: «12:34:56.789  {Mouse0} нажата  — Logitech USB Optical Mouse».
@@ -95,9 +133,10 @@ func formatWatch(tr *i18n.Translator, e watchEvent) string {
 	return fmt.Sprintf("%s  %-28s — %s  (%s)", e.Time.Local().Format("15:04:05.000"), what, device, e.Kernel)
 }
 
-// stream выполняет GET-запрос потока Server-Sent Events и вызывает onData для данных каждого события,
-// пока поток не закончится или не отменят ctx.
-func (c *client) stream(ctx context.Context, path string, onData func([]byte)) error {
+// stream выполняет GET-запрос потока Server-Sent Events: после успешного ответа вызывает onOpen,
+// затем onData для данных каждого события, пока поток не закончится или не отменят ctx.
+// Ошибка API (например, устройство не найдено) — *apiError.
+func (c *client) stream(ctx context.Context, path string, onOpen func(), onData func([]byte)) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://mkey"+path, nil)
 	if err != nil {
 		return err
@@ -109,8 +148,9 @@ func (c *client) stream(ctx context.Context, path string, onData func([]byte)) e
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("mkey daemon: HTTP %d", resp.StatusCode)
+		return readAPIError(resp)
 	}
+	onOpen()
 
 	// Строки «data: …»; остальные (комментарии, «event: …», пустые) пропускаются.
 	sc := bufio.NewScanner(resp.Body)

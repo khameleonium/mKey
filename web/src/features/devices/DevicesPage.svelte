@@ -2,7 +2,8 @@
   DevicesPage — устройства ввода (FR-UI-1.5): список клавиатур, мышей, геймпадов и т.п.
   и монитор нажатий (FR-DEV-8): после «Следить за нажатиями» mKey непрерывно показывает журнал —
   когда, на каком устройстве и какая кнопка нажата (с именем для макросов), пока не нажать «Стоп»
-  или не удержать Esc 2 секунды. Нажатия никуда не сохраняются.
+  или не удержать Esc 2 секунды. Можно следить за одним устройством; журнал сохраняется в файл
+  только кнопкой «Сохранить в файл» (файл создаёт браузер, mKey нажатия не сохраняет).
   Список устройств обновляется при подключении и отключении.
   Props: нет.
 -->
@@ -18,6 +19,7 @@
     WatchEntry,
   } from "../../lib/types";
   import GamepadWizard from "./GamepadWizard.svelte";
+  import { clockText, describeWatch, logFileName, logText } from "./monitor";
   import DeviceDetails from "../inspector/DeviceDetails.svelte";
   import RenameDialog from "../inspector/RenameDialog.svelte";
 
@@ -35,17 +37,24 @@
   let vtemplates = $state<VirtualTemplateInfo[]>([]);
   let wizard = $state(false);
 
-  /** watching — монитор включён; moves — показывать перемещения мыши; log — записи (новые сверху). */
+  /** watching — монитор включён; moves — показывать перемещения мыши; only — путь устройства,
+   *  за которым следить ("" — все); log — записи на экране (новые сверху); saved — все записи
+   *  наблюдения по порядку для «Сохранить в файл» (не больше MAX_SAVED). */
   let watching = $state(false);
   let moves = $state(false);
+  let only = $state("");
   let log = $state<(WatchEntry & { id: number })[]>([]);
+  let saved: WatchEntry[] = [];
+  let savedCount = $state(0);
   /** source — поток событий; escTimer — таймер «Esc удерживается 2 секунды»; nextId — номера записей. */
   let source: EventSource | null = null;
   let escTimer: ReturnType<typeof setTimeout> | null = null;
   let nextId = 0;
 
-  /** Наибольшее число записей в журнале (старые убираются). */
+  /** Наибольшее число записей в журнале на экране (старые убираются). */
   const MAX_LOG = 300;
+  /** MAX_SAVED — наибольшее число записей для файла (старые убираются). */
+  const MAX_SAVED = 20000;
   /** ESC_HOLD_MS — сколько удерживать Esc, чтобы остановить монитор. */
   const ESC_HOLD_MS = 2000;
 
@@ -53,8 +62,12 @@
   function startWatch(): void {
     stopWatch();
     log = [];
+    saved = [];
+    savedCount = 0;
     watching = true;
-    source = new EventSource("/api/v1/input/watch" + (moves ? "?moves=1" : ""));
+    const q = [moves ? "moves=1" : "", only ? "device=" + encodeURIComponent(only) : ""];
+    const query = q.filter(Boolean).join("&");
+    source = new EventSource("/api/v1/input/watch" + (query ? "?" + query : ""));
     source.addEventListener("input", (e: MessageEvent<string>) => {
       const entry = JSON.parse(e.data) as WatchEntry;
       // Удержание Esc 2 секунды — остановка (отпускание раньше отменяет таймер).
@@ -67,6 +80,9 @@
       }
       nextId += 1;
       log = [{ ...entry, id: nextId }, ...log].slice(0, MAX_LOG);
+      saved.push(entry);
+      if (saved.length > MAX_SAVED) saved.shift();
+      savedCount = saved.length;
     });
     source.onerror = () => {
       if (watching) toast(t("devices.watch_lost"), "error");
@@ -86,26 +102,14 @@
   // Уход со страницы выключает монитор.
   $effect(() => () => stopWatch());
 
-  /** describe возвращает описание события для журнала. */
-  function describe(e: WatchEntry): string {
-    switch (e.kind) {
-      case "key":
-        return t(e.action === "up" ? "devices.ev_up" : "devices.ev_down", { key: `{${e.name}}` });
-      case "axis":
-        return t("devices.ev_axis", { axis: e.name, value: e.value ?? 0 });
-      case "wheel":
-        return t("devices.ev_wheel", {
-          value: (e.value ?? 0) > 0 ? "+" + String(e.value) : String(e.value),
-        });
-      default:
-        return t("devices.ev_move", { dx: e.value ?? 0, dy: e.dy ?? 0 });
-    }
-  }
-
-  /** clock возвращает время события с миллисекундами. */
-  function clock(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleTimeString() + "." + String(d.getMilliseconds()).padStart(3, "0");
+  /** saveLog сохраняет журнал наблюдения в текстовый файл (скачивание браузером). */
+  function saveLog(): void {
+    const blob = new Blob([logText(saved, t)], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = logFileName(new Date());
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
   /** load перечитывает устройства. */
@@ -196,24 +200,40 @@
     <button class="danger" onclick={stopWatch}>■ {t("devices.watch_stop")}</button>
   {:else}
     <label class="row"
+      >{t("devices.watch_device")}
+      <select bind:value={only}>
+        <option value="">{t("devices.watch_all")}</option>
+        {#each devices as d (d.info.path)}
+          <option value={d.info.path}
+            >{d.info.name} ({d.info.path.replace("/dev/input/", "")})</option
+          >
+        {/each}
+      </select></label
+    >
+    <label class="row"
       ><input type="checkbox" bind:checked={moves} /> {t("devices.watch_moves")}</label
     >
     <button class="primary" onclick={startWatch}>● {t("devices.watch_start")}</button>
+  {/if}
+  {#if savedCount > 0}
+    <button onclick={saveLog} title={t("devices.watch_save_hint")}
+      >💾 {t("devices.watch_save", { n: savedCount })}</button
+    >
   {/if}
   {#if watching || log.length}
     <div class="log">
       {#if watching && log.length === 0}<div class="muted">{t("devices.watch_waiting")}</div>{/if}
       {#each log as e (e.id)}
         <div class="line" class:up={e.action === "up"}>
-          <span class="time">{clock(e.time)}</span>
+          <span class="time">{clockText(e.time)}</span>
           {#if e.labeled}
             <button
               class="what link"
               title={t("devices.watch_rename_hint")}
-              onclick={() => void renameFromLog(e)}>{describe(e)} ✎</button
+              onclick={() => void renameFromLog(e)}>{describeWatch(e, t)} ✎</button
             >
           {:else}
-            <span class="what">{describe(e)}</span>
+            <span class="what">{describeWatch(e, t)}</span>
           {/if}
           <span class="dev">{e.device_name || e.device}</span>
           <span class="kernel muted">{e.kernel}</span>
@@ -328,6 +348,10 @@
   .identify h2,
   .identify p {
     margin: 0;
+  }
+  /* Длинные названия устройств не раздвигают карточку. */
+  .identify select {
+    max-width: 18em;
   }
   .grow {
     flex: 1;

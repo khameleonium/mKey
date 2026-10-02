@@ -310,12 +310,14 @@ paths:
         "408": { $ref: "#/components/responses/Error" }
   /api/v1/input/watch:
     get:
-      summary: "Монитор нажатий (Server-Sent Events, событие input): клавиши, кнопки, оси (не чаще 10 раз в секунду на ось), колесо; ?moves=1 — и перемещения мыши"
+      summary: "Монитор нажатий (Server-Sent Events, событие input): клавиши, кнопки, оси (не чаще 10 раз в секунду на ось), колесо; ?moves=1 — и перемещения мыши; ?device=<ссылка> — только устройства по ссылке"
       description: |
         Данные: {time, device, device_name, kind (key|axis|wheel|move), name (имя для макросов или #код),
         kernel, code, action (down|up), value, dy}. Нажатия только передаются, пока открыт поток, и
-        никуда не сохраняются (NFR-8).
-      responses: { "200": { description: "text/event-stream" } }
+        демоном никуда не сохраняются (NFR-8): файл журнала создаёт окно или `mkey devices watch --out`
+        по просьбе человека. ?device — путь, event6, постоянное имя или часть названия (все подходящие
+        устройства); не нашлось — 404 api.device_not_found до начала потока.
+      responses: { "200": { description: "text/event-stream" }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/dsl/to_actions:
     post:
       summary: "Разобрать макрос на отдельные действия (блоки) — {text} → {actions}"

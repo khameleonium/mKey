@@ -399,3 +399,39 @@ func TestDescribeEvent(t *testing.T) {
 		t.Fatalf("move = %+v", e)
 	}
 }
+
+// TestWatchDevices проверяет фильтр монитора по устройству: через инспектор (часть названия даёт
+// все подходящие), без него — по имени файла и названию; неизвестное устройство — 404 до потока.
+func TestWatchDevices(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.svc.input = &captureInput{}
+
+	// Без инспектора: имя файла и часть названия без учёта регистра.
+	for _, ref := range []string{"event3", "/dev/input/event3", "test KEY"} {
+		if got := m.watchDevices(ref); !got["/dev/input/event3"] || len(got) != 1 {
+			t.Errorf("watchDevices(%q) = %v", ref, got)
+		}
+	}
+	if got := m.watchDevices("мышь"); len(got) != 0 {
+		t.Errorf("unknown device found: %v", got)
+	}
+
+	// С инспектором: все устройства, подходящие по названию.
+	dev := func(path, name string) contracts.DeviceDetails {
+		return contracts.DeviceDetails{InputDevice: contracts.InputDevice{Info: ev.Info{Path: path, Name: name}}}
+	}
+	m.svc.inspect = fakeInspector{devs: []contracts.DeviceDetails{
+		dev("/dev/input/event5", "Logitech Keyboard"), dev("/dev/input/event6", "Logitech Mouse"), dev("/dev/input/event7", "Pad"),
+	}}
+	if got := m.watchDevices("logitech"); len(got) != 2 || !got["/dev/input/event5"] || !got["/dev/input/event6"] {
+		t.Errorf("inspector filter = %v", got)
+	}
+
+	// Неизвестное устройство — ошибка сразу, без потока.
+	h := m.routes(true)
+	if code, out := call(t, h, "GET", "/api/v1/input/watch?device=nothing", "", nil); code != 404 ||
+		out["error"].(map[string]any)["code"] != "api.device_not_found" {
+		t.Fatalf("unknown: %d %v", code, out)
+	}
+}

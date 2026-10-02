@@ -81,3 +81,22 @@ func TestLifecycle(t *testing.T) {
 		t.Fatal("done must be closed")
 	}
 }
+
+// TestWatchPath проверяет адрес потока монитора: без параметров, с перемещениями и устройством
+// (название с пробелом и кириллицей кодируется).
+func TestWatchPath(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		moves  bool
+		device string
+		want   string
+	}{
+		{false, "", "/api/v1/input/watch"},
+		{true, "", "/api/v1/input/watch?moves=1"},
+		{true, "Мышь USB", "/api/v1/input/watch?device=%D0%9C%D1%8B%D1%88%D1%8C+USB&moves=1"},
+	} {
+		if got := watchPath(c.moves, c.device); got != c.want {
+			t.Errorf("watchPath(%v, %q) = %q, want %q", c.moves, c.device, got, c.want)
+		}
+	}
+}

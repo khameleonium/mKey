@@ -14,8 +14,9 @@ import (
 )
 
 // Монитор нажатий (FR-DEV-8, T7.1): поток событий физических устройств для окна программы
-// («Устройства» → «Следить за нажатиями») и команды `mkey devices watch`. События только
-// показываются, пока открыт поток, и никуда не сохраняются (NFR-8).
+// («Устройства» → «Следить за нажатиями») и команды `mkey devices watch`. Демон события только
+// показывает, пока открыт поток, и никуда их не сохраняет (NFR-8); в файл журнал попадает только
+// по явной просьбе человека — кнопкой «Сохранить в файл» в окне или `mkey devices watch --out`.
 
 // watchEntry — одно событие монитора.
 type watchEntry struct {
@@ -45,7 +46,9 @@ type watchEntry struct {
 const axisInterval = 100 * time.Millisecond
 
 // handleWatch — поток событий устройств (Server-Sent Events) до закрытия соединения.
-// ?moves=1 — показывать и перемещения мыши (по умолчанию нет: их слишком много).
+// ?moves=1 — показывать и перемещения мыши (по умолчанию нет: их слишком много);
+// ?device=<ссылка> — только устройства по ссылке (путь, event6, постоянное имя или часть
+// названия, как у «Подробнее»); не нашлось ни одного — 404 api.device_not_found.
 func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok || m.svc.input == nil {
@@ -53,6 +56,15 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	moves := r.URL.Query().Get("moves") == "1"
+
+	// Фильтр по устройству (nil — все устройства).
+	var only map[string]bool
+	if ref := r.URL.Query().Get("device"); ref != "" {
+		if only = m.watchDevices(ref); len(only) == 0 {
+			m.writeError(w, r, http.StatusNotFound, "api.device_not_found", map[string]string{"ref": ref})
+			return
+		}
+	}
 
 	// Заголовки потока.
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -87,6 +99,9 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			if only != nil && !only[e.Device] {
+				continue
+			}
 			if _, known := names[e.Device]; !known {
 				refresh()
 			}
@@ -103,6 +118,31 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// watchDevices находит пути устройств по ссылке ref для фильтра монитора: через инспектор (путь,
+// event6, постоянное имя, часть названия), а без него — по пути, имени файла или части названия
+// среди открытых устройств. Пусто — ничего не нашлось.
+func (m *Module) watchDevices(ref string) map[string]bool {
+	out := map[string]bool{}
+
+	// Инспектор знает и постоянные имена.
+	if m.svc.inspect != nil {
+		for _, d := range m.svc.inspect.Find(ref) {
+			out[d.Info.Path] = true
+		}
+		return out
+	}
+
+	// Без инспектора: путь или имя файла точно, иначе часть названия без учёта регистра.
+	lower := strings.ToLower(ref)
+	for _, d := range m.svc.input.Devices() {
+		if d.Info.Path == ref || strings.TrimPrefix(d.Info.Path, "/dev/input/") == ref ||
+			strings.Contains(strings.ToLower(d.Info.Name), lower) {
+			out[d.Info.Path] = true
+		}
+	}
+	return out
 }
 
 // labelEntry подставляет авто-ID устройства (UnKey001, FR-DEV-2) вместо «#код» у кнопки или оси

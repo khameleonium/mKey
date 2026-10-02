@@ -89,14 +89,7 @@ func (c *client) do(ctx context.Context, method, path string, body, out any) err
 
 	// Ошибка API в едином формате.
 	if resp.StatusCode >= 400 {
-		var eb struct {
-			Error apiError `json:"error"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&eb); err != nil {
-			return fmt.Errorf("mkey daemon: HTTP %d", resp.StatusCode)
-		}
-		eb.Error.Status = resp.StatusCode
-		return &eb.Error
+		return readAPIError(resp)
 	}
 
 	// Успешный ответ: как есть или из JSON.
@@ -169,4 +162,17 @@ func formatAPIError(tr *i18n.Translator, err error, src string) string {
 		msg += "\n\n  " + lines[l] + "\n  " + strings.Repeat(" ", int(col)-1) + "^"
 	}
 	return msg
+}
+
+// readAPIError читает ошибку API из ответа resp (единый формат {error: {code, message}});
+// тело не разбирается — ошибка с HTTP-статусом.
+func readAPIError(resp *http.Response) error {
+	var eb struct {
+		Error apiError `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&eb); err != nil {
+		return fmt.Errorf("mkey daemon: HTTP %d", resp.StatusCode)
+	}
+	eb.Error.Status = resp.StatusCode
+	return &eb.Error
 }
