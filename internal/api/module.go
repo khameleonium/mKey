@@ -100,6 +100,7 @@ type services struct {
 	convert  contracts.ActionConverter
 	dryRun   contracts.DryRunner
 	timing   contracts.TimingSettings
+	devOut   contracts.DeviceOutput
 	recorder contracts.Recorder
 	player   contracts.Player
 	inspect  contracts.Inspector
@@ -150,6 +151,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		convert:  lookup[contracts.ActionConverter](s),
 		dryRun:   lookup[contracts.DryRunner](s),
 		timing:   lookup[contracts.TimingSettings](s),
+		devOut:   lookup[contracts.DeviceOutput](s),
 		recorder: lookup[contracts.Recorder](s),
 		player:   lookup[contracts.Player](s),
 		inspect:  lookup[contracts.Inspector](s),

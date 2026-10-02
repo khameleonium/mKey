@@ -352,6 +352,7 @@ func (m *Module) emergencyStop(reason string) {
 	m.mu.RUnlock()
 	for p, d := range devs {
 		m.ungrab(p, d, "emergency")
+		m.dropEcho(d)
 	}
 	m.log.Warn("EMERGENCY STOP: all grabs released, grabbing suspended", "reason", reason)
 	m.bus.Publish(contracts.TopicEmergency, nil)

@@ -13,7 +13,8 @@ import (
 // keyResolver — распознаватель клавиш макросов: виртуальные устройства проектов ({pad2.South},
 // FR-VD-1), кнопки физических устройств с авто-ID ({UnKey001}, FR-DEV-2), остальные — как обычно.
 func (m *Module) keyResolver() dsl.Resolver {
-	var r dsl.DeviceResolver
+	// Кнопки, которых нет у клавиатуры и мыши mKey, движок нажимает «от имени» устройства.
+	r := dsl.DeviceResolver{Physical: m.svc.devOut != nil && m.svc.inspect != nil}
 	if insp := m.svc.inspect; insp != nil {
 		r.Lookup = func(device, button string) (uint16, string, error) {
 			k, err := insp.ResolveKey(device, button)

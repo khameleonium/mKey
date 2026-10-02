@@ -15,7 +15,18 @@ const (
 	DeviceKeyboard = "keyboard"
 	// DeviceMouse — основная виртуальная мышь mKey.
 	DeviceMouse = "mouse"
+	// physicalPrefix — начало имени цели «физическое устройство» (PhysicalDevice): такого символа
+	// нет в именах виртуальных устройств, поэтому имена не пересекаются.
+	physicalPrefix = "@"
 )
+
+// PhysicalDevice — имя цели для кнопки, которая нажимается «от имени» физического устройства id
+// (авто-ID «UnKey2» или имя «Sega», без учёта регистра): исполнитель отправляет её в копию этого
+// устройства (contracts.DeviceOutput).
+func PhysicalDevice(id string) string { return physicalPrefix + strings.ToLower(id) }
+
+// IsPhysical сообщает, что device — цель «физическое устройство», и возвращает его авто-ID или имя.
+func IsPhysical(device string) (string, bool) { return strings.CutPrefix(device, physicalPrefix) }
 
 // maxWheel — наибольшее число щелчков колеса в одной команде.
 const maxWheel = 1000
@@ -83,10 +94,13 @@ type VirtualLookup func(device, control string) (code uint16, axis, found bool, 
 // DeviceResolver — как DefaultResolver, но с устройствами: сначала виртуальные устройства проектов
 // (Virtual — нажатия и оси идут на них), затем кнопки физических устройств ({UnKey001}) через
 // Lookup: клавиши KEY_* нажимает виртуальная клавиатура mKey, кнопки мыши — мышь; остальные
-// (кнопки джойстика) нажать нельзя — ErrCannotSend.
+// (кнопки джойстиков, особые кнопки геймпадов) — копия самого устройства (PhysicalDevice), если
+// исполнитель это умеет (Physical), иначе — ErrCannotSend.
 type DeviceResolver struct {
 	Lookup  KeyLookup
 	Virtual VirtualLookup
+	// Physical — исполнитель умеет нажимать кнопки «от имени» физического устройства.
+	Physical bool
 }
 
 // Resolve находит цель для ссылки на клавишу.
@@ -124,6 +138,8 @@ func (r DeviceResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
 		return Target{Device: DeviceKeyboard, Code: code, Name: name}, nil
 	case code >= ev.BtnMouse && code < ev.BtnJoystick:
 		return Target{Device: DeviceMouse, Code: code, Name: name}, nil
+	case r.Physical:
+		return Target{Device: PhysicalDevice(ref.Device), Code: code, Name: name}, nil
 	}
 	return Target{}, newError(pos, ErrCannotSend, "key", name, "kernel", kernel)
 }

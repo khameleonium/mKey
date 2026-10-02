@@ -172,7 +172,8 @@ func (d *dryRun) steps(steps []dsl.Step) error {
 		row := contracts.DryStep{Kind: string(s.Kind), Count: s.Count, Text: s.Text, DX: s.DX, DY: s.DY, Value: s.Value, Device: s.Device}
 		for _, t := range s.Targets {
 			row.Keys = append(row.Keys, t.Name)
-			if row.Device == "" && t.Device != dsl.DeviceKeyboard && t.Device != dsl.DeviceMouse {
+			_, physical := dsl.IsPhysical(t.Device) // имя кнопки уже с устройством: {Sega.Start}
+			if row.Device == "" && !physical && t.Device != dsl.DeviceKeyboard && t.Device != dsl.DeviceMouse {
 				row.Device = t.Device
 			}
 		}

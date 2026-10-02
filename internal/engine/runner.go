@@ -69,6 +69,8 @@ type Module struct {
 	inspect contracts.Inspector
 	// vdevs — виртуальные устройства проектов ({pad2.South}); nil — модуль вывода их не даёт.
 	vdevs contracts.VirtualDeviceManager
+	// devOut — нажатия «от имени» физических устройств ({Sega.Start}); nil — модуль ввода выключен.
+	devOut contracts.DeviceOutput
 	// screen — размер экрана для касаний в пикселях (nil — модуль desktop выключен).
 	screen   contracts.ScreenInfo
 	notifier contracts.Notifier
@@ -144,6 +146,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
 	m.vdevs, _ = contracts.LookupService[contracts.VirtualDeviceManager](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	m.devOut, _ = contracts.LookupService[contracts.DeviceOutput](host.Services())
 	m.screen, _ = contracts.LookupService[contracts.ScreenInfo](host.Services())
 	if m.cfg.VarsFile != "" {
 		m.persist.path = m.cfg.VarsFile
@@ -290,7 +293,9 @@ func (m *Module) compileSource(src string) ([]dsl.Step, error) {
 // resolver — распознаватель клавиш макросов: виртуальные устройства проектов ({pad2.South}),
 // затем кнопки физических устройств с авто-ID ({UnKey001}), затем обычные клавиши.
 func (m *Module) resolver() dsl.DeviceResolver {
-	var r dsl.DeviceResolver
+	// Кнопки, которых нет у клавиатуры и мыши mKey, — «от имени» устройства (нужны модуль ввода
+	// и инспектор, который знает, какое устройство как называется).
+	r := dsl.DeviceResolver{Physical: m.devOut != nil && m.inspect != nil}
 	if m.inspect != nil {
 		r.Lookup = func(device, button string) (uint16, string, error) {
 			k, err := m.inspect.ResolveKey(device, button)
@@ -524,10 +529,28 @@ func (m *Module) device(name string) (contracts.VirtualDevice, error) {
 	case dsl.DeviceMouse:
 		return m.devices.Mouse()
 	}
+	if id, ok := dsl.IsPhysical(name); ok {
+		return m.physicalOutput(id)
+	}
 	if m.vdevs != nil {
 		return m.vdevs.Device(name)
 	}
 	return nil, fmt.Errorf("engine: unknown device %q", name)
+}
+
+// physicalOutput возвращает устройство вывода «от имени» физического устройства id (авто-ID или
+// имя, данное человеком, без учёта регистра): его копию (contracts.DeviceOutput). Устройство не
+// подключено — ошибка с contracts.ErrDeviceGone.
+func (m *Module) physicalOutput(id string) (contracts.VirtualDevice, error) {
+	if m.devOut == nil || m.inspect == nil {
+		return nil, fmt.Errorf("engine: device %q: pressing its buttons is not available", id)
+	}
+	for _, d := range m.inspect.Devices() {
+		if strings.EqualFold(d.AutoID, id) || (d.DeviceName != "" && strings.EqualFold(d.DeviceName, id)) {
+			return m.devOut.DeviceOutput(d.Info.Path)
+		}
+	}
+	return nil, fmt.Errorf("%w: %s", contracts.ErrDeviceGone, id)
 }
 
 // axis ставит оси виртуального устройства в положение s.Value и запоминает их, чтобы в конце

@@ -128,10 +128,14 @@ type openDevice struct {
 	grabbed atomic.Bool
 	// grabbing — идёт подготовка захвата (ожидание отпускания клавиш, создание копии).
 	grabbing atomic.Bool
-	// cloneMu защищает clone.
+	// cloneMu защищает clone, echo и echoReady.
 	cloneMu sync.Mutex
 	// clone — passthrough-копия устройства (nil, если не захвачено).
 	clone *passthrough
+	// echo — копия для нажатий «от имени» незахваченного устройства (echo.go; nil — ещё не нужна);
+	// echoReady — с какого момента система уже видит её.
+	echo      *passthrough
+	echoReady time.Time
 	// busySince — момент начала обработки текущей пачки событий (UnixNano; 0 — не занят), для watchdog.
 	busySince atomic.Int64
 	// down — зажатые сейчас клавиши (только из горутины чтения) — для экстренной остановки.
@@ -188,6 +192,9 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}
 
 	// Публикуем сервис.
+	if err := contracts.ProvideService[contracts.DeviceOutput](host.Services(), m); err != nil {
+		return err
+	}
 	return contracts.ProvideService[contracts.InputSource](host.Services(), m)
 }
 
@@ -252,6 +259,7 @@ func (m *Module) Stop(context.Context) error {
 			}
 		}
 		m.dropClone(d)
+		m.dropEcho(d)
 		_ = d.reader.Close()
 	}
 	m.mu.Unlock()
@@ -542,6 +550,7 @@ func (m *Module) detach(path string, d *openDevice, err error) {
 	m.mu.Unlock()
 	d.grabbed.Store(false)
 	m.dropClone(d)
+	m.dropEcho(d)
 	_ = d.reader.Close()
 	m.log.Info("device removed", "path", path, "name", d.desc.Info.Name, "reason", err)
 	m.bus.Publish(contracts.TopicInputDeviceRemoved, d.desc)

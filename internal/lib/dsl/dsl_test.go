@@ -401,6 +401,22 @@ func TestDeviceResolver(t *testing.T) {
 		t.Errorf("targets = %+v", got)
 	}
 
+	// Кнопка джойстика: исполнитель умеет нажимать «от имени» устройства — цель «физическое
+	// устройство» (имя без учёта регистра); не умеет — ошибка ниже.
+	steps, err = compile(`{UnKey3.001}`, DeviceResolver{Lookup: lookup, Physical: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tg := steps[0].Targets[0]; tg.Device != PhysicalDevice("UnKey3") || tg.Code != ev.BtnTrigger || tg.Name != "UnKey3.001" {
+		t.Errorf("physical target = %+v", tg)
+	}
+	if id, ok := IsPhysical(steps[0].Targets[0].Device); !ok || id != "unkey3" {
+		t.Errorf("IsPhysical = %q %v", id, ok)
+	}
+	if _, ok := IsPhysical(DeviceKeyboard); ok {
+		t.Error("keyboard is physical")
+	}
+
 	// Кнопка джойстика — нельзя нажать; неизвестная кнопка — с позицией; без Lookup — неизвестное устройство.
 	for _, c := range []struct {
 		src  string
