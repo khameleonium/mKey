@@ -1,8 +1,9 @@
 <!--
   EventRow — одно событие в листе событий (FR-UI-2): слева «Когда» (триггеры и условия),
   справа «Делать» (блоки действий). В заголовке — название, переключатель вкл/выкл,
-  индикатор «выполняется», «Запустить сейчас», копия, сдвиг, удаление, свёртывание.
-  Props: ev — событие; index — его номер; total — всего событий.
+  индикатор «выполняется», «Запустить сейчас», «Сухой прогон», копия, сдвиг, удаление, свёртывание.
+  Props: ev — событие; index — его номер; total — всего событий; onrun(ev) — запустить;
+  ondry(ev) — показать сухой прогон.
 -->
 <script lang="ts">
   import Toggle from "../../lib/components/Toggle.svelte";
@@ -21,7 +22,14 @@
     index,
     total,
     onrun,
-  }: { ev: EditorEvent; index: number; total: number; onrun: (ev: EditorEvent) => void } = $props();
+    ondry,
+  }: {
+    ev: EditorEvent;
+    index: number;
+    total: number;
+    onrun: (ev: EditorEvent) => void;
+    ondry: (ev: EditorEvent) => void;
+  } = $props();
   const ed = useEditor();
 
   /** collapsed — событие свёрнуто; editing — номер изменяемого триггера (-1 — новый, null — нет). */
@@ -81,6 +89,9 @@
     <span class="spacer"></span>
     <button class="small" title={t("editor.run_now_hint")} onclick={() => onrun(ev)}
       >▶ {t("editor.run_now")}</button
+    >
+    <button class="small" title={t("dry.button_hint")} onclick={() => ondry(ev)}
+      >⧗ {t("dry.button")}</button
     >
     <button
       class="ghost small"

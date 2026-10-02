@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/project"
@@ -55,6 +56,8 @@ type builtinAction struct {
 	run      func(ctx context.Context, rc contracts.RunContext, a project.Action) error
 	// toDSL переводит значение действия в макрос; nil — действие нельзя записать макросом.
 	toDSL func(any) (string, error)
+	// dry описывает действие для сухого прогона; nil — по макросу toDSL.
+	dry func(ctx context.Context, d *dryRun, a project.Action) error
 }
 
 // Meta возвращает метаданные.
@@ -66,6 +69,25 @@ func (b builtinAction) Validate(a project.Action) error { return b.validate(a) }
 // Run выполняет действие.
 func (b builtinAction) Run(ctx context.Context, rc contracts.RunContext, a project.Action) error {
 	return b.run(ctx, rc, a)
+}
+
+// DryRun описывает действие для сухого прогона (contracts.ActionDryRunner): своим описанием dry
+// или шагами макроса toDSL. Таймлайн строит только движок, поэтому dc — всегда *dryRun.
+func (b builtinAction) DryRun(ctx context.Context, dc contracts.DryRunContext, a project.Action) error {
+	d, ok := dc.(*dryRun)
+	switch {
+	case !ok:
+		return fmt.Errorf("dry run %s: foreign timeline %T", b.meta.ID, dc)
+	case b.dry != nil:
+		return b.dry(ctx, d, a)
+	case b.toDSL != nil:
+		src, err := b.toDSL(a.Value)
+		if err != nil {
+			return err
+		}
+		return d.Send(src)
+	}
+	return d.add(contracts.DryStep{Kind: contracts.DryAction, Action: b.meta.ID})
 }
 
 // meta собирает метаданные встроенного вида: i18n-ключи по шаблону "<точка>.<id>", схема параметров.

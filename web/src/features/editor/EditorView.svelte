@@ -1,7 +1,7 @@
 <!--
   EditorView — содержимое редактора загруженного проекта: вкладка «Конструктор» (палитра
   блоков и лист событий) и вкладка «Текст YAML» (тот же проект файлом). Сохранение с проверкой,
-  «Запустить сейчас», предупреждение, если файл изменили в другом месте (FR-UI-7).
+  «Запустить сейчас», «Сухой прогон» (DryRunDialog), предупреждение, если файл изменили в другом месте (FR-UI-7).
   Props: ed — редактор проекта; raw — текст файла; tab — открытая вкладка (bindable);
   onreload() — перечитать проект с диска.
 -->
@@ -14,6 +14,8 @@
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
   import type { EditorEvent } from "../../lib/blocks";
+  import type { DryRun } from "../../lib/types";
+  import DryRunDialog from "./DryRunDialog.svelte";
   import EventRow from "./EventRow.svelte";
   import Palette from "./Palette.svelte";
   import { provideEditor, type Editor } from "./editor.svelte";
@@ -91,6 +93,16 @@
     } catch (e) {
       toast(errorText(e), "error");
     }
+  }
+
+  /** dry — открытое окно «Сухой прогон»: название события и таймлайн (null — закрыто). */
+  let dry = $state<{ title: string; result: DryRun } | null>(null);
+
+  /** dryRun показывает, что сделает событие, ничего не нажимая (сохранять не нужно). */
+  async function dryRun(ev: EditorEvent): Promise<void> {
+    const result = await ed.dryRun(ev.data.id);
+    if (result) dry = { title: ev.data.name || ev.data.id, result };
+    else toast(ed.error, "error");
   }
 
   // Предупреждение при уходе со страницы с несохранёнными изменениями.
@@ -171,7 +183,7 @@
     <Palette />
     <div class="sheet">
       {#each ed.project.events as ev, i (ev.uid)}
-        <EventRow {ev} index={i} total={ed.project.events.length} onrun={run} />
+        <EventRow {ev} index={i} total={ed.project.events.length} onrun={run} ondry={dryRun} />
       {/each}
       {#if ed.project.events.length === 0}
         <div class="note">{t("editor.no_events")}</div>
@@ -202,6 +214,10 @@
     <button class="primary" disabled={!rawDirty} onclick={saveRaw}>{t("common.save")}</button>
     <button disabled={!rawDirty} onclick={reloadFile}>{t("editor.revert")}</button>
   </div>
+{/if}
+
+{#if dry}
+  <DryRunDialog title={dry.title} result={dry.result} onclose={() => (dry = null)} />
 {/if}
 
 <style>

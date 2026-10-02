@@ -368,3 +368,44 @@ export interface ProjectScript {
   code?: string;
   file?: string;
 }
+
+/**
+ * Строка таймлайна сухого прогона (contracts.DryStep): шаг макроса (press, release, release_all,
+ * tap, wait, text, move, wheel, axis, touch, swipe), заголовок группы (group), заметка (note)
+ * или действие, которое выполнится только при настоящем запуске (action).
+ */
+export interface DryStep {
+  /** at_ms — когда начнётся шаг, мс от начала события. */
+  at_ms: number;
+  /** depth — вложенность (0 — верхний уровень). */
+  depth: number;
+  kind: string;
+  keys?: string[];
+  count?: number;
+  /** ms — удержание (tap, touch), пауза (wait; max_ms — верхняя граница), время свайпа. */
+  ms?: number;
+  max_ms?: number;
+  text?: string;
+  dx?: number;
+  dy?: number;
+  value?: number;
+  /** points — точки касания: "50%, 80%". */
+  points?: string[];
+  device?: string;
+  /** key и args — текст группы или заметки (i18n-ключ окна и параметры). */
+  key?: string;
+  args?: Record<string, string>;
+  /** action — вид действия (action); conditions — условия группы или события (вид и параметры). */
+  action?: string;
+  conditions?: Condition[];
+}
+
+/** Результат сухого прогона события (POST /projects/{id}/events/{event}/dry_run). */
+export interface DryRun {
+  steps: DryStep[];
+  /** total_ms — примерная длительность; open — заранее неизвестна (повтор «пока…»). */
+  total_ms: number;
+  open?: boolean;
+  /** truncated — таймлайн слишком длинный и обрезан. */
+  truncated?: boolean;
+}

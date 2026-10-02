@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/project"
@@ -62,6 +63,39 @@ func (playAction) params(v any) (playParams, error) {
 func (a playAction) Validate(act project.Action) error {
 	_, err := a.params(act.Value)
 	return err
+}
+
+// DryRun описывает повтор записи для сухого прогона (contracts.ActionDryRunner): имя, число
+// повторов и примерная длительность с учётом скорости; сама запись не воспроизводится.
+func (a playAction) DryRun(_ context.Context, dc contracts.DryRunContext, act project.Action) error {
+	p, err := a.params(act.Value)
+	if err != nil {
+		return err
+	}
+
+	// Длительность записи из списка записей; такой записи нет — так и пишем (при запуске будет
+	// ошибка «нет записи», если её не запишут раньше).
+	ms, found := int64(0), false
+	list, _ := a.m.Recordings()
+	for _, r := range list {
+		if r.Name == p.Name {
+			ms, found = r.DurationMS, true
+		}
+	}
+	repeat := max(p.Repeat, 1)
+	if !found {
+		dc.Note("dry.play_missing", map[string]string{"name": p.Name, "repeat": strconv.Itoa(repeat)})
+		return nil
+	}
+	speed := p.Speed
+	if speed <= 0 {
+		speed = 1
+	}
+	total := int64(float64(ms)/speed) * int64(repeat)
+
+	dc.Note("dry.play", map[string]string{"name": p.Name, "repeat": strconv.Itoa(repeat), "ms": strconv.FormatInt(total, 10)})
+	dc.Spend(total)
+	return nil
 }
 
 // Run воспроизводит запись и ждёт окончания; остановка события прерывает воспроизведение.

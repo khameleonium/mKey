@@ -15,6 +15,7 @@ import type {
   VirtualDeviceInfo,
   VirtualTemplateInfo,
   DoctorCheck,
+  DryRun,
   EventStatus,
   InputDevice,
   InterfaceSettings,
@@ -157,6 +158,8 @@ export const api = {
     request<{ ok: boolean }>("PUT", `/projects/${enc(id)}`, { raw }),
   validateProject: (project: Project) =>
     request<{ ok: boolean }>("POST", "/projects/validate", { project }),
+  dryRun: (id: string, event: string, project: Project) =>
+    request<DryRun>("POST", `/projects/${enc(id)}/events/${enc(event)}/dry_run`, { project }),
   createProject: (id: string, template = "") =>
     request<{ id: string; scripts?: ProjectScript[] }>("POST", "/projects", { id, template }),
   importProject: (name: string, content: string) =>

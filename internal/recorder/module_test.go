@@ -364,6 +364,51 @@ func TestPlayAction(t *testing.T) {
 	}
 }
 
+// dryTimeline — таймлайн сухого прогона для проверки DryRun действий: запоминает заметки и время.
+type dryTimeline struct {
+	contracts.DryRunContext
+	notes []string
+	args  []map[string]string
+	spent int64
+}
+
+// Note запоминает заметку.
+func (d *dryTimeline) Note(key string, args map[string]string) {
+	d.notes, d.args = append(d.notes, key), append(d.args, args)
+}
+
+// Spend накапливает время.
+func (d *dryTimeline) Spend(ms int64) { d.spent += ms }
+
+// TestPlayActionDryRun: сухой прогон повтора записи — имя, повторы, длительность с учётом скорости;
+// ничего не воспроизводится.
+func TestPlayActionDryRun(t *testing.T) {
+	t.Parallel()
+	m, _, devs := newTestModule(t)
+	writeRecording(t, m.cfg.Dir, "игра", "0.000 0 ^{A}\n0.100 0 ~{A}\n2.000 end\n")
+	d := &dryTimeline{}
+	act := project.Action{Type: "play", Value: map[string]any{"name": "игра", "speed": 2.0, "repeat": 3}}
+	if err := (playAction{m: m}).DryRun(context.Background(), d, act); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.notes) != 1 || d.notes[0] != "dry.play" || d.args[0]["ms"] != "3000" || d.args[0]["repeat"] != "3" || d.spent != 3000 {
+		t.Fatalf("notes = %v %v, spent = %d", d.notes, d.args, d.spent)
+	}
+	// Записи нет — так и сказано, время не идёт.
+	missing := &dryTimeline{}
+	if err := (playAction{m: m}).DryRun(context.Background(), missing, project.Action{Type: "play", Value: "нет"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(missing.notes) != 1 || missing.notes[0] != "dry.play_missing" || missing.spent != 0 {
+		t.Fatalf("missing = %v, spent = %d", missing.notes, missing.spent)
+	}
+	devs.kb.mu.Lock()
+	defer devs.kb.mu.Unlock()
+	if len(devs.kb.events) != 0 {
+		t.Fatal("dry run played the recording")
+	}
+}
+
 // TestLifecycle проверяет полный цикл Init → Start → Stop в менеджере модулей (без ввода и вывода).
 func TestLifecycle(t *testing.T) {
 	t.Parallel()

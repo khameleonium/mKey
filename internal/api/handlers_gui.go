@@ -66,6 +66,7 @@ func (m *Module) registerGUIRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/places", m.handlePlaces)
 	mux.HandleFunc("POST /api/v1/dsl/to_actions", m.handleDSLToActions)
 	mux.HandleFunc("POST /api/v1/actions/to_dsl", m.handleActionsToDSL)
+	mux.HandleFunc("POST /api/v1/projects/{id}/events/{event}/dry_run", m.handleDryRun)
 }
 
 // handleDSLToActions разбирает макрос на отдельные действия (блоки конструктора): {text} → {actions}.
@@ -656,4 +657,33 @@ func (m *Module) handleLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
+// handleDryRun — сухой прогон события (FR-UI-6): POST /projects/{id}/events/{event}/dry_run
+// {project} — проект в том виде, в каком он сейчас в окне (можно несохранённый). Отвечает
+// таймлайном contracts.DryRun; проект с ошибкой — 400 с её описанием.
+func (m *Module) handleDryRun(w http.ResponseWriter, r *http.Request) {
+	if m.svc.dryRun == nil {
+		m.unavailable(w, r)
+		return
+	}
+
+	// Проект из окна: полная проверка, как при сохранении.
+	p, _, ok := m.decodeProject(w, r, r.PathValue("id"))
+	if !ok || !m.validateFull(w, r, p) {
+		return
+	}
+
+	// Событие и его прогон.
+	i := slices.IndexFunc(p.Events, func(e project.Event) bool { return e.ID == r.PathValue("event") })
+	if i < 0 {
+		m.writeError(w, r, http.StatusNotFound, "api.bad_request", map[string]string{"error": "unknown event " + r.PathValue("event")})
+		return
+	}
+	res, err := m.svc.dryRun.DryRun(r.Context(), p.ID, p.Events[i])
+	if err != nil {
+		m.writeRunError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }

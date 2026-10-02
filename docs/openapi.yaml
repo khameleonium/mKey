@@ -264,6 +264,22 @@ paths:
     post:
       summary: "Проверить проект ({project} или {raw}), не сохраняя"
       responses: { "200": { description: Ошибок нет }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/projects/{id}/events/{event}/dry_run:
+    post:
+      summary: "Сухой прогон события ({project} — проект в том виде, в каком он в окне; можно несохранённый)"
+      description: |
+        Что сделает событие и когда, без нажатий и без побочных действий (FR-UI-6): шаги макросов со
+        временем начала, группы «Повторять»/«Если» (тело один раз, время повтора умножено), заметки
+        (переменные, уведомления, запуск событий), действия без описания для прогона (скрипты,
+        плагины) — строкой `action`. Время примерное: обычное нажатие — `key_hold_ms` + `key_delay_ms`,
+        случайная пауза — по наименьшей. Таймлайн длиннее 1000 строк обрезается (`truncated`).
+        Ответ: `{steps: [DryStep], total_ms, open?, truncated?}`; DryStep — `{at_ms, depth, kind,
+        keys?, count?, ms?, max_ms?, text?, dx?, dy?, value?, points?, device?, key?, args?, action?,
+        conditions?}` (contracts.DryStep).
+      responses:
+        "200": { description: "Таймлайн" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/templates:
     get:
       summary: "Шаблоны проектов ({templates: [{id, name, description, content}]}, названия — на языке клиента)"

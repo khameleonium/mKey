@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -321,6 +322,22 @@ func (m *Module) repeatAction() builtinAction {
 				}
 			}
 		},
+		dry: func(ctx context.Context, d *dryRun, a project.Action) error {
+			p, body, conds, err := parse(a)
+			if err != nil {
+				return err
+			}
+
+			// Заголовок по способу повтора: N раз, пока включено/зажата/без конца, пока условия.
+			head, times := contracts.DryStep{Key: "dry.repeat_times", Count: p.Times}, p.Times
+			switch {
+			case p.While != "":
+				head, times = contracts.DryStep{Key: "dry.repeat_" + p.While}, 0
+			case conds != nil:
+				head, times = contracts.DryStep{Key: "dry.repeat_conditions", Conditions: dryConditions(conds)}, 0
+			}
+			return d.Group(ctx, head, times, func() error { return d.RunActions(ctx, body) })
+		},
 	}
 }
 
@@ -377,6 +394,13 @@ func (m *Module) ifAction() builtinAction {
 			}
 			return rc.RunActions(ctx, els)
 		},
+		dry: func(ctx context.Context, d *dryRun, a project.Action) error {
+			conds, then, els, err := parse(a)
+			if err != nil {
+				return err
+			}
+			return d.branches(ctx, conds, then, els)
+		},
 	}
 }
 
@@ -412,7 +436,31 @@ func (m *Module) setVarAction() builtinAction {
 			}
 			return rc.Vars().Set(p.Name, p.Value)
 		},
+		dry: func(_ context.Context, d *dryRun, a project.Action) error {
+			p, err := parse(a)
+			if err != nil {
+				return err
+			}
+			if p.Add != nil {
+				d.Note("dry.add_var", map[string]string{"name": p.Name, "add": strconv.FormatFloat(*p.Add, 'f', -1, 64)})
+				return nil
+			}
+			d.Note("dry.set_var", map[string]string{"name": p.Name, "value": valueText(p.Value)})
+			return nil
+		},
 	}
+}
+
+// valueText — значение переменной для таймлайна сухого прогона (строки — как есть, прочее — JSON).
+func valueText(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return string(b)
 }
 
 // eventTarget — ссылка на событие или проект в параметрах действий.
@@ -461,6 +509,18 @@ func (m *Module) runEventAction() builtinAction {
 			}
 			return m.RunEvent(ctx, t.Project, t.Event)
 		},
+		dry: func(_ context.Context, d *dryRun, a project.Action) error {
+			t, err := parseTarget(a.Value)
+			if err != nil {
+				return err
+			}
+			key := "dry.run_event"
+			if t.Wait != nil && !*t.Wait {
+				key = "dry.run_event_nowait"
+			}
+			d.Note(key, targetArgs(d, t))
+			return nil
+		},
 	}
 }
 
@@ -499,6 +559,14 @@ func (m *Module) notifyAction() builtinAction {
 			}
 			return nil
 		},
+		dry: func(_ context.Context, d *dryRun, a project.Action) error {
+			title, body, err := parse(a.Value)
+			if err != nil {
+				return err
+			}
+			d.Note("dry.notify", map[string]string{"title": title, "body": body})
+			return nil
+		},
 	}
 }
 
@@ -525,6 +593,18 @@ func (m *Module) enableAction(id string, on bool) builtinAction {
 				return m.projects.SetEnabled(t.Project, on)
 			}
 			return m.projects.SetEventEnabled(t.Project, t.Event, on)
+		},
+		dry: func(_ context.Context, d *dryRun, a project.Action) error {
+			t, err := parseTarget(a.Value)
+			if err != nil {
+				return err
+			}
+			what := "_event"
+			if t.Event == "" {
+				what = "_project"
+			}
+			d.Note("dry."+id+what, targetArgs(d, t))
+			return nil
 		},
 	}
 }
@@ -554,6 +634,14 @@ func (m *Module) stopAction() builtinAction {
 				go m.StopAll()
 			}
 			return errStopSelf
+		},
+		dry: func(_ context.Context, d *dryRun, a project.Action) error {
+			what, err := parse(a.Value)
+			if err != nil {
+				return err
+			}
+			d.Note("dry.stop_"+what, nil)
+			return nil
 		},
 	}
 }

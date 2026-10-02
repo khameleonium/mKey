@@ -20,6 +20,7 @@ import {
 import { defaultValue, isObject } from "../../lib/schema";
 import type {
   Action,
+  DryRun,
   ProblemPlace,
   Project,
   ProjectInfo,
@@ -284,6 +285,21 @@ export class Editor {
     } catch (e) {
       this.fail(e);
       return false;
+    }
+  }
+
+  /**
+   * dryRun строит «Сухой прогон» события по проекту в том виде, в каком он сейчас в окне
+   * (можно несохранённому). null — в проекте ошибка: она показана так же, как у «Проверить».
+   */
+  async dryRun(eventId: string): Promise<DryRun | null> {
+    this.error = "";
+    this.problem = null;
+    try {
+      return await api.dryRun(this.id, eventId, this.out());
+    } catch (e) {
+      this.fail(e);
+      return null;
     }
   }
 
