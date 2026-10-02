@@ -91,3 +91,18 @@ type InputHandler interface {
 	// (для незахваченных устройств drop игнорируется).
 	HandleInput(device string, e *evdev.Event, grabbed bool) (drop bool)
 }
+
+// ErrDeviceGone — физическое устройство, от имени которого нужно нажать кнопку, не подключено.
+var ErrDeviceGone = errors.New("input device is not connected")
+
+// DeviceOutput — нажатия «от имени» физического устройства (FR-DSL-2, FR-DEV-3; модуль input):
+// так нажимаются кнопки, которых нет у виртуальных клавиатуры и мыши mKey (кнопки джойстиков,
+// особые кнопки геймпадов, {Sega.Start}). Система и игры видят нажатие на копии устройства с теми
+// же кнопками, осями и моделью.
+type DeviceOutput interface {
+	// DeviceOutput возвращает устройство вывода физического устройства path: нажатия идут в его
+	// passthrough-копию, если устройство захвачено (FR-HK-2), иначе — в копию, которую mKey создаёт
+	// при первом нажатии и держит, пока устройство подключено. ErrDeviceGone — устройство не
+	// подключено (в том числе отключилось позже: так отвечают и методы устройства).
+	DeviceOutput(path string) (VirtualDevice, error)
+}
