@@ -133,6 +133,9 @@ type PlayOptions struct {
 	Repeat int `json:"repeat"`
 	// SkipMoves — не повторять перемещения мыши (только кнопки и клавиши).
 	SkipMoves bool `json:"skip_moves"`
+	// FixedPauseMS — «фиксированная пауза» (FR-REC-4): между действиями ровно столько мс вместо
+	// записанных пауз (0 — паузы как в записи). Скорость тогда не учитывается.
+	FixedPauseMS int `json:"fixed_pause_ms,omitempty"`
 }
 
 // Player — воспроизведение записей через виртуальные устройства mKey (модуль recorder).

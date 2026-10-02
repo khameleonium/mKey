@@ -203,3 +203,68 @@ func TestTouchInKernel(t *testing.T) {
 		t.Fatalf("second TouchUp sent %v", extra)
 	}
 }
+
+// TestCloneInKernel проверяет временную копию записанного геймпада: VID:PID и оси как у оригинала,
+// «отпустить всё» возвращает ось в положение покоя, close уничтожает устройство. Безопасно:
+// рабочий стол геймпады не обрабатывает.
+func TestCloneInKernel(t *testing.T) {
+	m := newModule(func(s ev.Setup) (eventWriter, error) { return ev.CreateUInput(ev.DefaultUInputPath, s) }, clock.Real{})
+	m.log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	m.cfg.SettleMS = 0
+	setup := ev.Setup{ID: ev.ID{Bustype: ev.BusUSB, Vendor: 0x1234, Product: 0x5678, Version: 1},
+		Keys: []uint16{ev.BtnSouth}, Abs: map[uint16]ev.AbsInfo{ev.AbsX: {Minimum: 0, Maximum: 255, Value: 128}}}
+	dev, closeFn, err := m.Clone("it clone", setup)
+	if err != nil {
+		t.Skipf("uinput unavailable: %v", err)
+	}
+	node := dev.(*vdevice).node
+	time.Sleep(200 * time.Millisecond)
+	in, err := ev.Open(node)
+	if err != nil {
+		_ = closeFn()
+		t.Skipf("cannot open %s: %v", node, err)
+	}
+	defer func() { _ = in.Close() }()
+	if info := in.Info(); info.Name != "mKey it clone" || info.ID.Vendor != 0x1234 || info.Caps.Abs[ev.AbsX].Maximum != 255 {
+		t.Fatalf("info = %+v", info)
+	}
+
+	// Ось сдвинута, «отпустить всё» — снова 128.
+	if err := dev.Emit(context.Background(), ev.Event{Type: ev.EvAbs, Code: ev.AbsX, Value: 255}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dev.ReleaseAll(); err != nil {
+		t.Fatal(err)
+	}
+	got := make(chan int32, 8)
+	go func() {
+		buf := make([]ev.Event, 16)
+		for {
+			events, err := in.ReadEvents(buf)
+			if err != nil {
+				return
+			}
+			for _, e := range events {
+				if e.Type == ev.EvAbs && e.Code == ev.AbsX {
+					got <- e.Value
+				}
+			}
+		}
+	}()
+	var last int32
+	for timeout := time.After(time.Second); ; {
+		select {
+		case v := <-got:
+			last = v
+			if v == 128 {
+				goto done
+			}
+		case <-timeout:
+			t.Fatalf("axis did not return to rest, last = %d", last)
+		}
+	}
+done:
+	if err := closeFn(); err != nil {
+		t.Fatal(err)
+	}
+}

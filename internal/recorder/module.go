@@ -60,6 +60,8 @@ type Module struct {
 	// input и devs — ввод и вывод (любой может быть nil, если модуль отключён).
 	input contracts.InputSource
 	devs  contracts.VirtualDevices
+	// vdm — копии записанных геймпадов и экранов при повторе (nil — повторяются только клавиатура и мышь).
+	vdm contracts.VirtualDeviceManager
 	// projects и events — хранилище проектов и движок (для превращения записи в блоки; любой может быть nil);
 	// tr — переводчик названий созданного проекта.
 	projects contracts.Projects
@@ -122,6 +124,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	s := host.Services()
 	m.input, _ = contracts.LookupService[contracts.InputSource](s)
 	m.devs, _ = contracts.LookupService[contracts.VirtualDevices](s)
+	m.vdm, _ = contracts.LookupService[contracts.VirtualDeviceManager](s)
 	m.projects, _ = contracts.LookupService[contracts.Projects](s)
 	m.events, _ = contracts.LookupService[contracts.Events](s)
 

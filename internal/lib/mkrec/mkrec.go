@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -63,6 +64,22 @@ type Device struct {
 	Kinds []string
 	// Name — имя устройства.
 	Name string
+	// Caps — возможности устройства (кнопки, оси с диапазонами, модель) для его копии при
+	// воспроизведении; есть у геймпадов, джойстиков, сенсорных экранов и прочих — не у клавиатур и мышей.
+	Caps *Caps
+}
+
+// Caps — возможности записанного устройства: строка «caps» заголовка.
+//
+//	caps 2 id=0003:045e:028e:0110 props=INPUT_PROP_DIRECT keys=BTN_SOUTH,BTN_EAST rels=REL_X abs=ABS_X:-32768:32767:16:128:0,ABS_Y:…
+//
+// У оси: минимум, максимум, fuzz, flat и положение покоя (к нему ось возвращается в конце повтора).
+type Caps struct {
+	ID    ev.ID
+	Props []uint16
+	Keys  []uint16
+	Rels  []uint16
+	Abs   map[uint16]ev.AbsInfo
 }
 
 // Header — сведения в начале файла.
@@ -134,6 +151,7 @@ const fileComment = `# Запись mKey (mkey rec). Одна строка — �
 # ^{A} — нажать, ~{A} — отпустить, move +x +y — сдвинуть мышь, wheel ±n — колесо.
 # Знак # начинает комментарий: в начале строки или после действия (через пробел).
 # shift -2.5 — всё, что ниже, начнётся на 2,5 с раньше (так убирают паузу); shift 1 — на 1 с позже.
+# Строка caps — кнопки и оси геймпада или экрана для его копии при повторе; её лучше не менять.
 # Подробно: docs/recording.md
 `
 
@@ -171,6 +189,9 @@ func (w *Writer) WriteHeader(h Header) error {
 			kinds = "other"
 		}
 		w.printf("device %d %s %s\n", d.ID, kinds, strconv.Quote(d.Name))
+		if d.Caps != nil {
+			w.printf("caps %d %s\n", d.ID, formatCaps(*d.Caps))
+		}
 	}
 	if h.Centered {
 		w.printf("pointer center\n")
@@ -283,6 +304,8 @@ const (
 	ProblemCreated = "created"
 	// ProblemDevice — строка device не по образцу.
 	ProblemDevice = "device"
+	// ProblemCaps — строка caps не по образцу или для устройства, которого нет выше; Arg — неверная часть.
+	ProblemCaps = "caps"
 	// ProblemPointer — после pointer должно быть center.
 	ProblemPointer = "pointer"
 	// ProblemShort — после времени нет номера устройства или действий.
@@ -328,6 +351,117 @@ func (p *Problem) Unwrap() error { return ErrFormat }
 
 // problem создаёт ошибку вида code (строку и её номер дописывает Read).
 func problem(code, arg string) error { return &Problem{Code: code, Arg: arg} }
+
+// formatCaps записывает возможности устройства частями «имя=значение» (коды — именами ядра).
+func formatCaps(c Caps) string {
+	names := func(typ uint16, codes []uint16) string {
+		out := make([]string, len(codes))
+		for i, code := range codes {
+			out[i] = ev.CodeName(typ, code)
+		}
+		return strings.Join(out, ",")
+	}
+	parts := []string{fmt.Sprintf("id=%04x:%04x:%04x:%04x", c.ID.Bustype, c.ID.Vendor, c.ID.Product, c.ID.Version)}
+	if len(c.Props) > 0 {
+		props := make([]string, len(c.Props))
+		for i, p := range c.Props {
+			props[i] = ev.PropName(p)
+		}
+		parts = append(parts, "props="+strings.Join(props, ","))
+	}
+	if len(c.Keys) > 0 {
+		parts = append(parts, "keys="+names(ev.EvKey, c.Keys))
+	}
+	if len(c.Rels) > 0 {
+		parts = append(parts, "rels="+names(ev.EvRel, c.Rels))
+	}
+	if len(c.Abs) > 0 {
+		codes := slices.Sorted(maps.Keys(c.Abs))
+		axes := make([]string, len(codes))
+		for i, code := range codes {
+			a := c.Abs[code]
+			axes[i] = fmt.Sprintf("%s:%d:%d:%d:%d:%d", ev.CodeName(ev.EvAbs, code), a.Minimum, a.Maximum, a.Fuzz, a.Flat, a.Value)
+		}
+		parts = append(parts, "abs="+strings.Join(axes, ","))
+	}
+	return strings.Join(parts, " ")
+}
+
+// parseCaps разбирает части строки caps. Ошибка — Problem вида ProblemCaps с неверной частью.
+func parseCaps(parts []string) (*Caps, error) {
+	c := &Caps{Abs: map[uint16]ev.AbsInfo{}}
+	for _, part := range parts {
+		key, val, ok := strings.Cut(part, "=")
+		if !ok {
+			return nil, problem(ProblemCaps, part)
+		}
+		items := strings.Split(val, ",")
+		switch key {
+		case "id":
+			var ids [4]uint64
+			f := strings.Split(val, ":")
+			if len(f) != 4 {
+				return nil, problem(ProblemCaps, part)
+			}
+			for i := range f {
+				v, err := strconv.ParseUint(f[i], 16, 16)
+				if err != nil {
+					return nil, problem(ProblemCaps, part)
+				}
+				ids[i] = v
+			}
+			c.ID = ev.ID{Bustype: uint16(ids[0]), Vendor: uint16(ids[1]), Product: uint16(ids[2]), Version: uint16(ids[3])}
+		case "props":
+			for _, it := range items {
+				p, ok := ev.ParseProp(it)
+				if !ok {
+					return nil, problem(ProblemCaps, it)
+				}
+				c.Props = append(c.Props, p)
+			}
+		case "keys", "rels":
+			typ := uint16(ev.EvKey)
+			if key == "rels" {
+				typ = ev.EvRel
+			}
+			for _, it := range items {
+				code, ok := ev.ParseCode(typ, it)
+				if !ok {
+					return nil, problem(ProblemCaps, it)
+				}
+				if typ == ev.EvKey {
+					c.Keys = append(c.Keys, code)
+				} else {
+					c.Rels = append(c.Rels, code)
+				}
+			}
+		case "abs":
+			for _, it := range items {
+				// ИМЯ:минимум:максимум:fuzz:flat[:покой] — покой (значение при подключении) необязателен.
+				f := strings.Split(it, ":")
+				if len(f) != 5 && len(f) != 6 {
+					return nil, problem(ProblemCaps, it)
+				}
+				code, ok := ev.ParseCode(ev.EvAbs, f[0])
+				var n [5]int64
+				for i := range len(f) - 1 {
+					v, err := strconv.ParseInt(f[i+1], 10, 32)
+					if err != nil {
+						ok = false
+					}
+					n[i] = v
+				}
+				if !ok || n[1] <= n[0] {
+					return nil, problem(ProblemCaps, it)
+				}
+				c.Abs[code] = ev.AbsInfo{Minimum: int32(n[0]), Maximum: int32(n[1]), Fuzz: int32(n[2]), Flat: int32(n[3]), Value: int32(n[4])}
+			}
+		default:
+			return nil, problem(ProblemCaps, part)
+		}
+	}
+	return c, nil
+}
 
 // oldFormatPrefix — начало первой строки записи первой версии (JSON).
 const oldFormatPrefix = `{"format":"mkrec"`
@@ -445,6 +579,26 @@ func readLine(rec *Recording, line string, f []string, shift *time.Duration) err
 		}
 		rec.Header.Devices = append(rec.Header.Devices, Device{ID: id, Kinds: strings.Split(parts[2], ","), Name: name})
 		return nil
+	case "caps":
+		// caps <номер> id=… props=… keys=… rels=… abs=… — к устройству с этим номером выше.
+		if len(f) < 2 {
+			return problem(ProblemCaps, "")
+		}
+		id, err := strconv.Atoi(f[1])
+		if err != nil {
+			return problem(ProblemCaps, f[1])
+		}
+		caps, err := parseCaps(f[2:])
+		if err != nil {
+			return err
+		}
+		for i := range rec.Header.Devices {
+			if rec.Header.Devices[i].ID == id {
+				rec.Header.Devices[i].Caps = caps
+				return nil
+			}
+		}
+		return problem(ProblemCaps, f[1])
 	case "pointer":
 		if len(f) != 2 || f[1] != "center" {
 			return problem(ProblemPointer, "")

@@ -92,6 +92,10 @@ type VirtualDeviceManager interface {
 	// TemplateInfo возвращает кнопки и оси шаблона id именами для макросов (для мастеров окна);
 	// false — шаблона нет или его состав задаёт проект (custom).
 	TemplateInfo(id string) (VirtualTemplateInfo, bool)
+	// Clone создаёт временную копию устройства с возможностями setup (для повтора записи геймпада
+	// или сенсорного экрана, T12.2): имя в системе — "mKey <name>" (mKey его не читает). close
+	// отпускает всё нажатое и уничтожает копию.
+	Clone(name string, setup evdev.Setup) (dev VirtualDevice, close func() error, err error)
 }
 
 // VirtualTemplateInfo — состав шаблона виртуального устройства: кнопки ("South", "LB", "LT",

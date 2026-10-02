@@ -1,10 +1,12 @@
 package output
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,8 +23,15 @@ import (
 // reservedNames — имена, которые заняты в макросах самим mKey (основные клавиатура и мышь).
 var reservedNames = []string{"keyboard", "mouse", "pointer"}
 
-// vdevPhys — начало физического пути виртуальных устройств проектов.
-const vdevPhys = contracts.VirtualPhysPrefix + "vdev/"
+// vdevPhys — начало физического пути виртуальных устройств проектов; clonePhys — временных
+// копий устройств для повтора записей.
+const (
+	vdevPhys  = contracts.VirtualPhysPrefix + "vdev/"
+	clonePhys = contracts.VirtualPhysPrefix + "clone/"
+)
+
+// maxDeviceName — предел длины имени устройства в ядре (UINPUT_MAX_NAME_SIZE 80 с нулём в конце).
+const maxDeviceName = 79
 
 // wanted — устройство, которое должно существовать: описание и проект.
 type wanted struct {
@@ -180,6 +189,35 @@ func (m *Module) createVirtual(w wanted) (*vdevice, error) {
 		d.node, _ = u.DevNode()
 	}
 	return d, nil
+}
+
+// Clone создаёт временную копию устройства для повтора записи (contracts.VirtualDeviceManager).
+func (m *Module) Clone(name string, setup ev.Setup) (contracts.VirtualDevice, func() error, error) {
+	// Имя «mKey …» и путь mkey/clone/… — по ним mKey не читает свои устройства (нет петли).
+	setup.Name = contracts.VirtualNamePrefix + name
+	if len(setup.Name) > maxDeviceName {
+		setup.Name = strings.ToValidUTF8(setup.Name[:maxDeviceName], "")
+	}
+	setup.Phys = clonePhys + strconv.FormatInt(m.clones.Add(1), 10)
+	writer, err := m.create(setup)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", contracts.ErrOutputUnavailable, err)
+	}
+
+	// Копия — как виртуальное устройство без шаблона: нажатия и оси как есть, ReleaseAll
+	// отпускает кнопки, возвращает оси в покой и отрывает палец сенсорного экрана.
+	d := &vdevice{
+		device: newDevice(setup.Name, writer, m.clk, time.Duration(m.cfg.SettleMS)*time.Millisecond, m.cfg.MaxEventsPerSecond),
+		setup:  setup, held: map[uint16]bool{},
+	}
+	if u, ok := writer.(interface{ DevNode() (string, error) }); ok {
+		d.node, _ = u.DevNode()
+	}
+	closeFn := func() error {
+		err := d.ReleaseAll()
+		return errors.Join(err, d.close())
+	}
+	return d, closeFn, nil
 }
 
 // Device возвращает виртуальное устройство проекта по имени (contracts.VirtualDeviceManager).

@@ -21,7 +21,7 @@ import (
 //
 //	mkey rec [имя]             записать до левый Ctrl + правый Alt + Пробел (в любой программе) или Ctrl+C здесь
 //	mkey rec list | stop | delete <имя>
-//	mkey play <имя> [--speed 2] [--repeat 5] [--loop] [--no-moves]
+//	mkey play <имя> [--speed 2] [--repeat 5] [--loop] [--no-moves] [--pause 100]
 
 // newRecCmd создаёт команду `mkey rec` с подкомандами.
 func newRecCmd(tr *i18n.Translator) *cobra.Command {
@@ -262,7 +262,7 @@ func newPlayCmd(tr *i18n.Translator) *cobra.Command {
 			printf(out, "%s\n", tr.T("cli.play.started", i18n.A("name", args[0])))
 
 			// Воспроизведение до конца или до Ctrl+C.
-			body := map[string]any{"name": args[0], "speed": opts.Speed, "repeat": opts.Repeat, "skip_moves": opts.SkipMoves}
+			body := map[string]any{"name": args[0], "speed": opts.Speed, "repeat": opts.Repeat, "skip_moves": opts.SkipMoves, "fixed_pause_ms": opts.FixedPauseMS}
 			err := c.do(ctx, "POST", "/api/v1/play", body, nil)
 			var ae *apiError
 			switch {
@@ -280,6 +280,7 @@ func newPlayCmd(tr *i18n.Translator) *cobra.Command {
 	cmd.Flags().IntVar(&opts.Repeat, "repeat", 1, tr.T("cli.play.flag.repeat"))
 	cmd.Flags().BoolVar(&loop, "loop", false, tr.T("cli.play.flag.loop"))
 	cmd.Flags().BoolVar(&opts.SkipMoves, "no-moves", false, tr.T("cli.play.flag.no_moves"))
+	cmd.Flags().IntVar(&opts.FixedPauseMS, "pause", 0, tr.T("cli.play.flag.pause"))
 	cmd.Flags().IntVar(&countdown, "countdown", 3, tr.T("cli.play.flag.countdown"))
 	return cmd
 }

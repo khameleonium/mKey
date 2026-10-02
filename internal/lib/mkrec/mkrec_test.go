@@ -232,3 +232,40 @@ func FuzzRead(f *testing.F) {
 		_, _ = Read(strings.NewReader(s))
 	})
 }
+
+// TestCaps проверяет строку caps: запись и чтение обратно, ошибки.
+func TestCaps(t *testing.T) {
+	t.Parallel()
+	caps := &Caps{
+		ID:    ev.ID{Bustype: 3, Vendor: 0x045e, Product: 0x028e, Version: 0x110},
+		Props: []uint16{ev.InputPropDirect},
+		Keys:  []uint16{ev.BtnSouth, ev.BtnEast},
+		Abs:   map[uint16]ev.AbsInfo{ev.AbsX: {Minimum: -32768, Maximum: 32767, Fuzz: 16, Flat: 128}},
+	}
+	var buf strings.Builder
+	w := NewWriter(&buf)
+	if err := w.WriteHeader(Header{Devices: []Device{{ID: 0, Kinds: []string{"gamepad"}, Name: "Pad", Caps: caps}}}); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.WriteFrame(Frame{T: 0, Device: 0, Events: []ev.Event{{Type: ev.EvKey, Code: ev.BtnSouth, Value: 1}}})
+	_ = w.Close(time.Second)
+	if !strings.Contains(buf.String(), "caps 0 id=0003:045e:028e:0110 props=INPUT_PROP_DIRECT keys=BTN_SOUTH,BTN_EAST abs=ABS_X:-32768:32767:16:128:0") {
+		t.Fatalf("file:\n%s", buf.String())
+	}
+	rec, err := Read(strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rec.Header.Devices[0].Caps
+	if got == nil || got.ID != caps.ID || len(got.Keys) != 2 || got.Abs[ev.AbsX] != caps.Abs[ev.AbsX] || got.Props[0] != ev.InputPropDirect {
+		t.Fatalf("caps = %+v", got)
+	}
+
+	// Ошибки: устройства нет выше, неизвестная ось.
+	for _, bad := range []string{"mkrec 1\ncaps 5 id=0003:0000:0000:0000\n", "mkrec 1\ndevice 0 gamepad \"P\"\ncaps 0 abs=ABS_NOPE:0:1:0:0\n"} {
+		var p *Problem
+		if _, err := Read(strings.NewReader(bad)); !errors.As(err, &p) || p.Code != ProblemCaps {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+}

@@ -22,6 +22,8 @@
   let name = $state("");
   let speed = $state(1);
   let repeat = $state(1);
+  /** pause — «фиксированная пауза» между действиями, мс (0 — паузы как в записи). */
+  let pause = $state(0);
   /** playing — какая запись воспроизводится; countdown — секунд до начала (0 — не идёт). */
   let playing = $state("");
   let countdown = $state(0);
@@ -87,7 +89,7 @@
         if (signal.aborted) return;
       }
       // Воспроизведение до конца; «Остановить» закрывает запрос — демон прерывает только его.
-      await api.play(r.name, speed, repeat, signal);
+      await api.play(r.name, speed, repeat, pause, signal);
       toast(t("rec.play_done"));
     } catch (e) {
       if (!(e instanceof ApiError && e.code === "api.stopped")) toast(errorText(e), "error");
@@ -175,6 +177,10 @@
     <input type="number" min="0.1" max="10" step="0.1" bind:value={speed} /></label
   >
   <label>{t("rec.repeat")} <input type="number" min="1" step="1" bind:value={repeat} /></label>
+  <label title={t("rec.pause_hint")}
+    >{t("rec.pause")}
+    <input type="number" min="0" max="60000" step="10" bind:value={pause} /></label
+  >
   {#if playing}
     <span class="playing">
       ▶ {countdown > 0

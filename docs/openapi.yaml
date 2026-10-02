@@ -355,7 +355,7 @@ paths:
       responses: { "200": { description: RecordingInfo }, "409": { $ref: "#/components/responses/Error" } }
   /api/v1/play:
     post:
-      summary: "Воспроизвести запись и ждать окончания ({name, speed, repeat, skip_moves}); разрыв соединения останавливает; ошибка в файле — 400 api.recording_bad, details — RecordingProblem"
+      summary: "Воспроизвести запись и ждать окончания ({name, speed, repeat, skip_moves, fixed_pause_ms}); геймпады и сенсорные экраны записи — на временных копиях; разрыв соединения останавливает; ошибка в файле — 400 api.recording_bad, details — RecordingProblem"
       responses:
         "200": { description: Готово }
         "400": { $ref: "#/components/responses/Error" }

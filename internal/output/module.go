@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mkey/internal/contracts"
@@ -61,6 +62,8 @@ type Module struct {
 	bus       contracts.Bus
 	unsub     func()
 	watchDone chan struct{}
+	// clones — счётчик временных копий устройств (для уникального физического пути).
+	clones atomic.Int64
 }
 
 // New создаёт модуль, работающий с настоящим uinput (путь берётся из настроек).

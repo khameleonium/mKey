@@ -163,6 +163,20 @@ func BusName(b uint16) string {
 	return fmt.Sprintf("0x%02x", b)
 }
 
+// ParseProp находит свойство устройства по имени ("INPUT_PROP_DIRECT") или коду ("0x1").
+func ParseProp(name string) (uint16, bool) {
+	if hex, ok := strings.CutPrefix(name, "0x"); ok {
+		v, err := strconv.ParseUint(hex, 16, 16)
+		return uint16(v), err == nil
+	}
+	for code, n := range codeNames["INPUT_PROP"] {
+		if n == name {
+			return code, true
+		}
+	}
+	return 0, false
+}
+
 // PropName возвращает имя свойства устройства INPUT_PROP_*.
 func PropName(p uint16) string {
 	if n, ok := codeNames["INPUT_PROP"][p]; ok {

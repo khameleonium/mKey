@@ -352,6 +352,8 @@
   "rec.new": "New recording",
   "rec.new_hint": "mKey will record everything you do with the keyboard and mouse to replay it later. Stop: {hotkey} in any program or the button here. What to record — in Settings.",
   "rec.new_hint_nohotkey": "mKey will record everything you do with the keyboard and mouse to replay it later. Stop with the button here (a recording key combination can be set in Settings).",
+  "rec.pause": "Pause, ms",
+  "rec.pause_hint": "Exactly this many milliseconds between actions instead of the recorded pauses (0 — as recorded)",
   "rec.play": "Play",
   "rec.play_done": "Playback finished",
   "rec.playing": "Playing \"{name}\"",

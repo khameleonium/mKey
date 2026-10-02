@@ -21,6 +21,8 @@ type playParams struct {
 	Speed     float64 `json:"speed"`
 	Repeat    int     `json:"repeat"`
 	SkipMoves bool    `json:"skip_moves"`
+	// FixedPauseMS — «фиксированная пауза» между действиями (0 — как записано).
+	FixedPauseMS int `json:"fixed_pause_ms"`
 }
 
 // Meta возвращает метаданные действия (форма блока в конструкторе строится по схеме).
@@ -32,7 +34,8 @@ func (playAction) Meta() contracts.ExtensionMeta {
 			`"name":{"type":"string","x-widget":"recording"},` +
 			`"speed":{"type":"number","minimum":0.1,"default":1},` +
 			`"repeat":{"type":"integer","minimum":1,"default":1},` +
-			`"skip_moves":{"type":"boolean","x-advanced":true}}}`),
+			`"skip_moves":{"type":"boolean","x-advanced":true},` +
+			`"fixed_pause_ms":{"type":"integer","minimum":0,"maximum":60000,"default":0,"x-widget":"ms","x-advanced":true}}}`),
 	}
 }
 
@@ -67,5 +70,5 @@ func (a playAction) Run(ctx context.Context, _ contracts.RunContext, act project
 	if err != nil {
 		return err
 	}
-	return a.m.Play(ctx, p.Name, contracts.PlayOptions{Speed: p.Speed, Repeat: p.Repeat, SkipMoves: p.SkipMoves})
+	return a.m.Play(ctx, p.Name, contracts.PlayOptions{Speed: p.Speed, Repeat: p.Repeat, SkipMoves: p.SkipMoves, FixedPauseMS: p.FixedPauseMS})
 }

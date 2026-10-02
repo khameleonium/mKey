@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -183,9 +184,26 @@ func (s *session) register(path string, d contracts.InputDevice) int {
 		return -1
 	}
 	id := len(s.header.Devices)
-	s.header.Devices = append(s.header.Devices, mkrec.Device{ID: id, Kinds: kinds, Name: d.Info.Name})
+	s.header.Devices = append(s.header.Devices, mkrec.Device{ID: id, Kinds: kinds, Name: d.Info.Name, Caps: capsOf(d)})
 	s.ids[path] = id
 	return id
+}
+
+// capsOf возвращает возможности устройства для его копии при воспроизведении (T12.2): у клавиатур
+// и мышей копия не нужна (их повторяют клавиатура и мышь mKey) — nil.
+func capsOf(d contracts.InputDevice) *mkrec.Caps {
+	plain := len(d.Kinds) > 0
+	for _, k := range d.Kinds {
+		plain = plain && (k == ev.KindKeyboard || k == ev.KindMouse)
+	}
+	if plain {
+		return nil
+	}
+	c := d.Info.Caps
+	return &mkrec.Caps{
+		ID: d.Info.ID, Props: slices.Clone(c.Props), Keys: slices.Clone(c.Codes[ev.EvKey]),
+		Rels: slices.Clone(c.Codes[ev.EvRel]), Abs: maps.Clone(c.Abs),
+	}
 }
 
 // flush пишет в черновик действия раньше before.

@@ -191,8 +191,13 @@ export const api = {
   convertRecording: (name: string, simplify: boolean) =>
     request<{ project: string }>("POST", `/recordings/${enc(name)}/convert`, { simplify }),
   deleteRecording: (name: string) => request<{ ok: boolean }>("DELETE", `/recordings/${enc(name)}`),
-  play: (name: string, speed: number, repeat: number, signal?: AbortSignal) =>
-    request<{ ok: boolean }>("POST", "/play", { name, speed, repeat }, signal),
+  play: (name: string, speed: number, repeat: number, fixedPauseMs: number, signal?: AbortSignal) =>
+    request<{ ok: boolean }>(
+      "POST",
+      "/play",
+      { name, speed, repeat, fixed_pause_ms: fixedPauseMs },
+      signal,
+    ),
 
   // Системные сочетания mKey.
   hotkeys: () => request<{ record?: string; emergency?: string }>("GET", "/settings/hotkeys"),
