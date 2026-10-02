@@ -60,9 +60,12 @@ type menuEvent struct {
 // отправленный панелью по старому меню, не попадёт в другой пункт нового меню.
 type menu struct {
 	conn *dbus.Conn
-	// mu защищает tree, next и revision; revision растёт при каждой смене пунктов;
-	// next — первый номер для следующего набора пунктов.
+	// source возвращает свежие пункты перед открытием меню (nil — не спрашивать; Options.OnMenuShow).
+	source func() []MenuItem
+	// mu защищает items, tree, next и revision; items — пункты, из которых построено tree;
+	// revision растёт при каждой смене пунктов; next — первый номер для следующего набора пунктов.
 	mu       sync.Mutex
+	items    []MenuItem
 	tree     tree
 	next     int32
 	revision uint32
@@ -70,7 +73,7 @@ type menu struct {
 
 // newMenu создаёт меню с пунктами items.
 func newMenu(conn *dbus.Conn, items []MenuItem) *menu {
-	m := &menu{conn: conn, next: 1, revision: 1}
+	m := &menu{conn: conn, next: 1, revision: 1, items: items}
 	m.tree, m.next = flatten(items, m.next)
 	return m
 }
@@ -122,6 +125,7 @@ func (m *menu) export() error {
 // set заменяет пункты и сообщает панели, что меню изменилось.
 func (m *menu) set(items []MenuItem) {
 	m.mu.Lock()
+	m.items = items
 	m.tree, m.next = flatten(items, m.next)
 	m.revision++
 	rev := m.revision
@@ -129,6 +133,45 @@ func (m *menu) set(items []MenuItem) {
 	if m.conn != nil {
 		_ = m.conn.Emit(menuPath, menuIface+".LayoutUpdated", rev, int32(0))
 	}
+}
+
+// refresh спрашивает у source свежие пункты и, если они отличаются от показанных, заменяет
+// меню. Возвращает true, если меню изменилось (панели нужно перечитать его).
+func (m *menu) refresh() bool {
+	// Источника нет или он не дал пунктов — меню прежнее.
+	if m.source == nil {
+		return false
+	}
+	items := m.source()
+	if items == nil {
+		return false
+	}
+
+	// Те же пункты — не перестраиваем: новые номера сломали бы уже открытые подменю.
+	m.mu.Lock()
+	same := sameItems(m.items, items)
+	m.mu.Unlock()
+	if same {
+		return false
+	}
+	m.set(items)
+	return true
+}
+
+// sameItems сообщает, выглядят ли два набора пунктов одинаково (текст, вид, галочки, подменю);
+// обработчики щелчков не сравниваются.
+func sameItems(a, b []MenuItem) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		x, y := a[i], b[i]
+		if x.Label != y.Label || x.Separator != y.Separator || x.Disabled != y.Disabled ||
+			x.Checkable != y.Checkable || x.Checked != y.Checked || !sameItems(x.Children, y.Children) {
+			return false
+		}
+	}
+	return true
 }
 
 // props возвращает свойства пункта в формате протокола.
@@ -264,11 +307,24 @@ func (o *menuObject) EventGroup(events []menuEvent) ([]int32, *dbus.Error) {
 	return bad, nil
 }
 
-// AboutToShow — меню скоро откроется; обновлять ничего не нужно.
-func (o *menuObject) AboutToShow(_ int32) (bool, *dbus.Error) { return false, nil }
+// AboutToShow — панель скоро откроет меню id. Перед открытием всего меню (id 0) пункты
+// собираются заново; true — меню изменилось, панель перечитает его. Перед открытием подменю
+// ничего не перестраивается: оно уже свежее (обновилось вместе с корнем), а смена номеров
+// сломала бы пункты, которые панель уже показывает.
+func (o *menuObject) AboutToShow(id int32) (bool, *dbus.Error) {
+	if id != 0 {
+		return false, nil
+	}
+	return o.m.refresh(), nil
+}
 
-// AboutToShowGroup — то же для нескольких пунктов.
-func (o *menuObject) AboutToShowGroup(_ []int32) ([]int32, []int32, *dbus.Error) {
+// AboutToShowGroup — то же для нескольких пунктов сразу. Возвращает пункты, которые нужно
+// перечитать (корень, если меню изменилось), и неизвестные номера (их не бывает: незнакомые
+// номера просто пропускаются).
+func (o *menuObject) AboutToShowGroup(ids []int32) ([]int32, []int32, *dbus.Error) {
+	if containsID(ids, 0) && o.m.refresh() {
+		return []int32{0}, []int32{}, nil
+	}
 	return []int32{}, []int32{}, nil
 }
 

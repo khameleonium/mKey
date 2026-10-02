@@ -126,6 +126,7 @@ func (m *Module) Start(context.Context) error {
 		Tooltip:     "mKey",
 		TooltipBody: m.tooltipBody(),
 		OnActivate:  m.openGUI,
+		OnMenuShow:  m.currentMenu,
 	}, m.menu())
 	if err != nil {
 		m.log.Info("tray icon is not shown", "err", err)
@@ -191,6 +192,14 @@ func (m *Module) refresh() {
 	if m.item != nil {
 		m.item.SetMenu(m.menu())
 	}
+}
+
+// currentMenu собирает пункты меню перед его открытием: списки проектов и записей читаются
+// заново, поэтому, например, удалённая запись сразу исчезает из «Повторить запись».
+func (m *Module) currentMenu() []sni.MenuItem {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.menu()
 }
 
 // setPaused меняет цвет значка, подсказку и пункты меню.

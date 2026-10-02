@@ -75,6 +75,11 @@ type Options struct {
 	Tooltip, TooltipBody string
 	// OnActivate вызывается при щелчке левой кнопкой по значку (в отдельной горутине).
 	OnActivate func()
+	// OnMenuShow вызывается перед тем, как панель откроет меню, и возвращает свежие пункты
+	// (nil — оставить прежние). Так меню показывает то, что есть сейчас, даже если что-то
+	// изменилось без ведома программы (например, файл записи удалили). Если пункты те же,
+	// меню не перестраивается: номера пунктов в уже открытом меню остаются верными.
+	OnMenuShow func() []MenuItem
 }
 
 // Item — значок в трее. Методы безопасны для вызова из разных горутин.
@@ -112,6 +117,7 @@ func New(opts Options, items []MenuItem) (*Item, error) {
 		done:       make(chan struct{}),
 	}
 	it.menu = newMenu(conn, items)
+	it.menu.source = opts.OnMenuShow
 
 	// Публикуем объекты; при ошибке закрываем подключение.
 	if err := it.export(opts); err != nil {

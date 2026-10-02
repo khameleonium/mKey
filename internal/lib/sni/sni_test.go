@@ -157,3 +157,49 @@ func TestMenuIDsAfterUpdate(t *testing.T) {
 		t.Errorf("group properties = %d", len(props))
 	}
 }
+
+// TestAboutToShow проверяет обновление меню перед открытием: пункты те же — меню не
+// перестраивается (номера в открытом меню остаются верными); изменились (запись удалили) —
+// меню заменяется и панель просят перечитать его; перед открытием подменю ничего не делается.
+func TestAboutToShow(t *testing.T) {
+	t.Parallel()
+	recs := []string{"rec1", "rec2"}
+	build := func() []MenuItem {
+		sub := MenuItem{Label: "Replay"}
+		for _, r := range recs {
+			sub.Children = append(sub.Children, MenuItem{Label: r, OnClick: func() {}})
+		}
+		return []MenuItem{{Label: "Record"}, sub}
+	}
+	m := newMenu(nil, build())
+	m.source = build
+	o := &menuObject{m: m}
+
+	// Ничего не изменилось — прежнее меню.
+	if changed, _ := o.AboutToShow(0); changed {
+		t.Fatal("unchanged menu rebuilt")
+	}
+	if _, rev := m.snapshot(); rev != 1 {
+		t.Fatalf("revision = %d", rev)
+	}
+
+	// Запись удалили: перед открытием подменю — ничего, перед открытием меню — новое меню.
+	recs = []string{"rec2"}
+	if changed, _ := o.AboutToShow(2); changed {
+		t.Fatal("submenu rebuilt")
+	}
+	if upd, _, _ := o.AboutToShowGroup([]int32{0}); len(upd) != 1 || upd[0] != 0 {
+		t.Fatalf("updates = %v", upd)
+	}
+	_, root, _ := o.GetLayout(0, -1, nil)
+	replay := root.Children[1].Value().(layout)
+	if len(replay.Children) != 1 || replay.Children[0].Value().(layout).Props["label"].Value() != "rec2" {
+		t.Fatalf("replay = %+v", replay)
+	}
+
+	// Без источника меню не меняется.
+	plain := &menuObject{m: newMenu(nil, build())}
+	if changed, _ := plain.AboutToShow(0); changed {
+		t.Fatal("menu without source changed")
+	}
+}
