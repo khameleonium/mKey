@@ -337,7 +337,7 @@ func (f fakeLua) LoadPlugin(_, path string, _ []string) (contracts.LuaPlugin, er
 	return fakeLuaPlugin{}, nil
 }
 
-// fakeLuaPlugin — Lua-плагин с действием tick.
+// fakeLuaPlugin — Lua-плагин с действием tick и триггером ping (срабатывает сразу при взведении).
 type fakeLuaPlugin struct{ contracts.LuaPlugin }
 
 // Actions возвращает действие tick.
@@ -347,6 +347,20 @@ func (fakeLuaPlugin) Actions() []contracts.PluginType {
 
 // Conditions — условий нет.
 func (fakeLuaPlugin) Conditions() []contracts.PluginType { return nil }
+
+// Triggers возвращает триггер ping.
+func (fakeLuaPlugin) Triggers() []contracts.PluginType {
+	return []contracts.PluginType{{ID: "ping", Names: map[string]string{"ru": "Пинг"}}}
+}
+
+// Validate принимает любые параметры.
+func (fakeLuaPlugin) Validate(string, any) error { return nil }
+
+// ArmTrigger срабатывает сразу со значением from = событие.
+func (fakeLuaPlugin) ArmTrigger(_ context.Context, ev contracts.EventRef, _ string, _ any, fire func(map[string]any)) (func(), error) {
+	fire(map[string]any{"from": ev.Event})
+	return func() {}, nil
+}
 
 // Close ничего не делает.
 func (fakeLuaPlugin) Close() {}
@@ -373,6 +387,18 @@ func TestLuaAndDataPlugins(t *testing.T) {
 		t.Fatalf("tick: %v", ok)
 	}
 
+	// Триггер Lua-плагина: значения опроса доходят до срабатывания.
+	e, ok := m.ext.Get(contracts.PointTrigger, "ping")
+	if !ok || e.Meta().Names["ru"] != "Пинг" {
+		t.Fatalf("ping: %v", ok)
+	}
+	var got contracts.Fire
+	disarm, err := e.(contracts.TriggerType).Arm(context.Background(), contracts.EventRef{Event: "e1"}, project.Trigger{Type: "ping"}, func(f contracts.Fire) { got = f })
+	if err != nil || got.Vars["from"] != "e1" {
+		t.Fatalf("arm: %v, fire = %+v", err, got)
+	}
+	disarm()
+
 	// Плагин-данные: шаблон проекта из templates/.
 	ddir := filepath.Join(m.cfg.Dir, "io.test.data")
 	_ = os.MkdirAll(filepath.Join(ddir, "templates"), 0o700)
@@ -381,7 +407,7 @@ func TestLuaAndDataPlugins(t *testing.T) {
 	if err := m.SetActive("io.test.data", true); err != nil {
 		t.Fatal(err)
 	}
-	e, ok := m.ext.Get(contracts.PointProjectTemplate, "games")
+	e, ok = m.ext.Get(contracts.PointProjectTemplate, "games")
 	if !ok || e.(contracts.ProjectTemplate).Template().Names["en"] != "Игры" {
 		t.Fatalf("template: %v", ok)
 	}

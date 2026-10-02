@@ -1,6 +1,6 @@
 -- Пример Lua-плагина mKey: счётчик, который живёт, пока плагин включён.
--- mkey.register_action / mkey.register_condition описывают виды; функции run и check получают
--- параметры из проекта (params) и сведения о событии (event).
+-- mkey.register_action / mkey.register_condition / mkey.register_trigger описывают виды; функции
+-- run, check и poll получают параметры из проекта (params) и сведения о событии (event).
 
 local count = 0
 
@@ -42,4 +42,22 @@ mkey.register_condition{
   name = { ru = "Счётчик дошёл до…", en = "Counter reached…" },
   params = { type = "object", properties = { value = { type = "integer", default = 10 } } },
   check = function(params) return count >= (params.value or 10) end,
+}
+
+-- Триггер: mKey вызывает poll раз в interval_ms, пока событие включено. Вернуть таблицу (или true) —
+-- событие срабатывает; значения таблицы доступны действиям. state — память этого события между
+-- вызовами: здесь — чтобы сработать один раз, когда счётчик дошёл до значения.
+mkey.register_trigger{
+  id = "counter_full",
+  name = { ru = "Когда счётчик дошёл до…", en = "When the counter reaches…" },
+  params = { type = "object", properties = { value = { type = "integer", default = 10 } } },
+  interval_ms = 500,
+  poll = function(params, state)
+    local full = count >= (params.value or 10)
+    if full and not state.fired then
+      state.fired = true
+      return { count = count }
+    end
+    if not full then state.fired = false end
+  end,
 }

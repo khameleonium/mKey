@@ -160,13 +160,32 @@ mkey.register_condition{
   id = "counter_reached",
   check = function(params) return count >= (params.value or 10) end,
 }
+
+mkey.register_trigger{
+  id = "counter_full",
+  name = { ru = "Когда счётчик дошёл до…", en = "When the counter reaches…" },
+  params = { type = "object", properties = { value = { type = "integer", default = 10 } } },
+  interval_ms = 500,                                  -- как часто спрашивать (по умолчанию 1000, не меньше 50)
+  poll = function(params, state, event)               -- state — память этого события между вызовами
+    if count >= (params.value or 10) and not state.fired then
+      state.fired = true
+      return { count = count }                        -- событие срабатывает; count доступен действиям
+    end
+  end,
+}
 ```
+
+**Триггер** — функция `poll`: mKey вызывает её раз в `interval_ms`, пока событие включено. Вернула
+таблицу или `true` — событие срабатывает (значения таблицы получают действия, как у триггеров
+плагинов-программ). Сработать «один раз, когда…» помогает `state` — своя таблица у каждого события.
+В `poll` можно только смотреть (`mkey.var`, `mkey.is_down`, `mkey.log`, `mkey.event`): нажатия,
+`mkey.sleep` и `mkey.run` дают ошибку — их место в действиях события. Один вызов — не дольше
+секунды; ошибка опроса пишется в журнал (одна и та же — не чаще раза в минуту), опрос продолжается.
 
 Внутри `run` и `check` доступны функции `mkey.*` из [Lua API](lua-api.md) — с проверкой
 разрешений манифеста (`mkey.tap` — `output.send`, `mkey.notify` — `notify`, `mkey.var` —
 `vars.read`/`vars.write`, `mkey.is_down` — `input.read`). Библиотек `os` и `io` у Lua-плагина нет.
-Вызовы одного плагина идут по очереди. Триггеров у Lua-плагинов пока нет — для них нужен
-плагин-программа.
+Вызовы одного плагина идут по очереди (опросы триггеров — тоже), поэтому `poll` должна быть быстрой.
 
 ## Плагины-данные (`kind: data`)
 

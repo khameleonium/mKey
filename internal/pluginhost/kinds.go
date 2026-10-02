@@ -38,12 +38,15 @@ func (m *Module) startLua(p *plugin) {
 	for _, t := range lp.Conditions() {
 		exts[contracts.PointCondition] = append(exts[contracts.PointCondition], luaConditionProxy{lp: lp, meta: luaMeta(p, t)})
 	}
+	for _, t := range lp.Triggers() {
+		exts[contracts.PointTrigger] = append(exts[contracts.PointTrigger], luaTriggerProxy{lp: lp, meta: luaMeta(p, t)})
+	}
 	p.mu.Lock()
 	p.lua = lp
 	p.mu.Unlock()
 	m.registerExt(p, exts)
 	p.setState(contracts.PluginRunning, "")
-	m.log.Info("lua plugin loaded", "plugin", p.man.ID, "actions", len(lp.Actions()), "conditions", len(lp.Conditions()))
+	m.log.Info("lua plugin loaded", "plugin", p.man.ID, "actions", len(lp.Actions()), "conditions", len(lp.Conditions()), "triggers", len(lp.Triggers()))
 }
 
 // luaMeta — метаданные вида Lua-плагина.
@@ -91,6 +94,28 @@ func (x luaConditionProxy) Check(ctx context.Context, rc contracts.RunContext, c
 	return x.lp.CheckCondition(ctx, rc, x.meta.ID, c.Params)
 }
 
+// luaTriggerProxy — триггер Lua-плагина: опрос функцией poll плагина.
+type luaTriggerProxy struct {
+	lp   contracts.LuaPlugin
+	meta contracts.ExtensionMeta
+}
+
+// Meta возвращает метаданные.
+func (x luaTriggerProxy) Meta() contracts.ExtensionMeta { return x.meta }
+
+// Validate проверяет параметры функцией плагина.
+func (x luaTriggerProxy) Validate(t project.Trigger) error { return x.lp.Validate(x.meta.ID, t.Params) }
+
+// Arm начинает опрос; значения, которые вернул poll, передаются действиям события.
+func (x luaTriggerProxy) Arm(ctx context.Context, ev contracts.EventRef, t project.Trigger, fire func(contracts.Fire)) (func(), error) {
+	if err := x.Validate(t); err != nil {
+		return nil, err
+	}
+	return x.lp.ArmTrigger(ctx, ev, x.meta.ID, t.Params, func(vars map[string]any) {
+		fire(contracts.Fire{Vars: vars})
+	})
+}
+
 // startData регистрирует шаблоны проектов плагина-данных: файлы templates/*.mkey.yaml (название —
 // поле name проекта, описание — описание плагина). Файл с ошибкой пропускается с предупреждением.
 func (m *Module) startData(p *plugin) {
@@ -134,5 +159,6 @@ func (d dataTemplate) Template() contracts.Template { return d.t }
 var (
 	_ contracts.ActionType      = luaActionProxy{}
 	_ contracts.ConditionType   = luaConditionProxy{}
+	_ contracts.TriggerType     = luaTriggerProxy{}
 	_ contracts.ProjectTemplate = dataTemplate{}
 )

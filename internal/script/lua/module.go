@@ -15,6 +15,7 @@ import (
 	"github.com/yuin/gopher-lua/parse"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/clock"
 	"mkey/internal/lib/dsl"
 	"mkey/internal/lib/keys"
 	"mkey/internal/lib/paths"
@@ -39,10 +40,12 @@ type Module struct {
 	keyState contracts.KeyState
 	notifier contracts.Notifier
 	events   contracts.Events
+	// clk — часы опроса триггеров Lua-плагинов.
+	clk clock.Clock
 }
 
 // New создаёт модуль.
-func New() *Module { return &Module{} }
+func New() *Module { return &Module{clk: clock.Real{}} }
 
 // ID возвращает идентификатор модуля.
 func (m *Module) ID() string { return ModuleID }
@@ -172,6 +175,15 @@ type luaAPI struct {
 	onStop []*glua.LFunction
 	// perms — разрешения Lua-плагина (nil — скрипт самого пользователя: можно всё).
 	perms []string
+	// trigger — вызов из опроса триггера: функции, которые нажимают, ждут или запускают события,
+	// недоступны (опрос должен быть быстрым и только смотреть).
+	trigger bool
+}
+
+// notInTrigger — функции mkey.*, которые нельзя вызывать из опроса триггера.
+var notInTrigger = map[string]bool{
+	"send": true, "tap": true, "down": true, "up": true, "hold": true, "sleep": true, "type": true,
+	"move_rel": true, "click": true, "run": true,
 }
 
 // guard оборачивает функцию mkey.*, которой нужно разрешение perm (только для Lua-плагинов).
@@ -215,7 +227,14 @@ func (api *luaAPI) table(ls *glua.LState) *glua.LTable {
 		"held":     {"", func(ls *glua.LState) int { ls.Push(glua.LBool(api.rc.Held())); return 1 }},
 		"on_stop":  {"", api.onStopFn},
 	} {
-		t.RawSetString(name, ls.NewFunction(api.guard(f.perm, f.fn)))
+		fn := api.guard(f.perm, f.fn)
+		if api.trigger && notInTrigger[name] {
+			fn = func(ls *glua.LState) int {
+				ls.RaiseError("mkey.%s is not available in a trigger: press keys in the event's actions", name)
+				return 0
+			}
+		}
+		t.RawSetString(name, ls.NewFunction(fn))
 	}
 
 	// Сведения о событии.

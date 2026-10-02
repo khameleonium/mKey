@@ -61,4 +61,6 @@ actions:
 
 Те же функции доступны в Lua-плагинах (docs/plugins.md, «Lua-плагины»), но с проверкой
 разрешений из `plugin.yaml` и без библиотек `os` и `io`. Плагин регистрирует свои виды функциями
-`mkey.register_action{...}` и `mkey.register_condition{...}` при загрузке.
+`mkey.register_action{...}`, `mkey.register_condition{...}` и `mkey.register_trigger{...}` при
+загрузке. В опросе триггера (`poll`) функции, которые нажимают, ждут или запускают события
+(`send`, `tap`, `down`, `up`, `hold`, `type`, `move_rel`, `click`, `sleep`, `run`), недоступны.
