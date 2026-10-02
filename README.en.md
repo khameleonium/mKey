@@ -20,7 +20,7 @@ devices directly through the kernel.
   replacement, timers, device connection, manual runs — and actions: key presses, text, mouse,
   pauses, repeats, conditions, variables, Lua and bash scripts.
 - **Visual builder** in the app window: drag blocks with the mouse, or write the same as text.
-  Ready-made templates: "Autoclicker", "CapsLock as Esc", text shortcuts…
+  Ready-made templates: "Autoclicker", "Second gamepad", "Replay a recording", "CapsLock as Esc", text shortcuts…
 - **Macro language** with explicit key names: `^{Ctrl}{C}~{Ctrl}` — hold Ctrl, press C, release
   Ctrl; `{"Hello!"}` — type text; `[250]` — wait 250 ms.
 - **Recording and replay**: left Ctrl + right Alt + Space in any program starts and stops

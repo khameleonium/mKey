@@ -52,4 +52,45 @@ events:
     actions:
       - notify: { title: "Перерыв", body: "Пора встать и размяться" }
 `},
+	{ID: "second_gamepad", Content: `version: 1
+name: "Второй геймпад"
+# Клавиатура как геймпад Xbox 360 (pad2): WASD — левый стик, стрелки — правый, Пробел — A,
+# C — B, R — X, F — Y, Q/E — бамперы, Z/X — курки, Enter — Start, Tab — Back.
+# hide: true — пока проект включён, эти клавиши видят только игры (как кнопки геймпада), а не
+# другие программы. Свою раскладку удобнее собрать мастером: «Устройства» → «Второй геймпад».
+events: []
+virtual_devices:
+  - name: pad2
+    template: xbox360
+bindings:
+  - { from: "{W}", to: "{pad2.LY}", value: -1, hide: true }
+  - { from: "{S}", to: "{pad2.LY}", value: 1, hide: true }
+  - { from: "{A}", to: "{pad2.LX}", value: -1, hide: true }
+  - { from: "{D}", to: "{pad2.LX}", value: 1, hide: true }
+  - { from: "{Up}", to: "{pad2.RY}", value: -1, hide: true }
+  - { from: "{Down}", to: "{pad2.RY}", value: 1, hide: true }
+  - { from: "{Left}", to: "{pad2.RX}", value: -1, hide: true }
+  - { from: "{Right}", to: "{pad2.RX}", value: 1, hide: true }
+  - { from: "{Space}", to: "{pad2.South}", hide: true }
+  - { from: "{C}", to: "{pad2.East}", hide: true }
+  - { from: "{R}", to: "{pad2.West}", hide: true }
+  - { from: "{F}", to: "{pad2.North}", hide: true }
+  - { from: "{Q}", to: "{pad2.LB}", hide: true }
+  - { from: "{E}", to: "{pad2.RB}", hide: true }
+  - { from: "{Z}", to: "{pad2.LT}", hide: true }
+  - { from: "{X}", to: "{pad2.RT}", hide: true }
+  - { from: "{Enter}", to: "{pad2.Start}", hide: true }
+  - { from: "{Tab}", to: "{pad2.Select}", hide: true }
+`},
+	{ID: "replay", Content: `version: 1
+name: "Повтор записи"
+# F9 повторяет запись действий. Впишите в блок «Воспроизвести запись» имя своей записи
+# (список — в разделе «Записи»; записать: левый Ctrl + правый Alt + Пробел).
+events:
+  - id: replay
+    name: "F9 — повторить запись"
+    trigger: { type: hotkey, keys: "{F9}", consume: true }
+    actions:
+      - play: { name: "моя запись" }
+`},
 }
