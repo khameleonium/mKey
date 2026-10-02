@@ -31,7 +31,7 @@ func TestRecordSettings(t *testing.T) {
 
 	// Значения по умолчанию.
 	def := m.RecordSettings()
-	if !def.Moves || !def.CenterPointer || def.MergeMovesMS != 8 || def.CoalesceMS != 4 ||
+	if !def.Moves || !def.CenterPointer || def.MergeMovesMS != 0 || def.CoalesceMS != 0 ||
 		strings.Join(def.Kinds, ",") != "keyboard,mouse" {
 		t.Fatalf("defaults = %+v", def)
 	}
@@ -47,7 +47,7 @@ func TestRecordSettings(t *testing.T) {
 			t.Errorf("SetRecordSettings(%+v) = %v", bad, err)
 		}
 	}
-	if got := m.RecordSettings(); got.MergeMovesMS != 8 {
+	if got := m.RecordSettings(); strings.Join(got.Kinds, ",") != "keyboard,mouse" || got.MergeMovesMS != 0 {
 		t.Fatalf("settings changed by a bad call: %+v", got)
 	}
 

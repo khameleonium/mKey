@@ -223,9 +223,9 @@ func TestRateLimit(t *testing.T) {
 	t.Parallel()
 	w := &fakeWriter{}
 	clk := clock.NewFake(time.Unix(1_700_000_000, 0))
-	d := newDevice("mKey Test", w, clk, 0, 10)
+	d := newDevice("mKey Test", w, clk, 0, 5)
 
-	// Пять пакетов по 2 события (нажатие + SYN) укладываются в предел 10/с без ожидания.
+	// Пять пакетов (нажатие + SYN — один пакет) укладываются в предел 5/с без ожидания.
 	for range 5 {
 		if err := d.Press(context.Background(), ev.KeyA); err != nil {
 			t.Fatal(err)

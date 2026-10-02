@@ -34,7 +34,7 @@ type device struct {
 	mu sync.Mutex
 	// held — зажатые сейчас клавиши.
 	held map[uint16]bool
-	// limit — наибольшее число событий в секунду (SEC-4); 0 — без ограничения.
+	// limit — наибольшее число пакетов событий (нажатие, движение…) в секунду (SEC-4); 0 — без ограничения.
 	limit int
 	// windowStart и windowCount — текущее окно ограничителя скорости.
 	windowStart time.Time
@@ -42,7 +42,7 @@ type device struct {
 }
 
 // newDevice оборачивает writer в виртуальное устройство. settle — время прогрева после создания,
-// limit — наибольшее число событий в секунду (0 — без ограничения).
+// limit — наибольшее число пакетов событий в секунду (0 — без ограничения).
 func newDevice(name string, w eventWriter, clk clock.Clock, settle time.Duration, limit int) *device {
 	return &device{name: name, w: w, clk: clk, readyAt: clk.Now().Add(settle), held: map[uint16]bool{}, limit: limit}
 }
@@ -99,8 +99,11 @@ func (d *device) Emit(ctx context.Context, events ...ev.Event) error {
 	}
 
 	// Ограничитель скорости: слишком частые события замедляются, а не отбрасываются —
-	// потерянное «отпускание» оставило бы клавишу зажатой (SEC-4).
-	if err := d.throttle(ctx, len(events)); err != nil {
+	// потерянное «отпускание» оставило бы клавишу зажатой (SEC-4). Считается пакет целиком
+	// (одно нажатие или одно движение мыши по двум осям), а не его части: иначе мышь с частотой
+	// 1000 Гц упиралась бы в предел и при повторе записи её движения приходилось бы склеивать,
+	// а склеенные движения система разгоняет сильнее — путь курсора искажается.
+	if err := d.throttle(ctx); err != nil {
 		return err
 	}
 
@@ -124,8 +127,8 @@ func (d *device) Emit(ctx context.Context, events ...ev.Event) error {
 	return nil
 }
 
-// throttle ждёт, если за текущую секунду уже отправлено больше limit событий.
-func (d *device) throttle(ctx context.Context, n int) error {
+// throttle ждёт, если за текущую секунду уже отправлено больше limit пакетов событий.
+func (d *device) throttle(ctx context.Context) error {
 	if d.limit <= 0 {
 		return nil
 	}
@@ -134,11 +137,11 @@ func (d *device) throttle(ctx context.Context, n int) error {
 	if now.Sub(d.windowStart) >= time.Second {
 		d.windowStart, d.windowCount = now, 0
 	}
-	d.windowCount += n
+	d.windowCount++
 	wait := time.Duration(0)
 	if d.windowCount > d.limit {
 		wait = d.windowStart.Add(time.Second).Sub(now)
-		d.windowStart, d.windowCount = d.windowStart.Add(time.Second), n
+		d.windowStart, d.windowCount = d.windowStart.Add(time.Second), 1
 	}
 	d.mu.Unlock()
 	return d.clk.Sleep(ctx, wait)

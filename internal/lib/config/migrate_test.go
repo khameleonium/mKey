@@ -49,8 +49,34 @@ func TestMigrate(t *testing.T) {
 		t.Fatal("newer file accepted")
 	}
 
-	// Текущая схема (v1) и файла нет — ничего не делается.
+	// Файла нет — ничего не делается.
 	if b, err := Migrate(filepath.Join(dir, "none.yaml")); err != nil || b != "" {
 		t.Fatalf("missing: %q %v", b, err)
+	}
+}
+
+// TestNoMoveMerging проверяет шаг v1 → v2: прежние значения по умолчанию склейки движений
+// (8 и 4 мс) становятся 0, выбранные пользователем значения и комментарии остаются.
+func TestNoMoveMerging(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ in, merge, coalesce string }{
+		{"modules:\n  recorder:\n    merge_moves_ms: 8 # склейка\n    coalesce_ms: 4\n", "merge_moves_ms: 0 # склейка", "coalesce_ms: 0"},
+		{"modules:\n  recorder:\n    merge_moves_ms: 20\n    coalesce_ms: 0\n", "merge_moves_ms: 20", "coalesce_ms: 0"},
+		{"modules:\n  api:\n    port: 1\n", "", ""},
+	} {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "config.yaml")
+		if err := os.WriteFile(p, []byte("version: 1\n"+tc.in), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Migrate(p); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(p)
+		for _, want := range []string{"version: 2", tc.merge, tc.coalesce} {
+			if !strings.Contains(string(data), want) {
+				t.Errorf("no %q in:\n%s", want, data)
+			}
+		}
 	}
 }

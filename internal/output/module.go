@@ -23,7 +23,7 @@ type Config struct {
 	UInputPath string `json:"uinput_path"`
 	// SettleMS — сколько миллисекунд ждать после создания устройства, прежде чем отправлять события.
 	SettleMS int `json:"settle_ms"`
-	// MaxEventsPerSecond — предел событий в секунду на устройство (SEC-4); 0 — без ограничения.
+	// MaxEventsPerSecond — предел пакетов событий (нажатий, движений) в секунду на устройство (SEC-4); 0 — без ограничения.
 	MaxEventsPerSecond int `json:"max_events_per_second"`
 }
 

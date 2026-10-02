@@ -20,7 +20,7 @@ import (
 )
 
 // CurrentVersion — текущая версия схемы config.yaml.
-const CurrentVersion = 1
+const CurrentVersion = 2
 
 // FileName — имя файла настроек в каталоге настроек mKey.
 const FileName = "config.yaml"
