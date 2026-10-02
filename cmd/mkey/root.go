@@ -57,7 +57,6 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		newUpdateCmd(tr),
 		newVersionCmd(tr),
 		newPrivilegedCmd(tr),
-		newDebugCmd(tr),
 	)
 	// Команда окна программы — только в полной сборке (консольная об окне не знает, ADR-0023).
 	if buildinfo.GUI {

@@ -186,10 +186,13 @@ paths:
     get:
       summary: Проекты (id, name, enabled, events, remaps, path, error) и каталог проектов
       responses: { "200": { description: Список проектов } }
+    post:
+      summary: "Создать выключенный проект: {id, template?} (шаблон — встроенный или из плагина); скрипты шаблона возвращаются для показа (SEC-7)"
+      responses: { "200": { description: "{id, scripts}" }, "400": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/import:
     post:
-      summary: "Импортировать проект ({name, content}); новый проект выключен (SEC-7)"
-      responses: { "200": { description: "{id}" }, "400": { $ref: "#/components/responses/Error" } }
+      summary: "Импортировать проект ({name, content}); новый проект выключен, скрипты (lua, shell) возвращаются, чтобы показать их код до включения (SEC-7)"
+      responses: { "200": { description: "{id, scripts: [{event, type, code?, file?}]}" }, "400": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/{id}/{action}:
     post:
       summary: Включить или выключить проект (action = enable | disable)

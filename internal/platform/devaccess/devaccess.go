@@ -149,7 +149,7 @@ func (group) Install(ctx context.Context, env contracts.PrivilegedEnv) error {
 func (group) Installed(root string) bool { return rulesInstalled(root) }
 
 // Uninstall удаляет правило и автозагрузку uinput. Членство в группе input не отзывается:
-// группа могла быть нужна пользователю и до mKey (учёт изменений — манифест, фаза 4).
+// группа могла быть нужна пользователю и до mKey (учёт изменений — манифест).
 func (group) Uninstall(ctx context.Context, env contracts.PrivilegedEnv) error {
 	return uninstallUdev(ctx, env)
 }

@@ -46,6 +46,8 @@
   /** Основной тип и подсказка виджета. */
   let type = $derived(schemaType(schema));
   let widget = $derived(schema["x-widget"] ?? "");
+  /** aname — подпись поля для экранного диктора: подпись поля, название в схеме или «Значение». */
+  let aname = $derived(label || schema.title || t("editor.value"));
 
   /** Поля объекта: обычные и «Подробнее». */
   let all = $derived(schema.properties ? fields(schema) : []);
@@ -111,6 +113,7 @@
   {@const i = variantIndex(schema, value)}
   <span class="variants">
     <select
+      aria-label={label || t("editor.variant_select")}
       value={i}
       onchange={(e) => onchange(switchVariant(schema, value, Number(e.currentTarget.value)))}
     >
@@ -121,10 +124,19 @@
     <SchemaForm schema={schema.oneOf[i] ?? {}} {value} {onchange} />
   </span>
 {:else if type === "enum"}
-  <!-- Выбор из списка значений с понятными подписями -->
+  <!-- Выбор из списка значений с понятными подписями; рискованные значения (x-confirm) —
+       только после подтверждения (SEC-4: бесконечный повтор) -->
   <select
+    aria-label={aname}
     value={String(value ?? "")}
-    onchange={(e) => onchange(schema.enum?.find((x) => String(x) === e.currentTarget.value))}
+    onchange={(e) => {
+      const key = schema["x-confirm"]?.[e.currentTarget.value];
+      if (key && !confirm(t(key))) {
+        e.currentTarget.value = String(value ?? "");
+        return;
+      }
+      onchange(schema.enum?.find((x) => String(x) === e.currentTarget.value));
+    }}
   >
     {#each schema.enum ?? [] as opt (String(opt))}
       <option value={String(opt)}>{enumLabel(schema, opt)}</option>
@@ -157,8 +169,11 @@
 {:else if widget === "macro"}
   <MacroInput value={String(value ?? "")} onchange={(v) => onchange(v)} />
 {:else if widget === "multiline"}
-  <textarea rows="2" value={String(value ?? "")} onchange={(e) => onchange(e.currentTarget.value)}
-  ></textarea>
+  <textarea
+    aria-label={aname}
+    rows="2"
+    value={String(value ?? "")}
+    onchange={(e) => onchange(e.currentTarget.value)}></textarea>
 {:else if widget === "code"}
   <div class="code">
     <CodeEditor
@@ -168,17 +183,26 @@
     />
   </div>
 {:else if widget === "event"}
-  <select value={String(value ?? "")} onchange={(e) => onchange(e.currentTarget.value)}>
+  <select
+    aria-label={aname}
+    value={String(value ?? "")}
+    onchange={(e) => onchange(e.currentTarget.value)}
+  >
     <option value="">—</option>
     {#each eventIDs as id, i (i)}<option value={id}>{id}</option>{/each}
   </select>
 {:else if widget === "project"}
-  <select value={String(value ?? "")} onchange={(e) => onchange(e.currentTarget.value)}>
+  <select
+    aria-label={aname}
+    value={String(value ?? "")}
+    onchange={(e) => onchange(e.currentTarget.value)}
+  >
     <option value="">—</option>
     {#each ed.projects as p (p.id)}<option value={p.id}>{p.name || p.id}</option>{/each}
   </select>
 {:else if widget === "variable"}
   <input
+    aria-label={aname}
     list="mkey-vars"
     value={String(value ?? "")}
     onchange={(e) => onchange(e.currentTarget.value)}
@@ -188,6 +212,7 @@
   </datalist>
 {:else if widget === "device"}
   <input
+    aria-label={aname}
     list="mkey-devices"
     value={String(value ?? "")}
     onchange={(e) => onchange(e.currentTarget.value)}
@@ -197,7 +222,11 @@
   </datalist>
 {:else if widget === "recording"}
   <!-- Запись: выбор из сохранённых (mkey rec) -->
-  <select value={String(value ?? "")} onchange={(e) => onchange(e.currentTarget.value)}>
+  <select
+    aria-label={aname}
+    value={String(value ?? "")}
+    onchange={(e) => onchange(e.currentTarget.value)}
+  >
     <option value="">—</option>
     {#each ed.recordings as n, i (i)}<option value={n}>{n}</option>{/each}
     {#if value && !ed.recordings.includes(String(value))}<option value={String(value)}
@@ -206,18 +235,21 @@
   </select>
 {:else if widget === "time"}
   <input
+    aria-label={aname}
     type="time"
     value={String(value ?? "")}
     onchange={(e) => onchange(e.currentTarget.value)}
   />
 {:else if widget === "value"}
   <input
+    aria-label={aname}
     value={value === undefined ? "" : String(value)}
     onchange={(e) => onchange(parseValue(e.currentTarget.value))}
   />
 {:else if type === "integer" || type === "number"}
   <span class="num">
     <input
+      aria-label={aname}
       type="number"
       min={schema.minimum}
       step={type === "integer" ? 1 : "any"}
@@ -230,6 +262,7 @@
   <Toggle checked={value === true} {label} onchange={(v) => onchange(v)} />
 {:else}
   <input
+    aria-label={aname}
     value={value === undefined || value === null ? "" : String(value)}
     onchange={(e) => onchange(e.currentTarget.value)}
   />

@@ -132,7 +132,7 @@ func (r *recorder) count() int {
 }
 
 // arm регистрирует триггер вида typ с параметрами params.
-func arm(t *testing.T, tt contracts.TriggerType, params map[string]any) *recorder {
+func arm(t testing.TB, tt contracts.TriggerType, params map[string]any) *recorder {
 	t.Helper()
 	rec := &recorder{}
 	if _, err := tt.Arm(context.Background(), contracts.EventRef{}, project.Trigger{Type: tt.Meta().ID, Params: params}, rec.fire); err != nil {
@@ -768,5 +768,34 @@ func TestBindingOptions(t *testing.T) {
 		case c.code != "" && (!errors.As(err, &de) || de.Code != c.code):
 			t.Errorf("%+v: %v, want %s", c.b, err, c.code)
 		}
+	}
+}
+
+// BenchmarkHandleInput измеряет обработку одного события в потоке ввода (NFR-1: медиана < 1 мс)
+// при включённых горячих клавишах, переназначении и привязках.
+func BenchmarkHandleInput(b *testing.B) {
+	m, _ := newTestModule()
+	out := &fakeOut{}
+	outs := fakeOutputs{out: out}
+	m.devs, m.vdm = outs, outs
+	m.projects = fakeProjects{p: project.Project{ID: "p",
+		VirtualDevices: []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}},
+		Remaps:         []project.Remap{{From: "{CapsLock}", To: "{Esc}"}},
+		Bindings: []project.Binding{
+			{From: "{H}", To: "{pad2.DPadUp}"},
+			{From: "{LX}", To: "{pad2.LX}", Deadzone: 0.1},
+		}}}
+	m.reloadRemaps()
+	for range 20 {
+		arm(b, hotkeyType{m}, map[string]any{"keys": "^{Ctrl}^{Alt}{F8}"})
+	}
+	m.wg.Add(1)
+	go m.bindWorker()
+	defer func() { _ = m.Stop(context.Background()) }()
+	b.ResetTimer()
+	for i := range b.N {
+		code := []uint16{ev.KeyA, ev.KeyH, ev.KeyCapslock}[i%3]
+		key(m, code, 1)
+		key(m, code, 0)
 	}
 }

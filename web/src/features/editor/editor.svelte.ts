@@ -176,6 +176,16 @@ export class Editor {
     this.dirty = true;
   }
 
+  /** move сдвигает блок в списке вверх (-1) или вниз (+1): перестановка без мыши. */
+  move<T>(list: T[], block: T, delta: number): void {
+    const i = list.indexOf(block);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    list.splice(i, 1);
+    list.splice(j, 0, block);
+    this.dirty = true;
+  }
+
   /** duplicate вставляет копию блока сразу после него. */
   duplicate<T extends { uid: string }>(list: T[], block: T): void {
     const i = list.indexOf(block);

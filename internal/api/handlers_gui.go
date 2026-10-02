@@ -319,7 +319,8 @@ func (m *Module) handleProjectValidate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleProjectCreate создаёт выключенный проект: {id, template} (шаблон необязателен).
+// handleProjectCreate создаёт выключенный проект: {id, template} (шаблон необязателен) →
+// {id, scripts} — скрипты шаблона показываются до включения (SEC-7).
 func (m *Module) handleProjectCreate(w http.ResponseWriter, r *http.Request) {
 	if m.svc.projects == nil {
 		m.unavailable(w, r)
@@ -351,7 +352,13 @@ func (m *Module) handleProjectCreate(w http.ResponseWriter, r *http.Request) {
 		m.writeError(w, r, http.StatusBadRequest, "api.bad_request", map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+
+	// Скрипты шаблона (шаблоны плагинов пишут сторонние авторы) — показать до включения (SEC-7).
+	scripts := []project.Script{}
+	if p, err := project.Parse(content, id); err == nil && len(content) > 0 {
+		scripts = append(scripts, project.Scripts(p)...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "scripts": scripts})
 }
 
 // handleProjectDelete удаляет проект.

@@ -21,8 +21,8 @@ type Options struct {
 	Enabled func(id string) bool
 	// Modules — список модулей. nil — встроенный список из Modules().
 	Modules []registry.Entry
-	// Config возвращает секцию конфига модуля. nil — всем модулям пустые секции
-	// (настоящий config.yaml появится в модуле store, фаза 3).
+	// Config возвращает секцию конфига модуля (из config.yaml). nil — всем модулям пустые секции
+	// (тесты и команды без демона).
 	Config func(id string) contracts.ConfigSection
 }
 

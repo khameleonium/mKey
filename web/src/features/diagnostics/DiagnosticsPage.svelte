@@ -100,7 +100,8 @@
   <ul class="modules">
     {#each modules as m (m.id)}
       <li>
-        <code>{m.id}</code> — {t("diag.state." + m.state)}
+        {t(m.id + ".module.name") === m.id + ".module.name" ? m.id : t(m.id + ".module.name")}
+        <code class="muted">{m.id}</code> — {t("diag.state." + m.state)}
         {#if m.error}<span class="err">{m.error}</span>{/if}
       </li>
     {/each}

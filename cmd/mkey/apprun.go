@@ -28,8 +28,8 @@ func newLogger(cmd *cobra.Command) *slog.Logger {
 // withModules собирает приложение только из модулей entries, запускает его, выполняет fn
 // и останавливает приложение (даже если fn вернул ошибку).
 //
-// Это временный способ для команд CLI фазы 1: пока нет демона (фаза 2), команды
-// поднимают нужные модули прямо в своём процессе.
+// Так работают команды, которым демон не нужен или ещё не запущен (doctor, мастер установки):
+// нужные модули поднимаются прямо в их процессе.
 func withModules(ctx context.Context, cmd *cobra.Command, tr *i18n.Translator, entries []registry.Entry, fn func(a *app.App) error) error {
 	// Собираем и запускаем приложение из выбранных модулей.
 	a, err := app.New(app.Options{Lang: tr.Lang(), Logger: newLogger(cmd), Modules: entries})

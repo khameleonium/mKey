@@ -32,7 +32,11 @@
           ondragend={() => (ed.drag = null)}
           onclick={() => ed.addToTarget(item.id)}
           onkeydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") ed.addToTarget(item.id);
+            // Пробел не должен ещё и прокручивать страницу.
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              ed.addToTarget(item.id);
+            }
           }}
         >
           {item.name}

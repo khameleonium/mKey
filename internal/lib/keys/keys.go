@@ -96,7 +96,7 @@ func RelNameOf(code uint16) (string, bool) {
 
 // NameOf возвращает каноническое имя mKey для кода EV_KEY: сначала среди клавиатуры и мыши,
 // затем среди кнопок геймпада. Для кода без имени возвращает false —
-// такие кнопки получают авто-ID вида UnKey.001 (FR-DEV-2, фаза 7).
+// такие кнопки получают авто-ID вида {UnKey001} (FR-DEV-2).
 func NameOf(code uint16) (string, bool) {
 	if e, ok := keyboardNS.byCode[code]; ok {
 		return e.name, true
@@ -111,15 +111,6 @@ func NameOf(code uint16) (string, bool) {
 func AxisNameOf(code uint16) (string, bool) {
 	e, ok := axisNS.byCode[code]
 	return e.name, ok
-}
-
-// Names возвращает канонические имена клавиатуры и мыши в порядке таблицы (для GUI и автодополнения).
-func Names() []string {
-	out := make([]string, 0, len(keyboardTable))
-	for _, e := range keyboardTable {
-		out = append(out, e.name)
-	}
-	return out
 }
 
 // Suggest возвращает каноническое имя клавиши клавиатуры/мыши, ближайшее к name

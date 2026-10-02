@@ -12,7 +12,7 @@
   import { href, navigate } from "../../lib/router.svelte";
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type { ProjectInfo, Template } from "../../lib/types";
+  import type { ProjectInfo, ProjectScript, Template } from "../../lib/types";
 
   /** Данные страницы. */
   let projects = $state<ProjectInfo[]>([]);
@@ -21,6 +21,8 @@
   let creating = $state(false);
   let newName = $state("");
   let templates = $state<Template[] | null>(null);
+  /** imported — загруженный проект со скриптами: окно с их кодом до включения (SEC-7). */
+  let imported = $state<{ id: string; scripts: ProjectScript[] } | null>(null);
 
   /** load перечитывает список проектов. */
   async function load(): Promise<void> {
@@ -76,9 +78,11 @@
   /** fromTemplate создаёт проект из шаблона и открывает его. */
   async function fromTemplate(tpl: Template): Promise<void> {
     try {
-      const { id } = await api.createProject(tpl.name, tpl.id);
+      const { id, scripts } = await api.createProject(tpl.name, tpl.id);
       templates = null;
-      navigate("editor", id);
+      // Шаблон со скриптами (из плагина) — сначала показать их код (SEC-7).
+      if (scripts?.length) imported = { id, scripts };
+      else navigate("editor", id);
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -91,9 +95,11 @@
     input.value = "";
     if (!file) return;
     try {
-      const { id } = await api.importProject(file.name, await file.text());
+      const { id, scripts } = await api.importProject(file.name, await file.text());
       toast(t("projects.imported"));
-      navigate("editor", id);
+      // Есть скрипты — сначала показать их код и предупредить; иначе — сразу в редактор.
+      if (scripts?.length) imported = { id, scripts };
+      else navigate("editor", id);
     } catch (err) {
       toast(errorText(err), "error");
     }
@@ -155,6 +161,27 @@
 
 <PlaceHint id="projects" />
 
+{#if imported}
+  {@const imp = imported}
+  <Modal title={t("projects.scripts_title")} wide onclose={() => (imported = null)}>
+    <div class="note warn">{t("projects.scripts_warning", { count: imp.scripts.length })}</div>
+    {#each imp.scripts as s, i (i)}
+      <h3 class="script-head">{s.event} — {s.type}</h3>
+      {#if s.file}
+        <p class="muted">{t("projects.script_file", { file: s.file })}</p>
+      {:else}
+        <pre class="script">{s.code}</pre>
+      {/if}
+    {/each}
+    {#snippet footer()}
+      <button onclick={() => (imported = null)}>{t("common.close")}</button>
+      <button class="primary" onclick={() => navigate("editor", imp.id)}
+        >{t("projects.scripts_open")}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
+
 {#if creating}
   <Modal title={t("projects.new")} onclose={() => (creating = false)}>
     <label class="field">
@@ -194,6 +221,20 @@
 {/if}
 
 <style>
+  .script-head {
+    margin: 12px 0 4px;
+    font-size: 1em;
+  }
+  .script {
+    max-height: 30vh;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    background: var(--bg-soft, rgba(127, 127, 127, 0.08));
+    padding: 8px;
+    border-radius: 6px;
+  }
   .head {
     margin-bottom: 12px;
   }

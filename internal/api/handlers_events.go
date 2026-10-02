@@ -8,6 +8,7 @@ import (
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/dsl"
+	"mkey/internal/lib/project"
 )
 
 // maxWait — наибольшее время ожидания клавиши в /wait/key.
@@ -71,7 +72,8 @@ func (m *Module) handleProjectToggle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// handleImport импортирует проект: {name, content}; новый проект выключен (SEC-7).
+// handleImport импортирует проект: {name, content} → {id, scripts}; новый проект выключен,
+// скрипты (lua, shell) возвращаются, чтобы показать их код до включения (SEC-7).
 func (m *Module) handleImport(w http.ResponseWriter, r *http.Request) {
 	if m.svc.projects == nil {
 		m.unavailable(w, r)
@@ -89,7 +91,13 @@ func (m *Module) handleImport(w http.ResponseWriter, r *http.Request) {
 		m.writeError(w, r, http.StatusBadRequest, "api.bad_request", map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id})
+
+	// Скрипты проекта — показать человеку до включения (SEC-7).
+	scripts := []project.Script{}
+	if p, err := project.Parse([]byte(req.Content), id); err == nil {
+		scripts = append(scripts, project.Scripts(p)...)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "scripts": scripts})
 }
 
 // handleEvents возвращает состояние всех событий.

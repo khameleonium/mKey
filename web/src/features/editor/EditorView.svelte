@@ -103,9 +103,12 @@
   });
 </script>
 
-<!-- Шапка: название, включение, сохранение -->
+<!-- Шапка: название, включение, сохранение (заголовок страницы — для экранного диктора) -->
+<h1 class="sr-only">{ed.project.data.name || ed.project.data.id}</h1>
 <div class="top row">
-  <a href={href("projects")} class="back">←</a>
+  <a href={href("projects")} class="back" aria-label={t("nav.projects")} title={t("nav.projects")}
+    >←</a
+  >
   <input
     class="title"
     value={ed.project.data.name}

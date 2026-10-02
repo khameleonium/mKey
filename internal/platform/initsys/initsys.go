@@ -15,12 +15,10 @@ package initsys
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 
 	"mkey/internal/contracts"
 	"mkey/internal/lib/fileblock"
@@ -235,9 +233,4 @@ func (manual) Start(context.Context, contracts.AutostartEnv) error { return cont
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-// Describe возвращает понятное описание способа и того, что он изменит (для вывода в CLI).
-func Describe(a contracts.Autostart, env contracts.AutostartEnv) string {
-	return fmt.Sprintf("%s (%s)", a.Meta().ID, strings.TrimSpace(a.Target(env)))
 }

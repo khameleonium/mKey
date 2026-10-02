@@ -21,6 +21,7 @@ import type {
   Project,
   ProjectFile,
   ProjectInfo,
+  ProjectScript,
   Registry,
   Status,
   Template,
@@ -157,9 +158,12 @@ export const api = {
   validateProject: (project: Project) =>
     request<{ ok: boolean }>("POST", "/projects/validate", { project }),
   createProject: (id: string, template = "") =>
-    request<{ id: string }>("POST", "/projects", { id, template }),
+    request<{ id: string; scripts?: ProjectScript[] }>("POST", "/projects", { id, template }),
   importProject: (name: string, content: string) =>
-    request<{ id: string }>("POST", "/projects/import", { name, content }),
+    request<{ id: string; scripts?: ProjectScript[] }>("POST", "/projects/import", {
+      name,
+      content,
+    }),
   deleteProject: (id: string) => request<{ ok: boolean }>("DELETE", `/projects/${enc(id)}`),
   setProjectEnabled: (id: string, on: boolean) =>
     request<{ ok: boolean }>("POST", `/projects/${enc(id)}/${on ? "enable" : "disable"}`, {}),

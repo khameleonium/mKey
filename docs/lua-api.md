@@ -50,7 +50,7 @@ actions:
 | `mkey.window()` | возвращает `nil` |
 | `mkey.cursor()` | возвращает `nil` |
 | `mkey.pixel(x, y)` | возвращает `nil, "pixel is not supported yet"` |
-| `mkey.move(x, y)` | абсолютные координаты — `nil` и сообщение (фаза 6) |
+| `mkey.move(x, y)` | абсолютные координаты — `nil` и сообщение |
 
 ## Стандартные библиотеки
 

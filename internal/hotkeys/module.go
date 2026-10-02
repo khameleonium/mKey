@@ -208,18 +208,24 @@ func (m *Module) listen(ctx context.Context, projects, removed, autoIDs <-chan c
 }
 
 // watchLayout раз в секунду обновляет текущую раскладку для распознавания hotstrings
-// (запрос к рабочему столу нельзя делать в потоке ввода).
+// (запрос к рабочему столу нельзя делать в потоке ввода). Пока hotstrings нет, рабочий стол
+// не спрашивается: раскладка нужна только им, а лишний запрос раз в секунду — лишняя работа в простое.
 func (m *Module) watchLayout() {
 	defer m.wg.Done()
 	t := time.NewTicker(time.Second)
 	defer t.Stop()
 	for {
 		// Спрашиваем раскладку с таймаутом, чтобы зависший рабочий стол не держал модуль.
-		ctx, cancel := context.WithTimeout(m.ctx, 500*time.Millisecond)
-		if info, err := m.layouts.Layouts(ctx); err == nil && info.Current != "" {
-			m.layout.Store(info.Current)
+		m.mu.Lock()
+		need := len(m.hotstrings) > 0
+		m.mu.Unlock()
+		if need {
+			ctx, cancel := context.WithTimeout(m.ctx, 500*time.Millisecond)
+			if info, err := m.layouts.Layouts(ctx); err == nil && info.Current != "" {
+				m.layout.Store(info.Current)
+			}
+			cancel()
 		}
-		cancel()
 
 		// Ждём следующего раза или остановки.
 		select {

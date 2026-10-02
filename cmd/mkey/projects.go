@@ -15,6 +15,7 @@ import (
 
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/project"
 )
 
 // daemonClient возвращает клиент демона, при необходимости запустив демон.
@@ -102,12 +103,27 @@ func newProjectCmd(tr *i18n.Translator) *cobra.Command {
 				return err
 			}
 			var resp struct {
-				ID string `json:"id"`
+				ID      string           `json:"id"`
+				Scripts []project.Script `json:"scripts"`
 			}
 			if err := c.do(cmd.Context(), http.MethodPost, "/api/v1/projects/import", map[string]string{"name": args[0], "content": string(data)}, &resp); err != nil {
 				return err
 			}
-			printf(cmd.OutOrStdout(), "%s\n", tr.T("cli.project.imported", i18n.A("id", resp.ID)))
+			out := cmd.OutOrStdout()
+			printf(out, "%s\n", tr.T("cli.project.imported", i18n.A("id", resp.ID)))
+
+			// Скрипты — показать код до включения (SEC-7).
+			if len(resp.Scripts) > 0 {
+				printf(out, "\n%s\n", tr.T("cli.project.scripts_warning", i18n.A("count", len(resp.Scripts))))
+				for _, s := range resp.Scripts {
+					printf(out, "\n--- %s (%s) ---\n", s.Event, s.Type)
+					if s.File != "" {
+						printf(out, "%s\n", tr.T("cli.project.script_file", i18n.A("file", s.File)))
+					} else {
+						printf(out, "%s\n", s.Code)
+					}
+				}
+			}
 			return nil
 		},
 	}

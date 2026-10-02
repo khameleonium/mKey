@@ -237,7 +237,7 @@ func (m *Module) repeatAction() builtinAction {
 	}
 
 	return builtinAction{
-		meta: meta("action", "repeat", "logic", `{"oneOf":[{"type":"object","required":["times","do"],"properties":{"times":{"type":"integer","minimum":1,"default":3},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["while","do"],"properties":{"while":{"enum":["toggled","held","forever"],"default":"toggled"},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["conditions","do"],"properties":{"conditions":{"type":"array","x-widget":"conditions"},"do":{"type":"array","x-widget":"actions"}}}]}`),
+		meta: meta("action", "repeat", "logic", `{"oneOf":[{"type":"object","required":["times","do"],"properties":{"times":{"type":"integer","minimum":1,"default":3},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["while","do"],"properties":{"while":{"enum":["toggled","held","forever"],"default":"toggled","x-confirm":{"forever":"confirm.repeat_forever"}},"do":{"type":"array","x-widget":"actions"}}},{"type":"object","required":["conditions","do"],"properties":{"conditions":{"type":"array","x-widget":"conditions"},"do":{"type":"array","x-widget":"actions"}}}]}`),
 		validate: func(a project.Action) error {
 			_, body, conds, err := parse(a)
 			if err != nil {

@@ -7,9 +7,8 @@ import (
 	"mkey/internal/contracts"
 )
 
-// RawConfig — секция конфигурации модуля, хранящаяся как JSON.
-// Настоящий конфиг из config.yaml появится в модуле store (фаза 3);
-// до тех пор ядро передаёт модулям пустые секции.
+// RawConfig — секция конфигурации модуля из config.yaml (modules.<id>), хранящаяся как JSON:
+// демон берёт её из lib/config (Config.Section) и передаёт модулю в Init.
 type RawConfig json.RawMessage
 
 // Decode заполняет v значениями секции. Пустая секция оставляет v без изменений.

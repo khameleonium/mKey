@@ -64,8 +64,8 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("modules.go not updated:\n%s", mods)
 	}
 
-	// Ключ i18n добавлен во все каталоги.
-	for _, f := range []string{"internal/i18n/locales/ru.json", "web/src/lib/i18n/en.json"} {
+	// Ключ i18n добавлен в переводы окна.
+	for _, f := range []string{"web/src/lib/i18n/ru.json", "web/src/lib/i18n/en.json"} {
 		data, _ := os.ReadFile(filepath.Join(root, f))
 		if !strings.Contains(string(data), `"zzgentest.module.name"`) {
 			t.Errorf("%s: key not added", f)

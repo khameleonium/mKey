@@ -147,3 +147,43 @@ func TestMarshalTypeFirst(t *testing.T) {
 		t.Fatalf("yaml = %q", got)
 	}
 }
+
+// FuzzParse проверяет, что любой текст проекта разбирается без паники (проекты правят вручную
+// и импортируют чужие).
+func FuzzParse(f *testing.F) {
+	for _, s := range []string{
+		"version: 1\nname: x\nevents: []\n",
+		"version: 1\nevents:\n  - id: a\n    trigger: { type: hotkey, keys: \"{F8}\" }\n    actions: [ { send: \"{A}\" }, { repeat: { times: 2, do: [ { pause: 5 } ] } } ]\n",
+		"version: 1\nvirtual_devices: [ { name: p, template: xbox360 } ]\nbindings: [ { from: \"{W}\", to: \"{p.LY}\", value: -1 } ]\n",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(_ *testing.T, s string) {
+		_, _ = Parse([]byte(s), "fuzz")
+	})
+}
+
+// TestScripts проверяет поиск скриптов, в том числе вложенных в repeat и if.
+func TestScripts(t *testing.T) {
+	t.Parallel()
+	p, err := Parse([]byte(`version: 1
+events:
+  - id: a
+    trigger: { type: manual }
+    actions:
+      - lua: "mkey.tap('A')"
+      - repeat:
+          times: 2
+          do:
+            - shell: { code: "echo hi" }
+            - if: { conditions: [], then: [ { lua: { file: x.lua } } ] }
+      - send: "{B}"
+`), "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := Scripts(p)
+	if len(got) != 3 || got[0].Code != "mkey.tap('A')" || got[1].Type != "shell" || got[1].Code != "echo hi" || got[2].File != "x.lua" {
+		t.Fatalf("scripts = %+v", got)
+	}
+}

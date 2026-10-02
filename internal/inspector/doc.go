@@ -1,4 +1,4 @@
-// Package inspector — инспектор устройств ввода (этап 7, FR-DEV-1).
+// Package inspector — инспектор устройств ввода (FR-DEV-1…8).
 //
 // Модуль предоставляет сервис contracts.Inspector: подробные сведения о каждом устройстве,
 // которое открыл модуль input, — постоянные имена udev (by-id, by-path; lib/evdev.ReadLinks),

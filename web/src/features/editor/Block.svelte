@@ -1,6 +1,7 @@
 <!--
   Block — один блок действия: заголовок с названием (за него блок перетаскивают), кнопки
-  «Копия» и «Удалить» и поля параметров, построенные по схеме вида (SchemaForm).
+  «Выше», «Ниже» (перестановка с клавиатуры), «Копия» и «Удалить» и поля параметров,
+  построенные по схеме вида (SchemaForm).
   Props: block — блок; list — список, в котором он лежит; bad — подсветить как блок с ошибкой.
 -->
 <script lang="ts">
@@ -25,8 +26,8 @@
   <div
     class="head"
     draggable="true"
-    role="button"
-    tabindex="-1"
+    role="group"
+    aria-label={entry?.name ?? block.type}
     title={entry?.description ?? ""}
     ondragstart={(e) => {
       e.stopPropagation();
@@ -40,11 +41,29 @@
     <span class="spacer"></span>
     <button
       class="ghost small"
+      title={t("editor.move_up")}
+      aria-label={t("editor.move_up")}
+      disabled={list.indexOf(block) === 0}
+      onclick={() => ed.move(list, block, -1)}>↑</button
+    >
+    <button
+      class="ghost small"
+      title={t("editor.move_down")}
+      aria-label={t("editor.move_down")}
+      disabled={list.indexOf(block) === list.length - 1}
+      onclick={() => ed.move(list, block, 1)}>↓</button
+    >
+    <button
+      class="ghost small"
       title={t("editor.duplicate")}
+      aria-label={t("editor.duplicate")}
       onclick={() => ed.duplicate(list, block)}>⧉</button
     >
-    <button class="ghost small" title={t("common.delete")} onclick={() => ed.remove(list, block)}
-      >✕</button
+    <button
+      class="ghost small"
+      title={t("common.delete")}
+      aria-label={t("common.delete")}
+      onclick={() => ed.remove(list, block)}>✕</button
     >
   </div>
 

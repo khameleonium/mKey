@@ -84,7 +84,34 @@ func (p *memProjects) SetEnabled(id string, _ bool) error {
 }
 
 func (p *memProjects) Templates() []contracts.Template {
-	return []contracts.Template{{ID: "autoclicker", Content: "version: 1\nname: t\nevents: []\n"}}
+	return []contracts.Template{
+		{ID: "autoclicker", Content: "version: 1\nname: t\nevents: []\n"},
+		{ID: "scripted", Content: "version: 1\nname: s\nevents: [ { id: e, trigger: { type: manual }, actions: [ { lua: \"os.exit()\" } ] } ]\n"},
+	}
+}
+
+// Import сохраняет импортированный проект под ID из имени файла.
+func (p *memProjects) Import(name string, data []byte) (string, error) {
+	id := strings.TrimSuffix(name, ".mkey.yaml")
+	return id, p.SaveRaw(id, data)
+}
+
+// TestScriptsWarning проверяет, что импорт и создание из шаблона возвращают скрипты (SEC-7).
+func TestScriptsWarning(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.svc.projects = &memProjects{files: map[string]string{}}
+	h := m.routes(true)
+	body := `{"name":"x.mkey.yaml","content":"version: 1\nevents: [ { id: e, trigger: { type: manual }, actions: [ { shell: \"rm -rf ~\" } ] } ]\n"}`
+	if code, out := call(t, h, "POST", "/api/v1/projects/import", body, nil); code != 200 || len(out["scripts"].([]any)) != 1 {
+		t.Fatalf("import: %d %v", code, out)
+	}
+	if code, out := call(t, h, "POST", "/api/v1/projects", `{"id":"y","template":"scripted"}`, nil); code != 200 || len(out["scripts"].([]any)) != 1 {
+		t.Fatalf("template: %d %v", code, out)
+	}
+	if code, out := call(t, h, "POST", "/api/v1/projects", `{"id":"z","template":"autoclicker"}`, nil); code != 200 || len(out["scripts"].([]any)) != 0 {
+		t.Fatalf("plain template: %d %v", code, out)
+	}
 }
 
 // TestProjectEditorEndpoints проверяет чтение, сохранение, создание, удаление проектов и шаблоны.

@@ -39,12 +39,13 @@ type Resolver interface {
 }
 
 // DefaultResolver — клавиши без префикса идут на клавиатуру mKey, кнопки мыши — на мышь mKey.
-// Префиксы устройств (pad2, Sega…) появятся вместе с виртуальными и подписанными устройствами (фаза 7).
+// Префиксы устройств (pad2, Sega…) не знает: их понимает DeviceResolver (виртуальные устройства
+// проектов и кнопки устройств с авто-ID).
 type DefaultResolver struct{}
 
 // Resolve находит цель для ссылки на клавишу.
 func (DefaultResolver) Resolve(ref KeyRef, pos Pos) (Target, error) {
-	// Устройства, кроме основных, пока неизвестны.
+	// Устройства, кроме основных, этому резолверу неизвестны.
 	if ref.Device != "" {
 		return Target{}, newError(pos, ErrUnknownDevice, "device", ref.Device)
 	}
@@ -345,7 +346,8 @@ func compileCommand(n Node, r Resolver) (Step, error) {
 		}
 		return s, nil
 
-	// Тач появится вместе с виртуальным сенсорным экраном (фаза 7).
+	// Касания из макросов не сделаны: виртуальный сенсорный экран есть (шаблон touchscreen),
+	// команды {Touch}/{Swipe} — будущая возможность.
 	case "Touch", "Swipe":
 		return Step{}, newError(n.Pos, ErrNotSupported, "what", "touch")
 	}

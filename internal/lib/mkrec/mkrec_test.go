@@ -92,6 +92,7 @@ func TestEditedFile(t *testing.T) {
 		{"mkrec 9\n", ProblemVersion, "9", 1},
 		{"# комментарий\n\nmkrec 1\n0.1 0 ^{Mous0}\n", ProblemKey, "Mous0", 4},
 		{"mkrec 1\n0.1 0 move 5\n", ProblemNumbers, "move", 2},
+		{"mkrec 1\n0.1 0 ev -1 0 1\n", ProblemNumbers, "ev", 2},
 		{"mkrec 1\n0.1 x ^{A}\n", ProblemDeviceNumber, "x", 2},
 		{"mkrec 1\n0.1 0 jump 1\n", ProblemAction, "jump", 2},
 		{"mkrec 1\n0.1 0\n", ProblemShort, "", 2},
@@ -215,4 +216,19 @@ func TestCoalesceMoves(t *testing.T) {
 	if Keep(ev.Event{Type: ev.EvKey, Value: ev.ValueRepeat}) || Keep(ev.Event{Type: ev.EvMsc}) || !Keep(ev.Event{Type: ev.EvKey, Value: 1}) {
 		t.Fatal("Keep")
 	}
+}
+
+// FuzzRead проверяет, что любой текст файла записи разбирается без паники: либо запись, либо
+// понятная ошибка (файлы правят вручную).
+func FuzzRead(f *testing.F) {
+	for _, s := range []string{
+		"mkrec 1\ndevice 0 keyboard \"K\"\n0.000 0 ^{A}\n0.100 0 ~{A}\n0.200 end\n",
+		"mkrec 1\npointer center\n0.1 1 move +5 -3 wheel 1\nshift -0.05\n0.2 1 ev 3 0 100\n",
+		"# x\nmkrec 1\n0.1 0 ^{#767} # comment\n",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(_ *testing.T, s string) {
+		_, _ = Read(strings.NewReader(s))
+	})
 }

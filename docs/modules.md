@@ -107,7 +107,7 @@ make new-module NAME=recorder
 - `internal/recorder/module.go` — модуль с `Config`, `New`, `ID`, `Init`, `Start`, `Stop`;
 - `internal/recorder/module_test.go` — тест полного жизненного цикла;
 - `web/src/features/recorder/index.ts` — папка фичи во фронтенде;
-- i18n-ключ `recorder.module.name` во всех каталогах переводов (Go и фронтенд);
+- i18n-ключ `recorder.module.name` в переводах окна (название в «Диагностике» → «Части программы»);
 - строку `{Module: recorder.New(), Core: false},` и импорт в `internal/app/modules.go`.
 
 После генерации: заполните `doc.go`, переведите `recorder.module.name`, при необходимости

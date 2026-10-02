@@ -86,7 +86,8 @@
 <div
   class="list"
   class:target={ed.target === list}
-  role="list"
+  role="group"
+  aria-label={t("editor.blocks")}
   onfocusin={(e) => {
     e.stopPropagation();
     ed.target = list;
@@ -108,10 +109,13 @@
     </div>
   {:else}
     <!-- Блоки с местами для перетаскивания между ними -->
-    {#each list as block, i (block.uid)}
-      {@render zone(i)}
-      <Block {block} {list} bad={bad === i} />
-    {/each}
+    <div class="items" role="list">
+      {#each list as block, i (block.uid)}
+        {@render zone(i)}
+        <Block {block} {list} bad={bad === i} />
+      {/each}
+      {#if list.length}{@render zone(list.length)}{/if}
+    </div>
     {#if list.length === 0}
       <div
         class="empty"
@@ -123,8 +127,6 @@
       >
         {t("editor.drop_here")}
       </div>
-    {:else}
-      {@render zone(list.length)}
     {/if}
 
     <!-- Добавить блок и показать текстом -->
@@ -152,7 +154,8 @@
 {/if}
 
 <style>
-  .list {
+  .list,
+  .items {
     display: flex;
     flex-direction: column;
   }

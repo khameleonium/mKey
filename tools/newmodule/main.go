@@ -5,7 +5,7 @@
 // Что создаётся:
 //   - internal/<id>/doc.go, module.go, module_test.go — модуль с пустым жизненным циклом;
 //   - web/src/features/<id>/index.ts — папка фичи во фронтенде;
-//   - i18n-ключ <id>.module.name в internal/i18n/locales/*.json и web/src/lib/i18n/*.json;
+//   - i18n-ключ <id>.module.name (название в «Диагностике») в web/src/lib/i18n/*.json;
 //   - строка подключения модуля и импорт в internal/app/modules.go (по маркерам mkey:modules и mkey:imports).
 package main
 
@@ -71,17 +71,14 @@ func generate(root, name string) error {
 		return err
 	}
 
-	// Добавляем i18n-ключ с именем модуля во все каталоги переводов (Go и фронтенд).
+	// Добавляем i18n-ключ с названием модуля в переводы окна (его показывает «Диагностика» →
+	// «Части программы»); название стоит сразу поправить на понятное человеку.
 	key := name + ".module.name"
 	texts := map[string]string{"ru": "Модуль " + name, "en": "Module " + name}
-	for _, dir := range []string{
-		filepath.Join(root, "internal", "i18n", "locales"),
-		filepath.Join(root, "web", "src", "lib", "i18n"),
-	} {
-		for lang, text := range texts {
-			if err := addKey(filepath.Join(dir, lang+".json"), key, text); err != nil {
-				return err
-			}
+	dir := filepath.Join(root, "web", "src", "lib", "i18n")
+	for lang, text := range texts {
+		if err := addKey(filepath.Join(dir, lang+".json"), key, text); err != nil {
+			return err
 		}
 	}
 

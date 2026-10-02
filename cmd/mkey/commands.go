@@ -15,6 +15,7 @@ import (
 
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	ev "mkey/internal/lib/evdev"
 )
 
 // newSendCmd создаёт команду `mkey send '<макрос>'` — выполнить макрос (T2.6).
@@ -235,13 +236,13 @@ func newDevicesCmd(tr *i18n.Translator) *cobra.Command {
 
 			// Таблица: путь, VID:PID, классы, имя.
 			if len(resp.Devices) == 0 {
-				printf(out, "%s\n", tr.T("cli.debug.devices.none"))
+				printf(out, "%s\n", tr.T("cli.devices.none"))
 			}
 			for _, d := range resp.Devices {
 				printf(out, "%-20s %s  %-22s %s\n", d.Info.Path, d.Info.ID, kindsString(d.Kinds), d.Info.Name)
 			}
 			if n := len(resp.Status.Denied); n > 0 {
-				printf(out, "\n%s\n", tr.T("cli.debug.devices.denied", i18n.A("count", n)))
+				printf(out, "\n%s\n", tr.T("cli.devices.denied", i18n.A("count", n)))
 			}
 			return nil
 		},
@@ -301,4 +302,13 @@ func newLogsCmd(tr *i18n.Translator) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, tr.T("cli.logs.flag.follow"))
 	return cmd
+}
+
+// kindsString склеивает классы устройства через запятую.
+func kindsString(kinds []ev.Kind) string {
+	parts := make([]string, len(kinds))
+	for i, k := range kinds {
+		parts[i] = string(k)
+	}
+	return strings.Join(parts, ",")
 }

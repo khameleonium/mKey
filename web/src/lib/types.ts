@@ -143,6 +143,8 @@ export interface Schema {
   "x-lang"?: string;
   "x-advanced"?: boolean;
   "x-enum-labels"?: string[];
+  /** x-confirm — значения списка, выбор которых нужно подтвердить: значение → i18n-ключ вопроса. */
+  "x-confirm"?: Record<string, string>;
 }
 
 /** Вид триггера, условия или действия из реестра (GET /registry). */
@@ -357,4 +359,12 @@ export interface UpdateInfo {
   reason?: string;
   /** check — проверка раз в сутки включена. */
   check: boolean;
+}
+
+/** ProjectScript — скрипт в проекте (lua, shell): показывается до включения чужого проекта (SEC-7). */
+export interface ProjectScript {
+  event: string;
+  type: string;
+  code?: string;
+  file?: string;
 }

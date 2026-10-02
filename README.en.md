@@ -52,17 +52,11 @@ devices directly through the kernel.
    `~/.local/bin`, grants access to the keyboard and mouse (the system asks for your password)
    and enables autostart.
 
-### Option 2. A package for your distribution
+### Option 2. A package for your system
 
-On the same releases page:
-
-| System | File | Install |
-|---|---|---|
-| Ubuntu, Debian, Mint | `mkey_<version>_amd64.deb` | `sudo apt install ./mkey_*.deb` |
-| Fedora, openSUSE | `mkey-<version>.x86_64.rpm` | `sudo dnf install ./mkey-*.rpm` |
-| Arch, Manjaro | `mkey-<version>-x86_64.pkg.tar.zst` | `sudo pacman -U ./mkey-*.pkg.tar.zst` |
-| Alpine | `mkey_<version>_x86_64.apk` | `sudo apk add --allow-untrusted ./mkey_*.apk` |
-
+The same releases page has packages in four formats: `.deb`, `.rpm`, `.pkg.tar.zst` and `.apk`
+(for a regular PC — with `amd64`/`x86_64` in the name, for ARM — with `arm64`/`aarch64`). Download
+the format your system understands and install it by double-clicking or with your package manager.
 Then start mKey from the application menu: the same wizard sets up device access and autostart —
 the package itself changes nothing in the system.
 
@@ -132,9 +126,14 @@ Settings — `~/.config/mkey/config.yaml`, projects — `~/.config/mkey/projects
 `~/.local/share/mkey/recordings/`, log — `~/.local/state/mkey/mkey.log`. All plain text; the full
 list — `mkey paths` or Settings → "Where things are".
 
+**Can I use mKey in online games?**
+Technically yes, but the rules and anti-cheat systems of some online games forbid automated and
+virtual input, and an account may be banned for it. Read the game's rules: using mKey in it is your
+responsibility.
+
 **How do I uninstall?**
 Settings → "Uninstall mKey" or `mkey uninstall` (you can keep your projects and settings).
-If installed from a package, then remove the package too: `sudo apt remove mkey` (or `dnf`, `pacman`).
+If installed from a package, then also remove the `mkey` package with your package manager.
 
 ## License
 

@@ -529,6 +529,10 @@ func ParseEvents(tokens []string) ([]ev.Event, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Тип и код события — в пределах ядра (EV_MAX, KEY_MAX); иначе это опечатка.
+			if v[0] < 0 || v[0] > int64(ev.EvMax) || v[1] < 0 || v[1] > int64(ev.KeyMax) {
+				return nil, problem(ProblemNumbers, tok)
+			}
 			out = append(out, ev.Event{Type: uint16(v[0]), Code: uint16(v[1]), Value: int32(v[2])})
 		default:
 			code, ok := wordRel(tok)
