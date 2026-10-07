@@ -42,16 +42,30 @@ run_case() {
 	"
 }
 
-# Void: runit + eudev (без logind в контейнере) → группа input.
-run_case ghcr.io/void-linux/void-glibc:latest \
-	"useradd -m tester; mkdir -p /run/runit /run/udev /etc/modules-load.d" group
+# Каждая система проверяется до конца; в конце — список упавших (ненулевой код, если есть).
+failed=""
+check() {
+	if ! run_case "$@"; then
+		failed="$failed $1"
+	fi
+}
+
+# Void: runit + eudev (без logind в контейнере) → группа input. В урезанном образе нет утилит shadow
+# (useradd, usermod), которые на настоящей системе входят в base-system, — доустанавливаем.
+check ghcr.io/void-linux/void-glibc:latest \
+	"xbps-install -Syu xbps >/dev/null && xbps-install -y shadow >/dev/null; useradd -m tester; mkdir -p /run/runit /run/udev /etc/modules-load.d" group
 # Alpine: OpenRC + mdev → mdev.conf и группа input (busybox addgroup).
-run_case alpine:latest \
+check alpine:latest \
 	"adduser -D tester; mkdir -p /run/openrc; echo /sbin/mdev > /proc/sys/kernel/hotplug 2>/dev/null || true; touch /etc/mdev.conf /etc/modules" mdev
 # Artix: OpenRC + udev + elogind → uaccess.
-run_case artixlinux/artixlinux:latest \
+check artixlinux/artixlinux:latest \
 	"useradd -m tester; mkdir -p /run/openrc /run/udev /run/systemd/seats /etc/modules-load.d" uaccess
 # Devuan: sysvinit + eudev + elogind → uaccess.
-run_case devuan/devuan:latest \
+check devuan/devuan:latest \
 	"useradd -m tester; mkdir -p /run/udev /run/systemd/seats /etc/modules-load.d" uaccess
+
+if [ -n "$failed" ]; then
+	echo "Не прошли:$failed" >&2
+	exit 1
+fi
 echo "Все проверки пройдены."
