@@ -48,6 +48,9 @@ const (
 	PointPlace ExtensionPoint = "place"
 	// PointProjectTemplate — дополнительные шаблоны проектов (плагины-данные, ADR-0029).
 	PointProjectTemplate ExtensionPoint = "project_template"
+	// PointScriptLanguage — языки файлов-скриптов (ScriptLanguage) для раздела «Скрипты» окна
+	// (FR-UI-1.7): модули lua и shell.
+	PointScriptLanguage ExtensionPoint = "script_language"
 )
 
 // AllExtensionPoints возвращает список всех известных точек расширения в стабильном порядке.
@@ -56,7 +59,7 @@ func AllExtensionPoints() []ExtensionPoint {
 		PointTrigger, PointCondition, PointAction, PointDSLCommand,
 		PointDesktopAdapter, PointDeviceTemplate, PointDeviceProfile,
 		PointInitSystem, PointElevator, PointDeviceAccess, PointPackageManager,
-		PointLuaExtension, PointRouteProvider, PointPlace, PointProjectTemplate,
+		PointLuaExtension, PointRouteProvider, PointPlace, PointProjectTemplate, PointScriptLanguage,
 	}
 }
 
