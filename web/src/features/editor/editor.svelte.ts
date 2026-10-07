@@ -57,6 +57,8 @@ export class Editor {
   projects = $state<ProjectInfo[]>([]);
   devices = $state<string[]>([]);
   recordings = $state<string[]>([]);
+  /** scripts — файлы скриптов по языку ("lua" → имена) для поля «file» блоков скриптов. */
+  scripts = $state<Record<string, string[]>>({});
   /** savedAt — время последнего своего сохранения (чтобы не считать его чужой правкой файла). */
   savedAt = 0;
 

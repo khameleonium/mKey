@@ -264,6 +264,26 @@ paths:
     post:
       summary: "Проверить проект ({project} или {raw}), не сохраняя"
       responses: { "200": { description: Ошибок нет }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/scripts:
+    get:
+      summary: "Раздел «Скрипты»: {languages: [{id, name, highlight, dir, ext}], files: [{lang, name, size, modified}]}"
+      description: "Языки регистрируют модули (точка script_language): lua — *.lua, shell — *.sh в их папках scripts_dir."
+      responses: { "200": { description: Языки и файлы } }
+  /api/v1/scripts/{lang}/{name}:
+    get:
+      summary: "Текст файла скрипта: {content}"
+      responses: { "200": { description: Текст }, "400": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
+    put:
+      summary: "Сохранить файл скрипта {content}: {ok, problem?} — problem {line, message} — ошибка синтаксиса (файл всё равно сохранён)"
+      description: "Имя — только имя файла (без папок, не с точки) с расширением языка, иначе 400 api.script_name_bad; неизвестный язык — 404 api.script_lang_unknown."
+      responses: { "200": { description: Сохранено }, "400": { $ref: "#/components/responses/Error" }, "404": { $ref: "#/components/responses/Error" } }
+    delete:
+      summary: "Удалить файл скрипта"
+      responses: { "200": { description: Удалено }, "404": { $ref: "#/components/responses/Error" } }
+  /api/v1/scripts/{lang}/check:
+    post:
+      summary: "Проверить синтаксис {content} без сохранения и запуска: {problem?}"
+      responses: { "200": { description: Результат проверки } }
   /api/v1/settings/timing:
     get:
       summary: "Интервалы нажатий по умолчанию: {key_hold_ms, key_delay_ms, layout_switch_ms}"

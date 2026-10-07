@@ -2,7 +2,12 @@
 // динамически (import()), поэтому CodeMirror не входит в основной файл интерфейса.
 import { autocompletion, type CompletionContext } from "@codemirror/autocomplete";
 import { yaml } from "@codemirror/lang-yaml";
-import { StreamLanguage } from "@codemirror/language";
+import {
+  HighlightStyle,
+  StreamLanguage,
+  defaultHighlightStyle,
+  syntaxHighlighting,
+} from "@codemirror/language";
 import { lua } from "@codemirror/legacy-modes/mode/lua";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { EditorView, basicSetup } from "codemirror";
@@ -39,12 +44,29 @@ function mkeyCompletions(ctx: CompletionContext) {
   };
 }
 
-/** createEditor создаёт редактор в host с текстом value; onchange получает новый текст. */
+/**
+ * themedHighlight — подсветка CodeMirror по умолчанию, но каждый цвет — переменная темы
+ * (--cm-708 для #708) с исходным цветом по умолчанию: в тёмной теме app.css задаёт светлые
+ * оттенки, иначе тёмные цвета кода на тёмном фоне были бы неразличимы (контраст WCAG).
+ */
+const themedHighlight = HighlightStyle.define(
+  defaultHighlightStyle.specs.map((s) =>
+    typeof s.color === "string" && s.color.startsWith("#")
+      ? { ...s, color: `var(--cm-${s.color.slice(1)}, ${s.color})` }
+      : s,
+  ),
+);
+
+/**
+ * createEditor создаёт редактор в host с текстом value; onchange получает новый текст;
+ * label — подпись поля для экранного диктора.
+ */
 export function createEditor(
   host: HTMLElement,
   value: string,
   lang: "yaml" | "lua" | "shell",
   onchange: (text: string) => void,
+  label: string,
 ): EditorView {
   // Подсветка языка; для Lua — ещё подсказки mkey.*.
   const language =
@@ -60,8 +82,11 @@ export function createEditor(
     parent: host,
     extensions: [
       basicSetup,
+      syntaxHighlighting(themedHighlight),
       ...language,
       EditorView.lineWrapping,
+      // Подпись поля для экранного диктора (у поля редактора нет своего <label>).
+      EditorView.contentAttributes.of({ "aria-label": label }),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) onchange(u.state.doc.toString());
       }),

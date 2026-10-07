@@ -18,6 +18,7 @@ import (
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/lib/paths"
 	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/scriptfiles"
 )
 
 // ModuleID — идентификатор модуля.
@@ -81,6 +82,11 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	}); err != nil {
 		return err
 	}
+	// Язык файлов-скриптов для раздела «Скрипты» окна.
+	lang := shellLanguage{m: m, folder: scriptfiles.Folder{Dir: m.cfg.ScriptsDir, Ext: ".sh"}}
+	if err := host.Extensions().Register(contracts.PointScriptLanguage, lang); err != nil {
+		return err
+	}
 	return host.Extensions().Register(contracts.PointAction, shellAction{m})
 }
 
@@ -105,7 +111,7 @@ func (shellAction) Meta() contracts.ExtensionMeta {
 	return contracts.ExtensionMeta{
 		ID: "shell", NameKey: "action.shell", DescriptionKey: "action.shell.description", Category: "script", Icon: "terminal",
 		Provider:     ModuleID,
-		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"shell"},{"type":"object","required":["code"],"properties":{"code":{"type":"string","x-widget":"code","x-lang":"shell"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}},{"type":"object","required":["file"],"properties":{"file":{"type":"string"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}}]}`),
+		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"shell"},{"type":"object","required":["code"],"properties":{"code":{"type":"string","x-widget":"code","x-lang":"shell"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}},{"type":"object","required":["file"],"properties":{"file":{"type":"string","x-widget":"script-file","x-lang":"shell"},"timeout_ms":{"type":"integer","minimum":1,"x-widget":"ms"}}}]}`),
 	}
 }
 

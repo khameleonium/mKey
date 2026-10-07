@@ -419,3 +419,28 @@ export interface DryRun {
   /** truncated — таймлайн слишком длинный и обрезан. */
   truncated?: boolean;
 }
+
+/** Язык файлов-скриптов (GET /scripts): lua или shell. */
+export interface ScriptLang {
+  id: string;
+  /** name — название на языке окна; highlight — подсветка редактора. */
+  name: string;
+  highlight: "lua" | "shell";
+  /** dir — папка файлов; ext — их расширение (".lua"). */
+  dir: string;
+  ext: string;
+}
+
+/** Файл скрипта в папке языка. */
+export interface ScriptFile {
+  lang: string;
+  name: string;
+  size: number;
+  modified: string;
+}
+
+/** Ошибка синтаксиса скрипта: строка с 1 (нет — неизвестна) и текст интерпретатора. */
+export interface ScriptProblem {
+  line?: number;
+  message: string;
+}

@@ -25,6 +25,9 @@ import type {
   ProjectScript,
   Registry,
   Status,
+  ScriptFile,
+  ScriptLang,
+  ScriptProblem,
   Template,
   Timing,
 } from "./types";
@@ -207,6 +210,17 @@ export const api = {
   hotkeys: () => request<{ record?: string; emergency?: string }>("GET", "/settings/hotkeys"),
   setHotkeys: (h: { record?: string; emergency?: string }) =>
     request<{ record?: string; emergency?: string }>("PUT", "/settings/hotkeys", h),
+  scripts: () => request<{ languages: ScriptLang[]; files: ScriptFile[] }>("GET", "/scripts"),
+  script: (lang: string, name: string) =>
+    request<{ content: string }>("GET", `/scripts/${enc(lang)}/${enc(name)}`),
+  saveScript: (lang: string, name: string, content: string) =>
+    request<{ ok: boolean; problem?: ScriptProblem }>("PUT", `/scripts/${enc(lang)}/${enc(name)}`, {
+      content,
+    }),
+  deleteScript: (lang: string, name: string) =>
+    request<{ ok: boolean }>("DELETE", `/scripts/${enc(lang)}/${enc(name)}`),
+  checkScript: (lang: string, content: string) =>
+    request<{ problem?: ScriptProblem }>("POST", `/scripts/${enc(lang)}/check`, { content }),
   timing: () => request<Timing>("GET", "/settings/timing"),
   setTiming: (s: Timing) => request<Timing>("PUT", "/settings/timing", s),
   recordSettings: () => request<RecordSettings>("GET", "/settings/recording"),

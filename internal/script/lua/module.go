@@ -20,6 +20,7 @@ import (
 	"github.com/khameleonium/mKey/internal/lib/keys"
 	"github.com/khameleonium/mKey/internal/lib/paths"
 	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/scriptfiles"
 )
 
 // ModuleID — идентификатор модуля.
@@ -74,6 +75,11 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	if err := contracts.ProvideService[contracts.LuaPluginLoader](host.Services(), m); err != nil {
 		return err
 	}
+	// Язык файлов-скриптов для раздела «Скрипты» окна.
+	lang := luaLanguage{m: m, folder: scriptfiles.Folder{Dir: m.cfg.ScriptsDir, Ext: ".lua"}}
+	if err := host.Extensions().Register(contracts.PointScriptLanguage, lang); err != nil {
+		return err
+	}
 	return host.Extensions().Register(contracts.PointAction, luaAction{m})
 }
 
@@ -97,7 +103,7 @@ func (luaAction) Meta() contracts.ExtensionMeta {
 	return contracts.ExtensionMeta{
 		ID: "lua", NameKey: "action.lua", DescriptionKey: "action.lua.description", Category: "script", Icon: "code",
 		Provider:     ModuleID,
-		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"lua"},{"type":"object","required":["file"],"properties":{"file":{"type":"string"}}}]}`),
+		ParamsSchema: []byte(`{"oneOf":[{"type":"string","x-widget":"code","x-lang":"lua"},{"type":"object","required":["file"],"properties":{"file":{"type":"string","x-widget":"script-file","x-lang":"lua"}}}]}`),
 	}
 }
 

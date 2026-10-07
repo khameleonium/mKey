@@ -61,6 +61,7 @@ func (m *Module) routes(trusted bool) http.Handler {
 	m.registerRecRoutes(mux)
 	m.registerPluginRoutes(mux)
 	m.registerUpdateRoutes(mux)
+	m.registerScriptRoutes(mux)
 
 	// Управление демоном.
 	mux.HandleFunc("POST /api/v1/shutdown", m.handleShutdown)

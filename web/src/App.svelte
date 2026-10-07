@@ -19,6 +19,7 @@
   import PluginsPage from "./features/plugins/PluginsPage.svelte";
   import ProjectsPage from "./features/projects/ProjectsPage.svelte";
   import RecorderPage from "./features/recorder/RecorderPage.svelte";
+  import ScriptsPage from "./features/scripts/ScriptsPage.svelte";
   import SettingsPage from "./features/settings/SettingsPage.svelte";
   import SetupWizard from "./features/setup/SetupWizard.svelte";
 
@@ -27,6 +28,7 @@
     { name: "home", icon: "⌂" },
     { name: "projects", icon: "▦" },
     { name: "recordings", icon: "⏺" },
+    { name: "scripts", icon: "✎" },
     { name: "devices", icon: "⌨" },
     { name: "plugins", icon: "⧉" },
     { name: "diagnostics", icon: "✚" },
@@ -116,6 +118,8 @@
       {/key}
     {:else if route().name === "recordings"}
       <RecorderPage />
+    {:else if route().name === "scripts"}
+      <ScriptsPage />
     {:else if route().name === "devices"}
       <DevicesPage />
     {:else if route().name === "plugins"}

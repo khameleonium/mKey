@@ -233,6 +233,17 @@
         >{String(value)}</option
       >{/if}
   </select>
+{:else if widget === "script-file"}
+  <!-- Файл скрипта: подсказка из раздела «Скрипты» (x-lang — язык), можно вписать своё имя -->
+  <input
+    aria-label={aname}
+    list={"mkey-scripts-" + (schema["x-lang"] ?? "")}
+    value={String(value ?? "")}
+    onchange={(e) => onchange(e.currentTarget.value)}
+  />
+  <datalist id={"mkey-scripts-" + (schema["x-lang"] ?? "")}>
+    {#each ed.scripts[schema["x-lang"] ?? ""] ?? [] as n, i (i)}<option value={n}></option>{/each}
+  </datalist>
 {:else if widget === "time"}
   <input
     aria-label={aname}

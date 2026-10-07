@@ -18,6 +18,11 @@
   --warn-soft: #fff1d6;
   --danger: #d23a3f;
   --danger-soft: #fde6e6;
+  /* --danger-text — текст на красной кнопке: контраст не меньше 4,5 : 1 в обеих темах. */
+  --danger-text: #fff;
+  /* Строка с курсором и выделение в редакторе кода (CodeEditor.svelte). */
+  --code-active-line: rgba(204, 238, 255, 0.35);
+  --code-selection: #d7e4ff;
   --when: #7b4dd8;
   --when-soft: #efe8fd;
   --shadow: 0 1px 3px rgb(20 30 60 / 12%);
@@ -47,6 +52,24 @@
     --warn-soft: #3d2f14;
     --danger: #ff6b70;
     --danger-soft: #45191c;
+    --danger-text: #1a0a0b;
+    --code-active-line: rgba(255, 255, 255, 0.04);
+    --code-selection: #34476b;
+    /* Цвета подсветки кода в тёмной теме (codemirror.ts, themedHighlight). */
+    --cm-00c: #8ab4ff;
+    --cm-00f: #82aaff;
+    --cm-085: #5fd3a4;
+    --cm-164: #7fd9a0;
+    --cm-167: #6fd0d0;
+    --cm-219: #79b8ff;
+    --cm-256: #7cc4e0;
+    --cm-30a: #c49bff;
+    --cm-404740: #c8d0c8;
+    --cm-708: #d59cff;
+    --cm-940: #e0a060;
+    --cm-a11: #ff8b8b;
+    --cm-e40: #ffa06b;
+    --cm-f00: #ff7070;
     --when: #b596ff;
     --when-soft: #2f2548;
     --shadow: 0 1px 3px rgb(0 0 0 / 40%);
@@ -69,6 +92,24 @@
   --warn-soft: #3d2f14;
   --danger: #ff6b70;
   --danger-soft: #45191c;
+  --danger-text: #1a0a0b;
+  --code-active-line: rgba(255, 255, 255, 0.04);
+  --code-selection: #34476b;
+  /* Цвета подсветки кода в тёмной теме (codemirror.ts, themedHighlight). */
+  --cm-00c: #8ab4ff;
+  --cm-00f: #82aaff;
+  --cm-085: #5fd3a4;
+  --cm-164: #7fd9a0;
+  --cm-167: #6fd0d0;
+  --cm-219: #79b8ff;
+  --cm-256: #7cc4e0;
+  --cm-30a: #c49bff;
+  --cm-404740: #c8d0c8;
+  --cm-708: #d59cff;
+  --cm-940: #e0a060;
+  --cm-a11: #ff8b8b;
+  --cm-e40: #ffa06b;
+  --cm-f00: #ff7070;
   --when: #b596ff;
   --when-soft: #2f2548;
   --shadow: 0 1px 3px rgb(0 0 0 / 40%);
@@ -139,7 +180,7 @@ button.primary {
 button.danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--danger-text);
 }
 button.ghost {
   background: transparent;
