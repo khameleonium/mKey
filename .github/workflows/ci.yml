@@ -64,6 +64,22 @@ jobs:
           name: playwright-report
           path: web/playwright-report
 
+  # Выдача и снятие доступа к устройствам на системах без systemd в контейнерах (T4.7):
+  # Void (runit), Alpine (OpenRC + mdev), Artix (OpenRC + elogind), Devuan (sysvinit).
+  install:
+    needs: [go, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: make build
+      - run: sh test/install/run.sh
+
   build:
     needs: [go, web]
     runs-on: ubuntu-latest
