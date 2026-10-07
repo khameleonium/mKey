@@ -6,7 +6,7 @@ import globals from "globals";
 
 export default ts.config(
   // Не проверяем сборку и зависимости.
-  { ignores: ["dist/", "node_modules/", "stub/"] },
+  { ignores: ["dist/", "node_modules/", "stub/", "playwright-report/", "test-results/"] },
   js.configs.recommended,
   ...ts.configs.strict,
   ...svelte.configs.recommended,

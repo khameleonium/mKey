@@ -33,7 +33,7 @@ ADR и правка `SPEC.md` — в одном коммите/PR. Если ре
 
 ## 3. Команды
 
-Go-модуль называется `mkey`. Репозиторий: https://github.com/khameleonium/mKey (публичный); пушить — только когда об этом просит владелец. Go 1.27 установлен в `/usr/local/go` (в `PATH` может не быть — тогда вызывай `/usr/local/go/bin/go` или добавь `export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin`). `staticcheck` лежит в `~/go/bin`. В `go.mod` — `go 1.27`.
+Go-модуль — `github.com/khameleonium/mKey` (ADR-0034), бинарник — `mkey`. Репозиторий: https://github.com/khameleonium/mKey (публичный); пушить — только когда об этом просит владелец. Go 1.27 установлен в `/usr/local/go` (в `PATH` может не быть — тогда вызывай `/usr/local/go/bin/go` или добавь `export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin`). `staticcheck` лежит в `~/go/bin`. В `go.mod` — `go 1.27`.
 
 ```bash
 make build              # web + go build (CGO_ENABLED=0) → ./mkey и консольная ./mkey-cli
@@ -41,6 +41,7 @@ make build-cli          # только консольная версия ./mkey-
 make web                # только фронтенд → web/dist
 make test               # go test ./... + фронтенд-тесты (без прав и устройств)
 make test-integration   # go test -tags integration ./test/integration/... (нужен /dev/uinput)
+make e2e                # автотесты окна (Playwright) на демоне без устройств; MKEY_E2E_CHANNEL=chrome — свой Chrome
 make lint               # golangci-lint, go vet, eslint, svelte-check, prettier --check
 make fmt                # gofmt/goimports + prettier
 make run                # собрать и показать справку; демон — ./mkey daemon
@@ -50,7 +51,8 @@ make gencodes           # перегенерировать коды клавиш
 ./mkey daemon stop      # остановить фоновую часть
 ./mkey project list     # проекты; включение проекта с consume-хоткеями ЗАХВАТЫВАЕТ клавиатуру — не делай этого на машине разработчика без разрешения
 ./mkey devices          # список устройств ввода (watch — монитор нажатий, inspect — подробности)
-./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e)
+./mkey daemon --fake-backends   # демон без реальных устройств (для GUI и e2e); рядом с обычным демоном —
+                                # с отдельными HOME/XDG_* и портом в config.yaml (как web/e2e/global-setup.ts)
 ```
 
 `go build ./...` должен работать **без Node**: если `web/dist` не собран, пакет `web` встраивает заглушку `web/stub/index.html`. Не коммить собранный `web/dist` (в git только `web/dist/.gitkeep`).

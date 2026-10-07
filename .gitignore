@@ -14,6 +14,8 @@ web/dist/*
 web/node_modules/.installed
 web/.vite/
 web/coverage/
+web/playwright-report/
+web/test-results/
 *.tsbuildinfo
 
 # Временные и рабочие файлы: черновики записей mKey, журналы, резервные копии.

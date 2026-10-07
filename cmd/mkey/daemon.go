@@ -45,6 +45,7 @@ func newDaemonCmd(tr *i18n.Translator) *cobra.Command {
 			return runDaemon(cmd, tr)
 		},
 	}
+	cmd.Flags().Bool("fake-backends", false, tr.T("cli.daemon.flag.fake_backends"))
 	cmd.AddCommand(&cobra.Command{
 		Use:   "stop",
 		Short: tr.T("cli.daemon.stop.short"),
@@ -115,10 +116,12 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	}
 
 	// Собираем программу из всех модулей и добавляем управление жизненным циклом демона.
+	fake, _ := cmd.Flags().GetBool("fake-backends")
 	a, err := app.New(app.Options{
-		Lang:    tr.Lang(),
-		Logger:  logger,
-		Enabled: cfg.Enabled,
+		Lang:         tr.Lang(),
+		Logger:       logger,
+		FakeBackends: fake,
+		Enabled:      cfg.Enabled,
 		Config: func(id string) contracts.ConfigSection {
 			if sec := cfg.Section(id); sec != nil {
 				return registry.RawConfig(sec)

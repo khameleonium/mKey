@@ -64,6 +64,9 @@ type Module struct {
 	watchDone chan struct{}
 	// clones — счётчик временных копий устройств (для уникального физического пути).
 	clones atomic.Int64
+	// fake — устройства только в памяти (NewFake, --fake-backends): настройки uinput и ожидание
+	// появления устройства не применяются.
+	fake bool
 }
 
 // New создаёт модуль, работающий с настоящим uinput (путь берётся из настроек).
@@ -90,6 +93,10 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.log = host.Logger()
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
+	}
+	if m.fake {
+		m.cfg.SettleMS = 0
+		m.log.Warn("fake output: virtual devices exist only in memory (--fake-backends)")
 	}
 
 	// Проекты (их виртуальные устройства) и шаблоны устройств — в точку расширения (для окна).

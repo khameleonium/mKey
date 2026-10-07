@@ -19,7 +19,7 @@ WEB := web
 BIN := mkey
 BIN_CLI := mkey-cli
 
-.PHONY: all build build-cli go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module gencodes clean help
+.PHONY: all build build-cli go-build web web-deps test go-test web-test test-integration lint go-lint web-lint fmt run new-module gencodes clean help e2e
 
 ## all: то же, что build
 all: build
@@ -58,6 +58,11 @@ web-test: web-deps
 ## test-integration: интеграционные тесты с реальным /dev/uinput
 test-integration:
 	go test -tags integration ./test/integration/... ./internal/output/...
+
+## e2e: автотесты окна (Playwright) на демоне без настоящих устройств (--fake-backends);
+##      браузер: npx playwright install chromium или MKEY_E2E_CHANNEL=chrome (установленный Chrome)
+e2e: build
+	cd web && npm run e2e
 
 ## lint: все линтеры Go и фронтенда (включая архитектурный тест границ модулей)
 lint: go-lint web-lint

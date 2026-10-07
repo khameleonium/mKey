@@ -96,3 +96,43 @@ func TestEachOptionalModuleCanBeDisabled(t *testing.T) {
 		})
 	}
 }
+
+// TestFakeBackends проверяет режим без настоящих устройств (--fake-backends): программа стартует,
+// устройств ввода нет, макрос выполняется на виртуальной клавиатуре в памяти, значка в трее
+// и проверки обновлений нет.
+func TestFakeBackends(t *testing.T) {
+	t.Parallel()
+	a, err := New(Options{
+		Lang:         "en",
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Config:       noHardware(t),
+		FakeBackends: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Stop(context.Background()) })
+
+	// Модули: ввод и вывод работают, трея и обновлений нет.
+	for _, st := range a.Manager.Statuses() {
+		if st.ID == "tray" || st.ID == "update" {
+			t.Errorf("module %s must be absent", st.ID)
+		}
+	}
+	in, err := contracts.LookupService[contracts.InputSource](a.Manager.Services())
+	if err != nil || len(in.Devices()) != 0 {
+		t.Fatalf("input: %v, devices %v", err, in.Devices())
+	}
+
+	// Макрос выполняется (устройства — в памяти).
+	runner, err := contracts.LookupService[contracts.SequenceRunner](a.Manager.Services())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.Run(context.Background(), `^{Shift}{A}~{Shift}{"hi"}`); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}

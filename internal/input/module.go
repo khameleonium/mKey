@@ -111,6 +111,9 @@ type Module struct {
 	suspended atomic.Bool
 	// emergency — клавиши экстренной остановки; меняется на лету (SetEmergencyCombo), поэтому атомарно.
 	emergency atomic.Pointer[emergencyCombo]
+	// fake — режим без настоящих устройств (NewFake, --fake-backends): каталог — пустая временная
+	// папка, удаляется при остановке.
+	fake bool
 }
 
 // emergencyCombo — сочетание экстренной остановки: запись зажатием и клавиши.
@@ -184,6 +187,13 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.bus = host.Bus()
 	if err := host.Config().Decode(&m.cfg); err != nil {
 		return fmt.Errorf("%s: %w", ModuleID, err)
+	}
+
+	// Режим без устройств: вместо каталога из настроек — пустая временная папка.
+	if m.fake {
+		if err := m.fakeDir(); err != nil {
+			return fmt.Errorf("%s: %w", ModuleID, err)
+		}
 	}
 
 	// Клавиши экстренной остановки: без неё захват клавиатуры небезопасен, поэтому ошибка здесь фатальна.
@@ -273,6 +283,11 @@ func (m *Module) Stop(context.Context) error {
 	}
 	clear(m.subs)
 	clear(m.devices)
+
+	// Режим без устройств: временная папка больше не нужна.
+	if m.fake {
+		_ = os.RemoveAll(m.cfg.Dir)
+	}
 	return nil
 }
 

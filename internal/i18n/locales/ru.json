@@ -193,6 +193,7 @@
   "cli.daemon.already_running": "фоновая часть mKey уже запущена",
   "cli.daemon.autostart": "Запускаю фоновую часть mKey…",
   "cli.daemon.autostart_failed": "не удалось запустить фоновую часть mKey: {error}. Посмотрите журнал: mkey logs",
+  "cli.daemon.flag.fake_backends": "без настоящих устройств: клавиатура, мышь и виртуальные устройства — только в памяти, без значка в трее (для проверок окна и автотестов)",
   "cli.daemon.not_running": "Фоновая часть mKey не запущена. Запустить: mkey daemon",
   "cli.daemon.short": "Запустить фоновую часть mKey (обычно запускается сама)",
   "cli.daemon.started": "mKey запущен (процесс {pid}). Чтобы остановить, нажмите Ctrl+C или выполните: mkey daemon stop",

@@ -154,6 +154,7 @@ mkey update                       # проверить и установить �
 
 ```bash
 make test    # тесты Go и фронтенда (без прав и устройств)
+make e2e     # автотесты окна на демоне без настоящих устройств (mkey daemon --fake-backends)
 make lint    # линтеры
 make build   # сборка
 goreleaser release --snapshot --clean   # пробная сборка выпуска (архивы и пакеты в dist/)

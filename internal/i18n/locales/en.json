@@ -193,6 +193,7 @@
   "cli.daemon.already_running": "the mKey background service is already running",
   "cli.daemon.autostart": "Starting the mKey background service…",
   "cli.daemon.autostart_failed": "could not start the mKey background service: {error}. See the log: mkey logs",
+  "cli.daemon.flag.fake_backends": "without real devices: keyboard, mouse and virtual devices exist only in memory, no tray icon (for window checks and automated tests)",
   "cli.daemon.not_running": "The mKey background service is not running. Start it: mkey daemon",
   "cli.daemon.short": "Run the mKey background service (usually starts automatically)",
   "cli.daemon.started": "mKey is running (process {pid}). To stop, press Ctrl+C or run: mkey daemon stop",

@@ -8,7 +8,10 @@ import (
 	"github.com/khameleonium/mKey/internal/bus"
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/input"
+	"github.com/khameleonium/mKey/internal/output"
 	"github.com/khameleonium/mKey/internal/registry"
+	"github.com/khameleonium/mKey/internal/update"
 )
 
 // Options — параметры сборки приложения.
@@ -24,6 +27,9 @@ type Options struct {
 	// Config возвращает секцию конфига модуля (из config.yaml). nil — всем модулям пустые секции
 	// (тесты и команды без демона).
 	Config func(id string) contracts.ConfigSection
+	// FakeBackends — режим без настоящих устройств (`mkey daemon --fake-backends`, T12.11): ввод
+	// и вывод только в памяти, без значка в трее и проверки обновлений (для проверок окна и e2e).
+	FakeBackends bool
 }
 
 // App — собранное приложение: ядро и модули.
@@ -50,6 +56,9 @@ func New(opts Options) (*App, error) {
 	if entries == nil {
 		entries = Modules()
 	}
+	if opts.FakeBackends {
+		entries = fakeBackends(entries)
+	}
 
 	// Создаём шину и менеджер модулей.
 	b := bus.New(0)
@@ -74,4 +83,22 @@ func (a *App) Start(ctx context.Context) error {
 // Stop останавливает все модули в обратном порядке.
 func (a *App) Stop(ctx context.Context) error {
 	return a.Manager.Stop(ctx)
+}
+
+// fakeBackends заменяет в списке модули ввода и вывода на их варианты без настоящих устройств
+// и убирает значок в трее и проверку обновлений (им нечего делать в проверочном запуске).
+func fakeBackends(entries []registry.Entry) []registry.Entry {
+	out := make([]registry.Entry, 0, len(entries))
+	for _, e := range entries {
+		switch e.Module.ID() {
+		case input.ModuleID:
+			e.Module = input.NewFake()
+		case output.ModuleID:
+			e.Module = output.NewFake()
+		case "tray", update.ModuleID:
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
