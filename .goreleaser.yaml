@@ -100,5 +100,18 @@ release:
   github:
     owner: khameleonium
     name: mKey
-  # Первые выпуски — «предварительные», пока проект не дошёл до версии 1.0.
+  # «Предварительный» выпуск — только у тегов с суффиксом (v1.0.0-rc1); v0.9.0 — обычный выпуск.
   prerelease: auto
+  # Шапка описания выпуска: что это, создатель, как установить и проверить подлинность.
+  header: |
+    ## mKey {{ .Tag }}
+
+    Макросы клавиатуры и мыши для Linux · Keyboard and mouse macros for Linux.
+
+    Создатель: Илья Ульянов | khameleonium
+
+    **Установка:** скачайте `mkey_{{ .Version }}_linux_amd64.tar.gz` (обычный компьютер) или `…_arm64.tar.gz` (ARM),
+    распакуйте и запустите `mkey` — мастер объяснит каждый шаг. Есть и пакеты: `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk`.
+    **Install:** download the archive for your architecture, unpack it and run `mkey` — the wizard explains every step.
+
+    Подлинность / authenticity: `gh attestation verify <файл> --repo khameleonium/mKey`, суммы — `checksums.txt`.
