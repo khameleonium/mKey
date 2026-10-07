@@ -1,10 +1,10 @@
 # Maintainer: Илья Ульянов | khameleonium <siriusx666 at gmail dot com>
 # PKGBUILD пакета mkey-bin для AUR (T10.2): готовая программа из релизов GitHub.
 # Версию и контрольные суммы подставляет packaging/aur/update.sh <версия> (из checksums.txt
-# релиза); публикация в AUR — вручную владельцем (нужен аккаунт AUR).
+# релиза) и пишет .SRCINFO; публикация — packaging/aur/publish.sh (нужны аккаунт AUR и SSH-ключ).
 # Пакет не ставит правила udev и автозапуск: их настраивает мастер mKey с согласия человека.
 pkgname=mkey-bin
-pkgver=0.0.0
+pkgver=0.9.0
 pkgrel=1
 pkgdesc="Keyboard and mouse macros for Linux (hotkeys, macro language, recording, virtual gamepads)"
 arch=('x86_64' 'aarch64')
@@ -16,9 +16,9 @@ install=mkey.install
 source=("mkey.desktop" "mkey.svg")
 source_x86_64=("https://github.com/khameleonium/mKey/releases/download/v${pkgver}/mkey_${pkgver}_linux_amd64.tar.gz")
 source_aarch64=("https://github.com/khameleonium/mKey/releases/download/v${pkgver}/mkey_${pkgver}_linux_arm64.tar.gz")
-sha256sums=('SKIP' 'SKIP')
-sha256sums_x86_64=('SKIP')
-sha256sums_aarch64=('SKIP')
+sha256sums=('e50f1fff46e046ce194df45f3854f64cf13c06d4d71fe479cecf4562983e5ee8' '34ddee529f4be0738d5ad6cc3e68197df65ec20aca88756a4fd49d371970cc4f')
+sha256sums_x86_64=('2e4c1a32b927167da1735b2c06e26a459fc0678ecae7aef57cf2b93a3ba64b7f')
+sha256sums_aarch64=('389f0e41fa5da2456c87515f02596125f3c9adff5d89721b53f5b72b663d3c31')
 
 package() {
   install -Dm755 mkey "${pkgdir}/usr/bin/mkey"

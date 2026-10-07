@@ -39,3 +39,7 @@ Thumbs.db
 
 # Локальные настройки Claude Code (общие правила для агентов — в AGENTS.md и CLAUDE.md).
 .claude/settings.local.json
+
+# Копии ярлыка и иконки, которые packaging/aur/update.sh кладёт рядом с PKGBUILD.
+packaging/aur/mkey.desktop
+packaging/aur/mkey.svg

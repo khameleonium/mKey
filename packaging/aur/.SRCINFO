@@ -1,0 +1,21 @@
+pkgbase = mkey-bin
+	pkgdesc = Keyboard and mouse macros for Linux (hotkeys, macro language, recording, virtual gamepads)
+	pkgver = 0.9.0
+	pkgrel = 1
+	url = https://github.com/khameleonium/mKey
+	install = mkey.install
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	provides = mkey
+	conflicts = mkey
+	source = mkey.desktop
+	source = mkey.svg
+	sha256sums = e50f1fff46e046ce194df45f3854f64cf13c06d4d71fe479cecf4562983e5ee8
+	sha256sums = 34ddee529f4be0738d5ad6cc3e68197df65ec20aca88756a4fd49d371970cc4f
+	source_x86_64 = https://github.com/khameleonium/mKey/releases/download/v0.9.0/mkey_0.9.0_linux_amd64.tar.gz
+	sha256sums_x86_64 = 2e4c1a32b927167da1735b2c06e26a459fc0678ecae7aef57cf2b93a3ba64b7f
+	source_aarch64 = https://github.com/khameleonium/mKey/releases/download/v0.9.0/mkey_0.9.0_linux_arm64.tar.gz
+	sha256sums_aarch64 = 389f0e41fa5da2456c87515f02596125f3c9adff5d89721b53f5b72b663d3c31
+
+pkgname = mkey-bin
