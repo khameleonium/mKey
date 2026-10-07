@@ -13,7 +13,8 @@
 // со скриптами при импорте выключены и требуют проверки (SEC-7).
 //
 // Lua-плагины (plugin.go, ADR-0029): модуль предоставляет contracts.LuaPluginLoader — загрузка
-// main.lua плагина, который регистрирует действия и условия (mkey.register_action,
-// mkey.register_condition). У плагина одно состояние Lua без os и io; функции mkey.* проверяют
-// разрешения из plugin.yaml.
+// main.lua плагина, который регистрирует действия, условия и триггеры (mkey.register_action,
+// mkey.register_condition, mkey.register_trigger). У плагина одно состояние Lua без os и io;
+// функции mkey.* проверяют разрешения из plugin.yaml. Триггер — опрос функцией poll раз в интервал
+// в отдельной горутине; в опросе mkey.* только смотрит (нажатия и ожидание запрещены).
 package lua

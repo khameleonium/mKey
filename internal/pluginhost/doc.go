@@ -13,7 +13,8 @@
 //     взводятся заново. Запросы плагина к mKey (mkey.send, mkey.vars.*, mkey.notify) проверяются
 //     по разрешениям манифеста;
 //   - lua (kinds.go) — main.lua выполняется модулем lua (contracts.LuaPluginLoader) без доступа
-//     к файлам и программам;
+//     к файлам и программам; его действия, условия и триггеры (опрос poll) регистрируются
+//     представителями luaActionProxy, luaConditionProxy, luaTriggerProxy;
 //   - data (kinds.go) — шаблоны проектов templates/*.mkey.yaml.
 //
 // Сервис contracts.Plugins (list, включение, установка из папки или .zip — install.go, удаление,
