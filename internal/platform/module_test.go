@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/platform/detect"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/platform/detect"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // fakeProbe — система во временном каталоге с заданными переменными окружения и программами.

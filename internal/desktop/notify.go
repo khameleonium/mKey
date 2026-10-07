@@ -7,7 +7,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Адрес стандартного сервиса уведомлений рабочего стола (freedesktop.org Desktop Notifications).

@@ -1,9 +1,9 @@
 package contracts
 
 import (
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // DeviceKey — клавиша или кнопка, возможно конкретного устройства: {A} — с любого устройства,

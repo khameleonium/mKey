@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"mkey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 )
 
 // TestModulesMatchBuild проверяет состав модулей сборки: значок в трее есть только в полной версии,

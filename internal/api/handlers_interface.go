@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"slices"
 
-	"mkey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/config"
 )
 
 // Настройки окна программы: язык и тема. Хранятся в config.yaml (язык — language в начале файла,

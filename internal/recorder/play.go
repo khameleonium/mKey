@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/mkrec"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/mkrec"
 )
 
 // Пределы скорости воспроизведения (FR-REC-4).

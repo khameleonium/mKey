@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/mkrec"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/mkrec"
 )
 
 // fakeRecorder — запись и воспроизведение в памяти.

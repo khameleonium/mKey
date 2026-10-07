@@ -14,12 +14,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	"mkey/internal/lib/dsl"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/layout"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/layout"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля.

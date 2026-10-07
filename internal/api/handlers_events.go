@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // maxWait — наибольшее время ожидания клавиши в /wait/key.

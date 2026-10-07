@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля.

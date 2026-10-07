@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"math"
 
-	"mkey/internal/lib/sni"
+	"github.com/khameleonium/mKey/internal/lib/sni"
 )
 
 // iconSizes — размеры картинок значка: панель трея выбирает ближайший к своему размеру.

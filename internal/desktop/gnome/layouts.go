@@ -13,7 +13,7 @@ import (
 	"regexp"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // schema — схема настроек источников ввода GNOME.

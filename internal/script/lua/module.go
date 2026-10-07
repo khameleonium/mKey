@@ -14,12 +14,12 @@ import (
 	glua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/paths"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // ModuleID — идентификатор модуля.

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // Касания виртуального сенсорного экрана из макросов ({Touch 50% 80%}, {Swipe …}, T12.1).

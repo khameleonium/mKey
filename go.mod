@@ -1,4 +1,4 @@
-module mkey
+module github.com/khameleonium/mKey
 
 go 1.27
 

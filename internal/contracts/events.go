@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Темы шины, которые публикует модуль store.

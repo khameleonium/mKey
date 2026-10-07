@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // inspectWidth — ширина строки, по которой переносятся длинные списки кнопок.

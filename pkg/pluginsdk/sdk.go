@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/lib/jsonrpc"
+	"github.com/khameleonium/mKey/internal/lib/jsonrpc"
 )
 
 // APIVersion — мажорная версия API плагинов, которую реализует этот пакет.

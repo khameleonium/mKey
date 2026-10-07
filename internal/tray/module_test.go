@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/buildinfo"
-	"mkey/internal/lib/project"
-	"mkey/internal/lib/sni"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/sni"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // fakeItem — значок в памяти: запоминает меню и подсказку.

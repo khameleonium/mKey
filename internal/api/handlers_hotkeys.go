@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"regexp"
 
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // Системные сочетания mKey (решение владельца: задаются пользователем): «начать/закончить запись»

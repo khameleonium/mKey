@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"mkey/pkg/pluginsdk/plugintest"
+	"github.com/khameleonium/mKey/pkg/pluginsdk/plugintest"
 )
 
 // TestPlugin проверяет пример: соответствие протоколу и приветствие.

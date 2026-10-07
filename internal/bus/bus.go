@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // DefaultBuffer — размер буфера канала подписчика по умолчанию.

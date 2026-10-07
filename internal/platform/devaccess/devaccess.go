@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/fileblock"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/fileblock"
 )
 
 // Пути системных файлов, которые создаёт или меняет mKey.

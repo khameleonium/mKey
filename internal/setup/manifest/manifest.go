@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/fileblock"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/fileblock"
 )
 
 // FileName — имя файла манифеста в каталоге данных mKey.

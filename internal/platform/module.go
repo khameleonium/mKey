@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"mkey/internal/contracts"
-	"mkey/internal/platform/detect"
-	"mkey/internal/platform/devaccess"
-	"mkey/internal/platform/elevate"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/platform/detect"
+	"github.com/khameleonium/mKey/internal/platform/devaccess"
+	"github.com/khameleonium/mKey/internal/platform/elevate"
 )
 
 // ModuleID — идентификатор модуля.

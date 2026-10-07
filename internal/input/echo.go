@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // Нажатия «от имени» физического устройства (contracts.DeviceOutput, FR-DSL-2, FR-DEV-3).

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/api"
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/api"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // TestFormatAPIError проверяет сообщение об ошибке в макросе со стрелкой под ошибочным символом.

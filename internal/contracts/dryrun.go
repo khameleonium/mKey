@@ -3,7 +3,7 @@ package contracts
 import (
 	"context"
 
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // «Сухой прогон» события (FR-UI-6): что сделает событие и когда, без нажатий и без побочных

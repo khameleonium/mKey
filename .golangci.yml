@@ -45,4 +45,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - mkey
+        - github.com/khameleonium/mKey

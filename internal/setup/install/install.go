@@ -23,10 +23,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/buildinfo"
-	"mkey/internal/lib/paths"
-	"mkey/internal/setup/manifest"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/setup/manifest"
 )
 
 // icon — иконка mKey для меню приложений.

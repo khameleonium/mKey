@@ -5,8 +5,8 @@ import (
 	"slices"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // Настройки записи по умолчанию (contracts.RecordSettings): с ними запись начинается без

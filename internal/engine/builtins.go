@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Встроенные виды триггеров, условий и действий регистрируются в точках расширения так же,

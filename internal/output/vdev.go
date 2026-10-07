@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Виртуальные устройства проектов (FR-VD-1): шаблоны и устройство-геймпад поверх device.

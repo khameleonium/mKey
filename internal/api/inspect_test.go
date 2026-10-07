@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/dsl"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // fakeInspector — инспектор с заданными устройствами; поиск — по имени файла или части названия;

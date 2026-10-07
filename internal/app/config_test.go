@@ -8,8 +8,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"mkey/internal/lib/buildinfo"
-	"mkey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/config"
 )
 
 // templateDiffs — настройки, у которых значение в шаблоне законно отличается от значения

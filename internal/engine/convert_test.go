@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // TestDSLRoundTrip проверяет разбор макроса на действия и обратную сборку (FR-UI-4).

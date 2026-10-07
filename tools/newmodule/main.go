@@ -149,7 +149,7 @@ func register(path, name string) error {
 	src := string(raw)
 
 	// Вставляем импорт и строку в список модулей.
-	src, err = insertAbove(src, importsMarker, fmt.Sprintf("\t%q\n", "mkey/internal/"+name))
+	src, err = insertAbove(src, importsMarker, fmt.Sprintf("\t%q\n", "github.com/khameleonium/mKey/internal/"+name))
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.
@@ -252,9 +252,9 @@ import (
 	"log/slog"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/i18n"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // TestLifecycle проверяет, что модуль проходит полный цикл Init → Start → Stop.

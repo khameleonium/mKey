@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"mkey/pkg/pluginsdk/plugintest"
+	"github.com/khameleonium/mKey/pkg/pluginsdk/plugintest"
 )
 
 // TestPythonWebhook проверяет пример на Python: протокол, проверку адреса и вебхук.

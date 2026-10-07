@@ -11,8 +11,8 @@ import (
 
 	glua "github.com/yuin/gopher-lua"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Lua-плагины (ADR-0029 п. 8, docs/plugins.md): файл main.lua регистрирует виды —

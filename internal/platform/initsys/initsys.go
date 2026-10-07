@@ -20,8 +20,8 @@ import (
 	"slices"
 	"strconv"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/fileblock"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/fileblock"
 )
 
 // All возвращает все встроенные способы автозапуска в порядке предпочтения.

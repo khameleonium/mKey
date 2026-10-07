@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // problemDetails — место ошибки проекта для подсветки в окне: событие, часть и номер (с 0).

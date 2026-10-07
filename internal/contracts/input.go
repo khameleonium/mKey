@@ -3,7 +3,7 @@ package contracts
 import (
 	"errors"
 
-	"mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // ErrNotGrabbed возвращается при отправке в passthrough-устройство, которое сейчас не захвачено.

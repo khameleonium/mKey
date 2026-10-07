@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // placeEntry — место на диске в ответе /places: на языке клиента и с путём, удобным для чтения.

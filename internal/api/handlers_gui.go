@@ -21,11 +21,11 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/devmap"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Эндпоинты для веб-интерфейса (этап 5): редактирование проектов, шаблоны, поток новостей,

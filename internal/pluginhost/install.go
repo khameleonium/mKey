@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Установка плагина (FR-PLG-4): из папки или архива .zip — в папку плагинов пользователя,

@@ -3,7 +3,7 @@ package dsl
 import (
 	"strconv"
 
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // Проверки зажатых клавиш (решение владельца): клавишу нельзя зажать дважды (^{A}^{A}),

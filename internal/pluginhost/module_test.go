@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/i18n"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // TestLifecycle проверяет, что модуль проходит полный цикл Init → Start → Stop.

@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Probe — доступ к системе, нужный для определения.

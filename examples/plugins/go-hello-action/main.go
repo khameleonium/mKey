@@ -10,7 +10,7 @@ import (
 	"log"
 	"time"
 
-	"mkey/pkg/pluginsdk"
+	"github.com/khameleonium/mKey/pkg/pluginsdk"
 )
 
 func main() {

@@ -222,6 +222,11 @@ func TestPlugin(t *testing.T) {
 Примеры — в `examples/plugins/`: `go-hello-action` (Go, SDK; соберите `go build -o
 go-hello-action .`), `python-webhook` (Python без SDK — протокол вручную), `lua-counter` (Lua).
 
-**Пока ограничение:** модуль Go называется `mkey`, поэтому подключить `pkg/pluginsdk` из другого
-репозитория командой `go get` нельзя — пишите плагин в папке `examples/plugins/` этого
-репозитория (или на любом другом языке по протоколу выше). Вопрос — SPEC §14.
+SDK подключается в своём репозитории плагина обычным способом:
+
+```bash
+go get github.com/khameleonium/mKey/pkg/pluginsdk@latest
+```
+
+(`import "github.com/khameleonium/mKey/pkg/pluginsdk"`; для тестов —
+`github.com/khameleonium/mKey/pkg/pluginsdk/plugintest`).

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // TestParseFormat проверяет разбор правильных записей и их канонический вид.

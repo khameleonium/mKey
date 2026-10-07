@@ -13,9 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // daemonClient возвращает клиент демона, при необходимости запустив демон.

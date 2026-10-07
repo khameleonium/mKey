@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // gamepadNames — имена кнопок геймпада, как их хранит проект.

@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // noHardware возвращает конфиг модулей, при котором ввод и вывод не трогают настоящие устройства:

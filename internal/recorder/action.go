@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // playAction — действие play: воспроизвести запись из проекта (например, по горячей клавише).

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // registryEntry — вид триггера, условия или действия для конструктора GUI:

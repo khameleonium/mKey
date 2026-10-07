@@ -12,12 +12,12 @@ import (
 	"strings"
 	"sync"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/dsl"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.

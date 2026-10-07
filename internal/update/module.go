@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.

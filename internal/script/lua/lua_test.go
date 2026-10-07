@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // fakeRC — контекст выполнения события, записывающий макросы.

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"mkey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
 )
 
 // Format возвращает текст макроса в каноническом виде (FR-DSL-4):

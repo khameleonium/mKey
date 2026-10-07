@@ -3,7 +3,7 @@ package layout
 import (
 	"testing"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // TestDefinitionsConsistent проверяет, что в каждом ряду столько символов, сколько клавиш.

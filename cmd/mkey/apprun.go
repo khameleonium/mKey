@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/app"
-	"mkey/internal/i18n"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/app"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // newLogger создаёт логгер CLI: по умолчанию только предупреждения и ошибки в stderr,

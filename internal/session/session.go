@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // ModuleID — идентификатор модуля.

@@ -16,7 +16,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Env — окружение, в котором работают бэкенды.

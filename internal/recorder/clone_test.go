@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // fakeClones — менеджер виртуальных устройств, создающий копии записанных устройств.

@@ -3,8 +3,8 @@ package api
 import (
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // TestPlaces проверяет /places: порядок по Order, перевод названий, наличие на диске,

@@ -60,7 +60,7 @@ func TestGenerate(t *testing.T) {
 
 	// Модуль подключён в modules.go.
 	mods, _ := os.ReadFile(filepath.Join(root, "internal/app/modules.go"))
-	if !strings.Contains(string(mods), `"mkey/internal/zzgentest"`) || !strings.Contains(string(mods), "{Module: zzgentest.New(), Core: false},") {
+	if !strings.Contains(string(mods), `"github.com/khameleonium/mKey/internal/zzgentest"`) || !strings.Contains(string(mods), "{Module: zzgentest.New(), Core: false},") {
 		t.Errorf("modules.go not updated:\n%s", mods)
 	}
 

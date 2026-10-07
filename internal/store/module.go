@@ -18,9 +18,9 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"go.yaml.in/yaml/v3"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/paths"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // ModuleID — идентификатор модуля.

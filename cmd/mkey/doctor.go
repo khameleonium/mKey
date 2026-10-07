@@ -12,13 +12,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 
-	"mkey/internal/app"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/platform"
-	"mkey/internal/registry"
-	"mkey/internal/session"
-	"mkey/internal/setup"
+	"github.com/khameleonium/mKey/internal/app"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/platform"
+	"github.com/khameleonium/mKey/internal/registry"
+	"github.com/khameleonium/mKey/internal/session"
+	"github.com/khameleonium/mKey/internal/setup"
 )
 
 // statusMarks — значок результата проверки для вывода в терминал.

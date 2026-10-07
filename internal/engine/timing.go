@@ -3,7 +3,7 @@ package engine
 import (
 	"fmt"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Интервалы нажатий по умолчанию (contracts.TimingSettings): меняются из окна («Настройки» →

@@ -4,10 +4,10 @@ import (
 	"errors"
 	"net/http"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // keyResolver — распознаватель клавиш макросов: виртуальные устройства проектов ({pad2.South},

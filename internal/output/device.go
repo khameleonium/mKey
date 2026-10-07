@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // eventWriter — то, во что устройство пишет события: настоящий uinput или фейк в тестах.

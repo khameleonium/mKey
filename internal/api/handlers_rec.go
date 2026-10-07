@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/mkrec"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/mkrec"
 )
 
 // Запись и воспроизведение ввода (этап 6): команды `mkey rec`, `mkey play` и окно программы.

@@ -15,10 +15,10 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // ModuleID — идентификатор модуля.

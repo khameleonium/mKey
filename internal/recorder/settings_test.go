@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // TestDefaultName проверяет имя записи по умолчанию: mKeyRec_ДДММГГГГ_ЧЧММСС.

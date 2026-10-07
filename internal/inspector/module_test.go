@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/dsl"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // TestLifecycle проверяет, что модуль проходит полный цикл Init → Start → Stop.

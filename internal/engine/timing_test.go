@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
 )
 
 // TestTiming проверяет интервалы нажатий: чтение, смена, отказ вне пределов (прежние остаются).

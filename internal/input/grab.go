@@ -6,10 +6,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // Захват устройств и passthrough (FR-HK-2) с защитой от потери клавиатуры (SEC-1, SEC-3).

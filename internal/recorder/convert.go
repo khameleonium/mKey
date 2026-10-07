@@ -7,9 +7,9 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/mkrec"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/mkrec"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // ConvertRecording превращает запись в блоки конструктора (contracts.Recorder, FR-REC-6, T6.4):

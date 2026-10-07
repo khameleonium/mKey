@@ -13,7 +13,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Адрес интерфейса раскладок KWin.

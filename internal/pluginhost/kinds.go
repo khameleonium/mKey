@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Lua-плагины и плагины-данные (FR-PLG-1 п. 1 и 3): работают внутри mKey, без процесса.

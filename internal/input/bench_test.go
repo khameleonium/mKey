@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // nopClone — passthrough-копия, которая ничего не делает (измеряем только путь mKey).

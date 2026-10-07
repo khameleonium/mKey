@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
 )
 
 // pluginSrc — Lua-плагин для проверки: действие count со своим счётчиком, действие press

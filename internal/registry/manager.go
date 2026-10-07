@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // State — состояние модуля в менеджере.

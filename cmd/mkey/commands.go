@@ -13,9 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	ev "mkey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // newSendCmd создаёт команду `mkey send '<макрос>'` — выполнить макрос (T2.6).

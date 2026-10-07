@@ -8,9 +8,9 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"mkey/internal/contracts"
-	"mkey/internal/desktop/gnome"
-	"mkey/internal/desktop/kde"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/desktop/gnome"
+	"github.com/khameleonium/mKey/internal/desktop/kde"
 )
 
 // ModuleID — идентификатор модуля.

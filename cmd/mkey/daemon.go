@@ -15,13 +15,13 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 
-	"mkey/internal/app"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/logfile"
-	"mkey/internal/lib/paths"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/app"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/logfile"
+	"github.com/khameleonium/mKey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // Параметры журнала демона: 5 МиБ на файл, три старых файла (NFR-8).

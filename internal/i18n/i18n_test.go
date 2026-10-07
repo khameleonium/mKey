@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // placeholderRe находит плейсхолдеры вида {name} в тексте перевода.

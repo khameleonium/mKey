@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // TestLangFromArgs проверяет предварительный поиск флага --lang.

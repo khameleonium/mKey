@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 
-	"mkey/internal/setup/manifest"
+	"github.com/khameleonium/mKey/internal/setup/manifest"
 )
 
 // newTestEnv создаёт окружение с временным домашним каталогом и «запущенной программой».

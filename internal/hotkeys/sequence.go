@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // historySize — сколько последних нажатий хранить для распознавания последовательностей.

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // minIterationSpacing — наименьшая длительность итерации repeat: цикл без пауз не должен

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"sync"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Services — потокобезопасная реализация contracts.ServiceRegistry.

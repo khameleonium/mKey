@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/platform/detect"
-	"mkey/internal/platform/devaccess"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/platform/detect"
+	"github.com/khameleonium/mKey/internal/platform/devaccess"
 )
 
 // newPrivilegedCmd создаёт скрытую команду `mkey privileged <install-rules|uninstall-rules>` (T1.6, SEC-6).

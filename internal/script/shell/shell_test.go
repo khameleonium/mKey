@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // fakeRC — контекст выполнения с переменными.

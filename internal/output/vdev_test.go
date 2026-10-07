@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // vdevModule — модуль с фейковой фабрикой (запоминает описания и приёмники) и проектами.

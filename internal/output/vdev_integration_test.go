@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // TestTemplatesInKernel создаёт виртуальные устройства по шаблонам через настоящий /dev/uinput и

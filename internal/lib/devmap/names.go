@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // Имена кнопок модели устройства в проекте (ADR-0027): раздел devices проекта. Когда проект

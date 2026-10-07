@@ -15,7 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // watchEvent — запись монитора нажатий от демона (GET /api/v1/input/watch).

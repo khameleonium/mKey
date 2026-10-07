@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Перевод действий в макрос и обратно для режима DSL конструктора (FR-UI-4, contracts.ActionConverter).

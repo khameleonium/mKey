@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/jsonrpc"
-	"mkey/internal/lib/project"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/jsonrpc"
+	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // Тестовый плагин — сама тестовая программа, запущенная с MKEY_TEST_PLUGIN=1 (TestMain).

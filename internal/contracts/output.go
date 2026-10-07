@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // ErrOutputUnavailable возвращается, когда виртуальное устройство нельзя создать

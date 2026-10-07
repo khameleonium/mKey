@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // Команды записи и воспроизведения ввода (этап 6, FR-REC-2, FR-REC-4):

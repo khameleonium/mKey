@@ -2,7 +2,7 @@
 //
 // Значения подставляются при сборке через -ldflags (см. Makefile), например:
 //
-//	-X mkey/internal/lib/buildinfo.Version=1.0.0
+//	-X github.com/khameleonium/mKey/internal/lib/buildinfo.Version=1.0.0
 //
 // При сборке без ldflags (go build, go run) используются значения по умолчанию.
 package buildinfo

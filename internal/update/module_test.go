@@ -18,8 +18,8 @@ import (
 	"runtime"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // tarball — архив .tar.gz с одним файлом.

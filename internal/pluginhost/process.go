@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/jsonrpc"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/jsonrpc"
 )
 
 // Тайминги плагина-процесса (ADR-0029 п. 7).

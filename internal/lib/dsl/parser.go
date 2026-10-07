@@ -7,8 +7,8 @@ import (
 	"unicode"
 	"unicode/utf16"
 
-	"mkey/internal/lib/devmap"
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // Ограничения, защищающие от «вечных» и гигантских макросов (SEC-4).

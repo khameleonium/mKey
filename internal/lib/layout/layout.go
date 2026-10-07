@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // Stroke — способ набрать символ: клавиша и нужен ли Shift.

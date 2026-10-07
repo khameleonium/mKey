@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // caps составляет возможности устройства из кодов по типам.

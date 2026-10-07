@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/i18n"
-	"mkey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 )
 
 // newRootCmd создаёт корневую команду mkey со всеми подкомандами.

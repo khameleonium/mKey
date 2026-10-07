@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // memProjects — хранилище проектов в памяти для проверки эндпоинтов редактора.

@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml и префикс i18n-ключей.

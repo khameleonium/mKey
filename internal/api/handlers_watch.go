@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/contracts"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // Монитор нажатий (FR-DEV-8, T7.1): поток событий физических устройств для окна программы

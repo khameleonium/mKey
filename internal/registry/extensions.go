@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Extensions — потокобезопасная реализация contracts.ExtensionRegistry.

@@ -12,12 +12,12 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/clock"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // fakeDevice — фейковое устройство: события приходят из канала, Close прерывает чтение.

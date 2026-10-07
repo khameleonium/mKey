@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"sync"
 
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // varStore — переменные одного проекта (contracts.VarStore, FR-EV-6).

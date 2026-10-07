@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // RawConfig — секция конфигурации модуля из config.yaml (modules.<id>), хранящаяся как JSON:

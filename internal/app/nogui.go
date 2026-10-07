@@ -5,7 +5,7 @@ package app
 import (
 	"io/fs"
 
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // webFS в консольной сборке пуст: окна нет, API слушает только Unix-сокет для команд терминала.

@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // osProbe — sysProbe для настоящей системы.

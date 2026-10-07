@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/pkg/pluginsdk"
-	"mkey/pkg/pluginsdk/plugintest"
+	"github.com/khameleonium/mKey/pkg/pluginsdk"
+	"github.com/khameleonium/mKey/pkg/pluginsdk/plugintest"
 )
 
 // newPlugin — плагин для проверки SDK: действие type_text, условие even, триггер every.

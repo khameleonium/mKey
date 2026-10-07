@@ -24,12 +24,12 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/input"
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/registry"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/input"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/registry"
 )
 
 // helperEnv — переменная окружения, по которой тестовый бинарник работает как вспомогательный процесс.

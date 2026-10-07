@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/clock"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/clock"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // fakeScreen — виртуальный сенсорный экран: записывает касания («down x y», «move x y», «up»).

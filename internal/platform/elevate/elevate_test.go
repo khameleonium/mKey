@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // call — записанный вызов внешней команды.

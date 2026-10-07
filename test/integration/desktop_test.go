@@ -10,7 +10,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"mkey/internal/desktop/kde"
+	"github.com/khameleonium/mKey/internal/desktop/kde"
 )
 
 // TestKDELayouts читает раскладки через D-Bus KWin (только чтение, раскладка не переключается).

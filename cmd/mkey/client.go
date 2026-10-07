@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"mkey/internal/api"
-	"mkey/internal/i18n"
-	"mkey/internal/platform/detect"
+	"github.com/khameleonium/mKey/internal/api"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/platform/detect"
 )
 
 // errNotRunning — демон не запущен (нет сокета или он не отвечает).

@@ -11,7 +11,7 @@ import (
 )
 
 // modulePath — путь Go-модуля mKey (из go.mod).
-const modulePath = "mkey"
+const modulePath = "github.com/khameleonium/mKey"
 
 // infra — инфраструктурные пакеты ядра, доступные всем модулям.
 var infra = map[string]bool{"contracts": true, "registry": true, "bus": true, "i18n": true}
@@ -107,18 +107,18 @@ func TestAllowedRules(t *testing.T) {
 		from, to string
 		want     bool
 	}{
-		{"mkey/internal/recorder", "mkey/internal/contracts", true},
-		{"mkey/internal/recorder", "mkey/internal/lib/keys", true},
-		{"mkey/internal/recorder", "mkey/internal/input", false},
-		{"mkey/internal/desktop/x11", "mkey/internal/desktop", true},
-		{"mkey/internal/desktop/x11", "mkey/internal/output", false},
-		{"mkey/internal/lib/dsl", "mkey/internal/lib/keys", true},
-		{"mkey/internal/lib/dsl", "mkey/internal/contracts", false},
-		{"mkey/internal/contracts", "mkey/internal/registry", false},
-		{"mkey/internal/registry", "mkey/internal/contracts", true},
-		{"mkey/internal/registry", "mkey/internal/bus", false},
-		{"mkey/internal/app", "mkey/internal/recorder", true},
-		{"mkey/internal/recorder", "github.com/spf13/cobra", true},
+		{"github.com/khameleonium/mKey/internal/recorder", "github.com/khameleonium/mKey/internal/contracts", true},
+		{"github.com/khameleonium/mKey/internal/recorder", "github.com/khameleonium/mKey/internal/lib/keys", true},
+		{"github.com/khameleonium/mKey/internal/recorder", "github.com/khameleonium/mKey/internal/input", false},
+		{"github.com/khameleonium/mKey/internal/desktop/x11", "github.com/khameleonium/mKey/internal/desktop", true},
+		{"github.com/khameleonium/mKey/internal/desktop/x11", "github.com/khameleonium/mKey/internal/output", false},
+		{"github.com/khameleonium/mKey/internal/lib/dsl", "github.com/khameleonium/mKey/internal/lib/keys", true},
+		{"github.com/khameleonium/mKey/internal/lib/dsl", "github.com/khameleonium/mKey/internal/contracts", false},
+		{"github.com/khameleonium/mKey/internal/contracts", "github.com/khameleonium/mKey/internal/registry", false},
+		{"github.com/khameleonium/mKey/internal/registry", "github.com/khameleonium/mKey/internal/contracts", true},
+		{"github.com/khameleonium/mKey/internal/registry", "github.com/khameleonium/mKey/internal/bus", false},
+		{"github.com/khameleonium/mKey/internal/app", "github.com/khameleonium/mKey/internal/recorder", true},
+		{"github.com/khameleonium/mKey/internal/recorder", "github.com/spf13/cobra", true},
 	}
 	for _, c := range cases {
 		if got, _ := allowed(c.from, c.to); got != c.want {

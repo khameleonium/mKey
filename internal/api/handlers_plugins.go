@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/config"
 )
 
 // Плагины (FR-PLG-4, ADR-0029): список, включение и выключение (выбор сохраняется в config.yaml,

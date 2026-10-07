@@ -5,9 +5,9 @@ package app
 import (
 	"io/fs"
 
-	"mkey/internal/registry"
-	"mkey/internal/tray"
-	"mkey/web"
+	"github.com/khameleonium/mKey/internal/registry"
+	"github.com/khameleonium/mKey/internal/tray"
+	"github.com/khameleonium/mKey/web"
 )
 
 // webFS возвращает встроенные файлы окна программы (веб-интерфейса).

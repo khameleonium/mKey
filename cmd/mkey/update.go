@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // newUpdateCmd создаёт команду `mkey update [--check] [--auto on|off] [--yes]` (T10.3, ADR-0030).

@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // placeInfo — место на диске из ответа /api/v1/places («Где что лежит»).

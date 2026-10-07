@@ -1068,7 +1068,7 @@ _Отменена владельцем (07.10.2026): не делаем. Заго
 - [x] T9.3 Lua-плагины и плагины-данные.  
   _Сделано: Lua-плагины (действия и условия; одно состояние Lua без os/io, разрешения на функциях mkey.*), плагины-данные — шаблоны проектов (новая точка `project_template`). Триггеры в Lua-плагинах — в T12.10. Не сделано: шаблоны виртуальных устройств и профили устройств как данные._
 - [x] T9.4 `pkg/pluginsdk` (Go) + `plugintest` (FR-PLG-9).  
-  _Сделано: SDK (виды, проверки, Host: Send/GetVar/SetVar/Notify/Log), plugintest (Start/Serve, Conformance, запросы плагина с проверкой разрешений). Ограничение: модуль Go `mkey` — `go get` извне невозможен до переименования (§14)._
+  _Сделано: SDK (виды, проверки, Host: Send/GetVar/SetVar/Notify/Log), plugintest (Start/Serve, Conformance, запросы плагина с проверкой разрешений). Модуль Go — `github.com/khameleonium/mKey` (07.10.2026): SDK подключается `go get`._
 - [x] T9.5 Примеры: `go-hello-action`, `lua-counter`, `python-webhook`.  
   _Сделано: все три в `examples/plugins/` с тестами (plugintest; Python — если есть python3)._
 - [x] T9.6 GUI «Плагины» + CLI `mkey plugin` (FR-PLG-4).  

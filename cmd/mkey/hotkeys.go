@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"mkey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/i18n"
 )
 
 // newHotkeysCmd создаёт команду `mkey hotkeys` — системные сочетания mKey:

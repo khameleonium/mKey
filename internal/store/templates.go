@@ -1,6 +1,6 @@
 package store
 
-import "mkey/internal/contracts"
+import "github.com/khameleonium/mKey/internal/contracts"
 
 // templates — встроенные шаблоны проектов (FR-UI-1, п. 2). Проект из шаблона создаётся выключенным.
 // Названия и описания — i18n-ключи template.<id>.name и template.<id>.description.

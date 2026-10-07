@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // Устройства по умолчанию, на которые компилируются клавиши без префикса.

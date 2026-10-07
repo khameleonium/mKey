@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/buildinfo"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // maxBody — наибольший размер тела запроса (1 МиБ).

@@ -31,7 +31,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"mkey/internal/lib/devmap"
+	"github.com/khameleonium/mKey/internal/lib/devmap"
 )
 
 // CurrentVersion — текущая версия схемы файла проекта.

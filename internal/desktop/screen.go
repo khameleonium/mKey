@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // Размер рабочего стола (contracts.ScreenInfo) — для касаний в пикселях. Пока берётся из настроек

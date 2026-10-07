@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/setup/manifest"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/setup/manifest"
 )
 
 // runner записывает команды и отвечает успехом, если active.

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // FallbackLang — язык, на который переводчик откатывается при отсутствии перевода.

@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/buildinfo"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // ModuleID — идентификатор модуля: имя секции в config.yaml (modules.plugins) и префикс

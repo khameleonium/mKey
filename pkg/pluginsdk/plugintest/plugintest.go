@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"mkey/internal/lib/jsonrpc"
-	"mkey/pkg/pluginsdk"
+	"github.com/khameleonium/mKey/internal/lib/jsonrpc"
+	"github.com/khameleonium/mKey/pkg/pluginsdk"
 )
 
 // Init — ответ плагина на initialize: его виды.

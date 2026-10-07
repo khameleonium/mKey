@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // fakePlugins — один плагин io.test.a; включение меняет список включённых.

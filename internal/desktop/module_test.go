@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // brokenAdapter — адаптер окружения, который всегда отказывает.

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // recorder — исполнитель команд, который только записывает вызовы.

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/keys"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/keys"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // builtinConditions возвращает встроенные условия движка (FR-EV-3; window и pixel не делаются — фаза 8 отменена).

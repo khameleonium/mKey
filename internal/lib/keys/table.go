@@ -1,6 +1,6 @@
 package keys
 
-import ev "mkey/internal/lib/evdev"
+import ev "github.com/khameleonium/mKey/internal/lib/evdev"
 
 // entry — строка таблицы: каноническое имя, код evdev и алиасы.
 type entry struct {

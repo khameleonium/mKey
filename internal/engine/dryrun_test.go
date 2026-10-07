@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // scriptAction — вид действия без описания для сухого прогона (как скрипт или плагин).

@@ -3,7 +3,7 @@ package keys
 import (
 	"testing"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // TestLookup проверяет поиск по каноническим именам, алиасам и без учёта регистра.

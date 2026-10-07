@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // TestBuiltinTemplates проверяет встроенные шаблоны проектов собранной программой (без настоящих

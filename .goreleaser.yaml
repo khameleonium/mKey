@@ -20,9 +20,9 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X mkey/internal/lib/buildinfo.Version={{ .Version }}
-      - -X mkey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
-      - -X mkey/internal/lib/buildinfo.Date={{ .Date }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Version={{ .Version }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Date={{ .Date }}
   - id: mkey-cli
     main: ./cmd/mkey
     binary: mkey-cli
@@ -33,9 +33,9 @@ builds:
     tags: [nogui]
     ldflags:
       - -s -w
-      - -X mkey/internal/lib/buildinfo.Version={{ .Version }}
-      - -X mkey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
-      - -X mkey/internal/lib/buildinfo.Date={{ .Date }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Version={{ .Version }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Commit={{ .ShortCommit }}
+      - -X github.com/khameleonium/mKey/internal/lib/buildinfo.Date={{ .Date }}
 
 archives:
   # Основной способ поставки (FR-INST-1.1): архив с программой; первый запуск сам установит её.

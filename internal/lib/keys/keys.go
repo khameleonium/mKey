@@ -3,7 +3,7 @@ package keys
 import (
 	"strings"
 
-	ev "mkey/internal/lib/evdev"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
 )
 
 // Key — клавиша или кнопка, найденная по имени.

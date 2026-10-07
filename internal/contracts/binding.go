@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"mkey/internal/lib/dsl"
-	"mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Привязки «физический ввод → виртуальный выход» (FR-VD-3, ADR-0028): проверка привязки и её

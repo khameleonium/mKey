@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/config"
 )
 
 // Обновление mKey (ADR-0030): сведения, проверка по просьбе, установка, включение проверки раз

@@ -16,9 +16,9 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"mkey/internal/contracts"
-	"mkey/internal/i18n"
-	"mkey/internal/lib/dsl"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/dsl"
 )
 
 // fakeRunner — исполнитель макросов, записывающий запуски.

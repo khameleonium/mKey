@@ -28,8 +28,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/keys"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/keys"
 )
 
 // FileName — имя файла с авто-ID в папке настроек.

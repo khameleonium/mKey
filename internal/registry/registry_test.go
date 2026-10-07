@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"mkey/internal/bus"
-	"mkey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/bus"
+	"github.com/khameleonium/mKey/internal/contracts"
 )
 
 // stubTranslator — переводчик-заглушка для тестов: всегда возвращает ключ.

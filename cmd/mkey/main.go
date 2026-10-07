@@ -10,9 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"mkey/internal/i18n"
-	"mkey/internal/lib/config"
-	"mkey/internal/lib/paths"
+	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/config"
+	"github.com/khameleonium/mKey/internal/lib/paths"
 )
 
 // main разбирает аргументы, выполняет команду и завершает процесс с кодом ошибки при сбое.

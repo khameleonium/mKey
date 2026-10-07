@@ -6,9 +6,9 @@ import (
 	"errors"
 	"strconv"
 
-	"mkey/internal/contracts"
-	"mkey/internal/lib/jsonrpc"
-	"mkey/internal/lib/project"
+	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/jsonrpc"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Представители видов плагина в точках расширения: для движка и конструктора это обычные

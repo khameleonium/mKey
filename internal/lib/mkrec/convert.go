@@ -4,8 +4,8 @@ import (
 	"math"
 	"time"
 
-	ev "mkey/internal/lib/evdev"
-	"mkey/internal/lib/project"
+	ev "github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
 )
 
 // Превращение записи в блоки конструктора (FR-REC-6, T6.4): действия проекта, которые можно
