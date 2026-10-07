@@ -5,8 +5,8 @@
 // Модуль выбирает адаптер по сведениям о сессии (contracts.Session) и публикует
 // соответствующие контракты.
 //
-// Сейчас реализованы contracts.LayoutProvider и contracts.Notifier (окна, пиксели и курсор —
-// фаза 8, план подключения — docs/adapters.md). Раскладки:
+// Реализованы contracts.LayoutProvider и contracts.Notifier. Окон, пикселей и курсора нет (фаза 8
+// отменена); как их можно добавить модулем или плагином — docs/adapters.md. Раскладки:
 //   - kde — KDE Plasma через D-Bus org.kde.keyboard /Layouts: текущая раскладка, список,
 //     переключение (подпакет kde);
 //   - gnome — GNOME через gsettings org.gnome.desktop.input-sources: текущая раскладка

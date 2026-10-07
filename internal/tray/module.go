@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"mkey/internal/contracts"
+	"mkey/internal/lib/buildinfo"
 	"mkey/internal/lib/sni"
 )
 
@@ -285,6 +286,11 @@ func (m *Module) menu() []sni.MenuItem {
 		tail = append(tail, sni.MenuItem{Label: m.tr.T("tray.quit"), OnClick: m.life.Shutdown})
 	}
 	sections = append(sections, tail)
+
+	// Создатель программы — неактивной строкой в самом низу (решение владельца).
+	sections = append(sections, []sni.MenuItem{{
+		Label: m.tr.T("app.creator", contracts.Arg{Name: "creator", Value: buildinfo.Creator}), Disabled: true,
+	}})
 
 	// Разделы — через разделитель.
 	var items []sni.MenuItem

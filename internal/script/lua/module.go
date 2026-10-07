@@ -326,7 +326,7 @@ func (api *luaAPI) isDown(ls *glua.LState) int {
 	return 1
 }
 
-// nilResult — функции, чьи данные появятся с десктоп-адаптерами (фаза 8): возвращают nil.
+// nilResult — функции окон и курсора (десктоп-адаптеров нет: фаза 8 отменена): возвращают nil.
 func (api *luaAPI) nilResult(ls *glua.LState) int {
 	ls.Push(glua.LNil)
 	return 1

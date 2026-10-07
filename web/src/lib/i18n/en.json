@@ -1,6 +1,7 @@
 {
   "api.module.name": "Window and commands (API)",
   "app.connected": "mKey is running",
+  "app.creator": "Creator: {creator}",
   "app.disconnected": "Not connected",
   "app.disconnected_text": "No connection to mKey. The program is closed or restarting. Start it (in a terminal: mkey) — this window will reconnect by itself.",
   "app.title": "mKey",

@@ -2,6 +2,8 @@
 
 **Keyboard and mouse macros for Linux.** · [Русский](README.md)
 
+Creator: Илья Ульянов | khameleonium
+
 mKey presses keys and buttons for you: on a hotkey, on a timer, on a typed word or on another
 event. It records what you do and replays it. It turns your keyboard into a gamepad that games
 can see. It works in any Linux graphical session — X11 and Wayland — because it talks to input
@@ -11,7 +13,6 @@ devices directly through the kernel.
 
 > Under active development (versions 0.x). Ready: hotkeys and events, the macro language,
 > recording and replay, devices and virtual gamepads, plugins, installation and updates.
-> Not yet: reacting to program windows and screen pixel colors (stage 8 of the plan, [SPEC.md](SPEC.md)).
 > The detailed documentation is in Russian.
 
 ## Features
@@ -101,10 +102,10 @@ Note: afterwards, programs started as you can read key presses — that is how e
 this kind works. `mkey uninstall` removes all of it.
 
 **Does it work on Wayland?**
-Yes: hotkeys, macros, recording and gamepads work the same on X11 and Wayland. Wayland limits:
-programs cannot learn which window is active or what color a screen pixel has, so "if a window is
-open…" and "if a pixel…" conditions are not available yet. Replay first puts the cursor in the
-screen center, so mouse paths repeat accurately with any pointer acceleration.
+Yes: hotkeys, macros, recording and gamepads work the same on X11 and Wayland. mKey does not watch
+program windows or screen pixel colors — events are started by keys, timers, typed words and
+devices. Replay first puts the cursor in the screen center, so mouse paths repeat accurately with
+any pointer acceleration.
 
 **The keyboard stopped typing / a key got stuck.**
 Press **Esc + Backspace + Enter** together: mKey releases all keys, stops macros and stops
@@ -137,4 +138,4 @@ If installed from a package, then also remove the `mkey` package with your packa
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Creator: Илья Ульянов | khameleonium

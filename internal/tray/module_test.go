@@ -13,6 +13,7 @@ import (
 	"mkey/internal/bus"
 	"mkey/internal/contracts"
 	"mkey/internal/i18n"
+	"mkey/internal/lib/buildinfo"
 	"mkey/internal/lib/project"
 	"mkey/internal/lib/sni"
 	"mkey/internal/registry"
@@ -161,7 +162,7 @@ func TestMenuFlow(t *testing.T) {
 	}
 
 	// Начальное меню.
-	want := []string{"Open mKey", "-", "Emergency stop", "Quit mKey"}
+	want := []string{"Open mKey", "-", "Emergency stop", "Quit mKey", "-", "Creator: " + buildinfo.Creator}
 	if got := item.labels(); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("menu = %v", got)
 	}
@@ -350,7 +351,7 @@ func TestFullMenu(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	// Разделы меню; у проектов — галочки, «Повторить запись» — без записей с ошибкой.
-	want := "Open mKey|-|Projects|Run event|-|● Start recording|Replay recording|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey"
+	want := "Open mKey|-|Projects|Run event|-|● Start recording|Replay recording|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey|-|Creator: " + buildinfo.Creator
 	if got := strings.Join(item.labels(), "|"); got != want {
 		t.Fatalf("menu =\n%s\nwant\n%s", got, want)
 	}

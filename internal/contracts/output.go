@@ -120,7 +120,7 @@ type TouchSetter interface {
 const TemplateTouchscreen = "touchscreen"
 
 // ScreenInfo — размер рабочего стола в пикселях (для координат касаний в пикселях). Модуль
-// desktop берёт его из настроек (modules.desktop.screen), адаптеры окружений (фаза 8) — сами.
+// desktop берёт его из настроек (modules.desktop.screen), адаптеры окружений (если появятся) — сами.
 // ErrUnsupported — размер неизвестен.
 type ScreenInfo interface {
 	ScreenSize(ctx context.Context) (width, height int, err error)

@@ -14,7 +14,7 @@ import (
 	"mkey/internal/lib/project"
 )
 
-// builtinConditions возвращает встроенные условия движка (FR-EV-3; window и pixel — фаза 8).
+// builtinConditions возвращает встроенные условия движка (FR-EV-3; window и pixel не делаются — фаза 8 отменена).
 func (m *Module) builtinConditions() []contracts.ConditionType {
 	return []contracts.ConditionType{
 		// variable — сравнение переменной проекта со значением.

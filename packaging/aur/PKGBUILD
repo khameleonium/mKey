@@ -1,3 +1,4 @@
+# Maintainer: Илья Ульянов | khameleonium <siriusx666 at gmail dot com>
 # PKGBUILD пакета mkey-bin для AUR (T10.2): готовая программа из релизов GitHub.
 # Версию и контрольные суммы подставляет packaging/aur/update.sh <версия> (из checksums.txt
 # релиза); публикация в AUR — вручную владельцем (нужен аккаунт AUR).

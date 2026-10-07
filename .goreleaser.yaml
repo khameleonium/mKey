@@ -61,9 +61,9 @@ nfpms:
     ids: [mkey]
     package_name: mkey
     file_name_template: "{{ .ConventionalFileName }}"
-    vendor: mKey
+    vendor: "Илья Ульянов | khameleonium"
     homepage: https://github.com/khameleonium/mKey
-    maintainer: mKey <siriusx666@gmail.com>
+    maintainer: "Илья Ульянов | khameleonium <siriusx666@gmail.com>"
     description: |-
       Keyboard and mouse macros for Linux
       Hotkeys, a macro language, recording and replay, virtual gamepads and bindings,

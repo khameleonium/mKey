@@ -168,6 +168,7 @@
   "api.update_check_failed": "Не удалось проверить обновления (нет связи с GitHub?): {error}",
   "api.update_failed": "Не получилось обновить: {error}",
   "api.wait_timeout": "время ожидания истекло",
+  "app.creator": "Создатель: {creator}",
   "category.input": "Нажатия",
   "category.keyboard": "Клавиатура",
   "category.logic": "Логика и переменные",
