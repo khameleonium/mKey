@@ -27,6 +27,7 @@ run_case() {
 	echo "=== $image (ожидается: $expect)"
 	"$ENGINE" run --rm -v "$BIN:/usr/local/bin/mkey:ro" "$image" sh -euc "
 		$prepare
+		mkdir -p /usr/local/sbin
 		for t in modprobe udevadm mdev; do printf '#!/bin/sh\nexit 0\n' > /usr/local/sbin/\$t; chmod +x /usr/local/sbin/\$t; done
 		export PATH=/usr/local/sbin:\$PATH SUDO_USER=tester
 		mkey privileged install-rules
@@ -54,9 +55,10 @@ check() {
 # (useradd, usermod), которые на настоящей системе входят в base-system, — доустанавливаем.
 check ghcr.io/void-linux/void-glibc:latest \
 	"xbps-install -Syu xbps >/dev/null && xbps-install -y shadow >/dev/null; useradd -m tester; mkdir -p /run/runit /run/udev /etc/modules-load.d" group
-# Alpine: OpenRC + mdev → mdev.conf и группа input (busybox addgroup).
+# Alpine: OpenRC + mdev → mdev.conf и группа input (busybox addgroup). Обработчик hotplug ядра
+# (по нему узнаётся mdev) в контейнере не задать — вместо него заглушка демона mdevd (тот же способ).
 check alpine:latest \
-	"adduser -D tester; mkdir -p /run/openrc; echo /sbin/mdev > /proc/sys/kernel/hotplug 2>/dev/null || true; touch /etc/mdev.conf /etc/modules" mdev
+	"adduser -D tester; mkdir -p /run/openrc /usr/local/sbin; printf '#!/bin/sh\nexit 0\n' > /usr/local/sbin/mdevd; chmod +x /usr/local/sbin/mdevd; touch /etc/mdev.conf /etc/modules" mdev
 # Artix: OpenRC + udev + elogind → uaccess.
 check artixlinux/artixlinux:latest \
 	"useradd -m tester; mkdir -p /run/openrc /run/udev /run/systemd/seats /etc/modules-load.d" uaccess
