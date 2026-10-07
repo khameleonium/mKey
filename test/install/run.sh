@@ -56,9 +56,10 @@ check() {
 check ghcr.io/void-linux/void-glibc:latest \
 	"xbps-install -Syu xbps >/dev/null && xbps-install -y shadow >/dev/null; useradd -m tester; mkdir -p /run/runit /run/udev /etc/modules-load.d" group
 # Alpine: OpenRC + mdev → mdev.conf и группа input (busybox addgroup). Обработчик hotplug ядра
-# (по нему узнаётся mdev) в контейнере не задать — вместо него заглушка демона mdevd (тот же способ).
+# (по нему узнаётся mdev) в контейнере не задать — вместо него заглушки демона mdevd и его
+# mdevd-coldplug (тот же способ доступа через mdev.conf).
 check alpine:latest \
-	"adduser -D tester; mkdir -p /run/openrc /usr/local/sbin; printf '#!/bin/sh\nexit 0\n' > /usr/local/sbin/mdevd; chmod +x /usr/local/sbin/mdevd; touch /etc/mdev.conf /etc/modules" mdev
+	"adduser -D tester; mkdir -p /run/openrc /usr/local/sbin; for t in mdevd mdevd-coldplug; do printf '#!/bin/sh\nexit 0\n' > /usr/local/sbin/\$t; chmod +x /usr/local/sbin/\$t; done; touch /etc/mdev.conf /etc/modules" mdev
 # Artix: OpenRC + udev + elogind → uaccess.
 check artixlinux/artixlinux:latest \
 	"useradd -m tester; mkdir -p /run/openrc /run/udev /run/systemd/seats /etc/modules-load.d" uaccess
