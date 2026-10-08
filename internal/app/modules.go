@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/khameleonium/mKey/internal/api"
+	"github.com/khameleonium/mKey/internal/builder"
 	"github.com/khameleonium/mKey/internal/desktop"
 	"github.com/khameleonium/mKey/internal/engine"
 	"github.com/khameleonium/mKey/internal/hotkeys"
@@ -58,6 +59,7 @@ func Modules() []registry.Entry {
 		// Плагины: добавляют виды действий, условий и триггеров (после модулей со встроенными видами).
 		{Module: pluginhost.New(), Core: false},
 		{Module: update.New(), Core: false},
+		{Module: builder.New(), Core: false},
 		// mkey:modules — генератор `make new-module` добавляет модули над этой строкой
 		// (до API: API получает сервисы модулей при запуске).
 		// HTTP API для CLI и веб-интерфейса — последним: пользуется сервисами всех модулей.

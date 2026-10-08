@@ -49,6 +49,8 @@ func (m *Module) routes(trusted bool) http.Handler {
 	mux.HandleFunc("GET /api/v1/projects", m.handleProjects)
 	mux.HandleFunc("POST /api/v1/projects/import", m.handleImport)
 	mux.HandleFunc("POST /api/v1/projects/{id}/{action}", m.handleProjectToggle)
+	mux.HandleFunc("POST /api/v1/projects/{id}/build", m.handleBuild)
+	mux.HandleFunc("GET /api/v1/builds/{name}", m.handleBuildFile)
 	mux.HandleFunc("GET /api/v1/events", m.handleEvents)
 	mux.HandleFunc("POST /api/v1/events/{project}/{event}/{action}", m.handleEventAction)
 	mux.HandleFunc("GET /api/v1/vars/{project}", m.handleVars)

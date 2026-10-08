@@ -200,6 +200,18 @@ paths:
     post:
       summary: "Импортировать проект ({name, content}); новый проект выключен, скрипты (lua, shell) возвращаются, чтобы показать их код до включения (SEC-7)"
       responses: { "200": { description: "{id, scripts: [{event, type, code?, file?}]}" }, "400": { $ref: "#/components/responses/Error" } }
+  /api/v1/projects/{id}/build:
+    post:
+      summary: "Собрать самостоятельный файл макроса (ADR-0042): {mode: events|once, event?, output? — полный путь} → {path, size, files, download?}; ошибки — 400 api.build_project|build_event|build_missing|build_plugin|build_output с detail"
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: "{path, size, files, download?}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/builds/{name}:
+    get:
+      summary: "Скачать собранный файл из папки собранных макросов (только по имени файла); нет — 404"
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: "application/octet-stream" }, "404": { $ref: "#/components/responses/Error" } }
   /api/v1/projects/{id}/{action}:
     post:
       summary: Включить или выключить проект (action = enable | disable)

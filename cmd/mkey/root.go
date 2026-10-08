@@ -44,6 +44,7 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 		newProjectCmd(tr),
 		newEventCmd(tr),
 		newRunCmd(tr, "run"),
+		newBuildCmd(tr),
 		newVarCmd(tr),
 		newWaitCmd(tr),
 		newResumeCmd(tr),

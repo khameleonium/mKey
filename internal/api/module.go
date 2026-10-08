@@ -107,6 +107,7 @@ type services struct {
 	vdevs    contracts.VirtualDeviceManager
 	plugins  contracts.Plugins
 	updater  contracts.Updater
+	builder  contracts.MacroBuilder
 	ext      contracts.ExtensionRegistry
 }
 
@@ -158,6 +159,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		vdevs:    lookup[contracts.VirtualDeviceManager](s),
 		plugins:  lookup[contracts.Plugins](s),
 		updater:  lookup[contracts.Updater](s),
+		builder:  lookup[contracts.MacroBuilder](s),
 		ext:      host.Extensions(),
 	}
 
