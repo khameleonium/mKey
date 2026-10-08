@@ -136,6 +136,9 @@ func runDaemon(cmd *cobra.Command, tr *i18n.Translator) error {
 	if err := contracts.ProvideService[contracts.Lifecycle](a.Manager.Services(), life); err != nil {
 		return err
 	}
+	if err := contracts.ProvideService[contracts.ConfigWriter](a.Manager.Services(), configWriter{path: cfgPath}); err != nil {
+		return err
+	}
 
 	// Запуск; сигнал завершения или команда stop — корректная остановка.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -290,4 +293,16 @@ func (f fanoutHandler) WithGroup(name string) slog.Handler {
 		out[i] = h.WithGroup(name)
 	}
 	return out
+}
+
+// configWriter записывает настройки модулей в config.yaml демона (contracts.ConfigWriter).
+type configWriter struct{ path string }
+
+// SetModuleValues записывает значения секции modules.<module>.
+func (w configWriter) SetModuleValues(module string, values []contracts.ConfigValue) error {
+	kv := make([]config.KeyValue, len(values))
+	for i, v := range values {
+		kv[i] = config.KeyValue{Key: v.Key, Value: v.Value}
+	}
+	return config.SetModuleValues(w.path, module, kv)
 }
