@@ -26,6 +26,10 @@ func noHardware(t *testing.T) func(id string) contracts.ConfigSection {
 			return registry.RawConfig(`{"dir": "` + dir + `/projects"}`)
 		case "engine":
 			return registry.RawConfig(`{"vars_file": "` + dir + `/vars.json"}`)
+		case "tray":
+			// Без значка: иначе тест на миг показывал бы настоящий значок на рабочем столе
+			// разработчика, а служба значков некоторых окружений от этого падает (SPEC §14, вопрос 5).
+			return registry.RawConfig(`{"enabled": false}`)
 		}
 		return nil
 	}
