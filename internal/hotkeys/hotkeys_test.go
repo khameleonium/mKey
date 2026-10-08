@@ -796,6 +796,54 @@ func TestSteerAndCurve(t *testing.T) {
 	wait(has("pad2:ABS_X=0.25"), "curve")
 }
 
+// TestLatch проверяет «рычаг» (latch): кнопка плавно двигает ось, после отпускания ось остаётся,
+// где её застало отпускание; кнопка с value 0 ставит рычаг в ноль (ADR-0040).
+func TestLatch(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule()
+	out := &fakeOut{}
+	outs := fakeOutputs{out: out}
+	m.devs, m.vdm = outs, outs
+	m.projects = fakeProjects{p: project.Project{ID: "p",
+		VirtualDevices: []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}},
+		Bindings: []project.Binding{
+			{From: "{A}", To: "{pad2.LY}", Value: 1, RampMS: 300, Latch: true},
+			{From: "{B}", To: "{pad2.LY}", Latch: true},
+		}}}
+	m.reloadRemaps()
+	if len(m.bindings) != 2 {
+		t.Fatalf("bindings = %d", len(m.bindings))
+	}
+	m.wg.Add(1)
+	go m.bindWorker()
+	defer func() { _ = m.Stop(context.Background()) }()
+
+	// A держим ~100 мс из 300: ось на полпути; отпустили — больше не двигается.
+	key(m, ev.KeyA, 1)
+	time.Sleep(100 * time.Millisecond)
+	key(m, ev.KeyA, 0)
+	time.Sleep(30 * time.Millisecond)
+	before := out.got()
+	time.Sleep(100 * time.Millisecond)
+	if after := out.got(); after != before {
+		t.Fatalf("latched axis kept moving:\n%s\n%s", before, after)
+	}
+	if strings.Contains(before, "pad2:ABS_Y=1") || !strings.Contains(before, "pad2:ABS_Y=0.") {
+		t.Fatalf("latch must stop halfway: %s", before)
+	}
+
+	// B — рычаг в ноль.
+	key(m, ev.KeyB, 1)
+	key(m, ev.KeyB, 0)
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.HasSuffix(out.got(), "pad2:ABS_Y=0") {
+		if time.Now().After(deadline) {
+			t.Fatalf("lever to zero: %s", out.got())
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // TestBindingOptions проверяет правила настроек привязок (contracts.CompileBinding).
 func TestBindingOptions(t *testing.T) {
 	t.Parallel()
@@ -824,6 +872,9 @@ func TestBindingOptions(t *testing.T) {
 		{project.Binding{From: "{LX}", To: "{pad2.LX}", Curve: 0.1}, dsl.ErrBindingRange},
 		{project.Binding{From: "{LX}", To: "{pad2.LX}", Curve: 9}, dsl.ErrBindingRange},
 		{project.Binding{From: "{MouseX}", To: "{pad2.LX}", Curve: 2}, dsl.ErrBindingOption},
+		{project.Binding{From: "{A}", To: "{pad2.LX}", Latch: true}, ""},
+		{project.Binding{From: "{A}", To: "{pad2.LX}"}, dsl.ErrBindingValue},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Latch: true}, dsl.ErrBindingOption},
 	} {
 		src, err := m.ParseBindingSource(c.b.From)
 		if err == nil {

@@ -20,7 +20,8 @@ import (
 // записи в uinput, а порядок сохраняется.
 //
 // Виды привязок (настройки — contracts.CompileBinding):
-//   - кнопка → кнопка, кнопка → ось (положение value, плавно — ramp_ms);
+//   - кнопка → кнопка, кнопка → ось (положение value, плавно — ramp_ms; с latch — «рычаг»:
+//     отпустили — ось остаётся, где была);
 //   - ось → ось (invert, deadzone, sensitivity), ось → кнопка (порог threshold);
 //   - мышь → ось (движение мыши наклоняет стик, остановилась — стик возвращается в центр; со steer —
 //     «как руль»: движение поворачивает ось, она держит положение или плавно возвращается за
@@ -361,6 +362,14 @@ func (m *Module) applyBinding(st *bindState, a bindAction) {
 	stack := slices.DeleteFunc(st.axes[k], func(x *binding) bool { return x == b })
 	if a.down {
 		stack = append(stack, b)
+	}
+
+	// «Рычаг» (latch) отпустили, и других нажатых кнопок у оси нет: ось остаётся, где её застало
+	// отпускание (плавное движение останавливается).
+	if !a.down && b.Latch && len(stack) == 0 {
+		delete(st.axes, k)
+		delete(st.ramps, k)
+		return
 	}
 	value, ramped := 0.0, b
 	if len(stack) > 0 {
