@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -259,5 +260,88 @@ func TestTemplateInfo(t *testing.T) {
 	}
 	if _, ok := m.TemplateInfo("nope"); ok {
 		t.Error("unknown template")
+	}
+}
+
+// TestWheel проверяет руль: модель (VID:PID), обратную связь, имена руля, поворот −1…1 на 0…65535,
+// педали (0 — отпущена = 255, 1 — до упора = 0), крестовину и сброс педалей в «отпущено».
+func TestWheel(t *testing.T) {
+	t.Parallel()
+	v := newVdevModule(nil)
+	d, w := v.pad(t, "wheel", "wheel")
+	ctx := context.Background()
+	s := v.setups["mKey wheel"]
+	if s.ID.Vendor != 0x046d || s.ID.Product != 0xc24f || len(s.Keys) != 25 || len(s.FF) < 10 || s.Abs[ev.AbsZ].Value != 255 {
+		t.Fatalf("setup = %+v", s)
+	}
+
+	// Имена: поворот, газ, кнопка-лепесток; общие имена крестовины тоже работают.
+	for _, c := range []struct {
+		name string
+		code uint16
+		axis bool
+	}{{"Wheel", ev.AbsX, true}, {"gas", ev.AbsZ, true}, {"Brake", ev.AbsRz, true}, {"ShiftUp", ev.BtnJoystick + 4, false}, {"DPadUp", ev.BtnDpadUp, false}} {
+		code, axis, err := v.ResolveIn(project.VirtualDevice{Name: "wheel", Template: "wheel"}, c.name)
+		if err != nil || code != c.code || axis != c.axis {
+			t.Errorf("%s = %#x %v %v", c.name, code, axis, err)
+		}
+	}
+
+	// Поворот и педали.
+	for _, c := range []struct {
+		code  uint16
+		value float64
+		want  int32
+	}{{ev.AbsX, -1, 0}, {ev.AbsX, 0, 32768}, {ev.AbsX, 1, 65535}, {ev.AbsZ, 0, 255}, {ev.AbsZ, 1, 0}, {ev.AbsRz, 0.5, 128}} {
+		if err := d.SetAxis(ctx, c.code, c.value); err != nil {
+			t.Fatal(err)
+		}
+		if got := lastPacket(w)[0].Value; got != c.want {
+			t.Errorf("axis %#x = %v → %d, want %d", c.code, c.value, got, c.want)
+		}
+	}
+
+	// Сброс: педали — «отпущено» (255), руль — в центр.
+	if err := d.ReleaseAll(); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range lastPacket(w) {
+		if e.Type == ev.EvAbs && e.Value != s.Abs[e.Code].Value {
+			t.Errorf("reset %#x = %d", e.Code, e.Value)
+		}
+	}
+}
+
+// TestFlightstick проверяет лётный джойстик: 56 кнопок (Button1 — гашетка, Button56 — последняя
+// TRIGGER_HAPPY), РУД 0…1 от минимума, 4 шляпки осями и первую — ещё и кнопками.
+func TestFlightstick(t *testing.T) {
+	t.Parallel()
+	v := newVdevModule(nil)
+	d, w := v.pad(t, "stick", "flightstick")
+	ctx := context.Background()
+	s := v.setups["mKey stick"]
+	if len(s.Keys) != 56 || s.Keys[55] != ev.BtnTriggerHappy40 || len(s.Abs) != 16 {
+		t.Fatalf("setup: keys %d abs %d", len(s.Keys), len(s.Abs))
+	}
+	spec := project.VirtualDevice{Name: "stick", Template: "flightstick"}
+	for name, want := range map[string]uint16{"Trigger": ev.BtnJoystick, "Button1": ev.BtnJoystick, "Button17": ev.BtnTriggerHappy1, "button56": ev.BtnTriggerHappy40, "Throttle": ev.AbsThrottle, "Hat4Y": ev.AbsHat3y} {
+		if code, _, err := v.ResolveIn(spec, name); err != nil || code != want {
+			t.Errorf("%s = %#x %v", name, code, err)
+		}
+	}
+	if err := d.SetAxis(ctx, ev.AbsThrottle, 1); err != nil || lastPacket(w)[0].Value != 65535 {
+		t.Fatalf("throttle = %v %v", lastPacket(w), err)
+	}
+	if err := d.Press(ctx, ev.BtnDpadLeft); err != nil || lastPacket(w)[0] != (ev.Event{Type: ev.EvAbs, Code: ev.AbsHat0x, Value: -1}) {
+		t.Fatalf("hat1 left = %v %v", lastPacket(w), err)
+	}
+	if err := d.Press(ctx, ev.BtnTriggerHappy40); err != nil || lastPacket(w)[0].Code != ev.BtnTriggerHappy40 {
+		t.Fatalf("button56 = %v %v", lastPacket(w), err)
+	}
+
+	// Состав для окна: свои имена.
+	info, ok := v.TemplateInfo("flightstick")
+	if !ok || info.Axes[0] != "StickX" || info.Buttons[0] != "Trigger" || !slices.Contains(info.Buttons, "Button56") || !slices.Contains(info.Buttons, "DPadUp") {
+		t.Fatalf("info = %+v", info)
 	}
 }

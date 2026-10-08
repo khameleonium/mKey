@@ -801,6 +801,8 @@
   "vdev.template.custom.description": "Your own set of buttons and axes: buttons and axes in the project.",
   "vdev.template.ds4": "DualShock 4 gamepad",
   "vdev.template.ds4.description": "Like a DualShock 4: the same buttons and axes as Xbox, triggers both as buttons and axes, rumble.",
+  "vdev.template.flightstick": "Flight stick",
+  "vdev.template.flightstick.description": "A joystick for flight and space simulators: a twisting stick, throttle, rudder pedals, a slider, a mini-stick, 4 hats and 56 buttons.",
   "vdev.template.joystick": "Joystick",
   "vdev.template.joystick.description": "A generic joystick: 12 buttons, 6 axes and a hat switch.",
   "vdev.template.keyboard": "Keyboard",
@@ -809,6 +811,8 @@
   "vdev.template.mouse.description": "One more mouse.",
   "vdev.template.touchscreen": "Touchscreen",
   "vdev.template.touchscreen.description": "A 10-touch touchscreen (touches from macros will come later).",
+  "vdev.template.wheel": "Racing wheel with pedals",
+  "vdev.template.wheel.description": "A wheel with gas, brake, clutch, paddles and a gear shifter. Games recognise it as a popular wheel model; force feedback requests are accepted.",
   "vdev.template.xbox360": "Xbox 360 gamepad",
   "vdev.template.xbox360.description": "Games see it as a wired Xbox 360 gamepad: South/East/West/North (A/B/X/Y), LB/RB, LT/RT triggers, LX/LY/RX/RY sticks, D-pad, rumble."
 }

@@ -37,6 +37,10 @@ type vtemplate struct {
 	buttonAxes map[uint16]axisPress
 	// oneSided — оси «от нуля» (курки): в макросах 0…1; остальные — −1…1.
 	oneSided map[uint16]bool
+	// inverted — оси «от нуля», у которых покой — максимум (педали руля): 0 в макросах — максимум.
+	inverted map[uint16]bool
+	// controls — свои имена кнопок и осей шаблона ({wheel.Gas}); пусто — общие имена геймпада.
+	controls []control
 }
 
 // axisPress — кнопка, нажатие которой — положение оси: ось, значение при нажатии и нужна ли ещё
@@ -118,6 +122,23 @@ var templates = map[string]vtemplate{
 		},
 		buttonAxes: dpadHat,
 	},
+	// Руль с педалями (FR-VD-6): поворот −1…1, педали 0…1 (0 — отпущена), крестовина осями.
+	"wheel": {
+		id:         "wheel",
+		build:      wheelSetup,
+		buttonAxes: dpadHat,
+		oneSided:   map[uint16]bool{ev.AbsY: true, ev.AbsZ: true, ev.AbsRz: true},
+		inverted:   map[uint16]bool{ev.AbsY: true, ev.AbsZ: true, ev.AbsRz: true},
+		controls:   wheelControls(),
+	},
+	// Лётный джойстик (FR-VD-7): ручка, РУД и ползунок (0…1), 4 шляпки, 56 кнопок.
+	"flightstick": {
+		id:         "flightstick",
+		build:      flightSetup,
+		buttonAxes: dpadHat,
+		oneSided:   map[uint16]bool{ev.AbsThrottle: true, ev.AbsZ: true},
+		controls:   flightControls(),
+	},
 	// Тач-экран: до 10 касаний (multitouch protocol B), координаты 0…32767 на весь экран.
 	"touchscreen": {
 		id: "touchscreen",
@@ -140,7 +161,7 @@ var templates = map[string]vtemplate{
 }
 
 // templateOrder — порядок шаблонов в списках.
-var templateOrder = []string{"xbox360", "ds4", "joystick", "touchscreen", "keyboard", "mouse", "custom"}
+var templateOrder = []string{"xbox360", "ds4", "wheel", "flightstick", "joystick", "touchscreen", "keyboard", "mouse", "custom"}
 
 // ffRumble — FF_RUMBLE: вибрация двумя моторами (её ждут игры от геймпадов).
 const ffRumble = 0x50
@@ -374,6 +395,9 @@ func (v *vdevice) SetAxis(ctx context.Context, code uint16, value float64) error
 	info, ok := v.setup.Abs[code]
 	if !ok {
 		return fmt.Errorf("%s: %w: %s", v.name, contracts.ErrUnknownControl, ev.CodeName(ev.EvAbs, code))
+	}
+	if v.t.inverted[code] {
+		value = 1 - max(0, min(1, value))
 	}
 	return v.Emit(ctx, ev.Event{Type: ev.EvAbs, Code: code, Value: axisValue(info, value, v.t.oneSided[code])})
 }

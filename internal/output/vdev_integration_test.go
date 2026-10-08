@@ -28,8 +28,9 @@ func TestTemplatesInKernel(t *testing.T) {
 	for _, c := range []struct {
 		template string
 		vid, pid uint16
-		ff       bool
-	}{{"xbox360", 0x045e, 0x028e, true}, {"ds4", 0x054c, 0x09cc, true}, {"joystick", vendorMKey, 0x0010, false}, {"touchscreen", vendorMKey, 0x0011, false}} {
+		ff       uint16 // объявленный эффект обратной связи (0 — нет)
+	}{{"xbox360", 0x045e, 0x028e, ffRumble}, {"ds4", 0x054c, 0x09cc, ffRumble}, {"wheel", 0x046d, 0xc24f, 0x52},
+		{"flightstick", vendorMKey, 0x0013, 0}, {"joystick", vendorMKey, 0x0010, 0}, {"touchscreen", vendorMKey, 0x0011, 0}} {
 		t.Run(c.template, func(t *testing.T) {
 			// Создание устройства ядром.
 			d, err := m.createVirtual(wanted{spec: project.VirtualDevice{Name: "it" + c.template, Template: c.template}, project: "it"})
@@ -55,8 +56,8 @@ func TestTemplatesInKernel(t *testing.T) {
 			if len(info.Caps.Codes[ev.EvKey]) != len(d.setup.Keys) || len(info.Caps.Abs) != len(d.setup.Abs) {
 				t.Errorf("caps: keys %d/%d abs %d/%d", len(info.Caps.Codes[ev.EvKey]), len(d.setup.Keys), len(info.Caps.Abs), len(d.setup.Abs))
 			}
-			if c.ff != info.Caps.Has(ev.EvFf, ffRumble) {
-				t.Errorf("FF_RUMBLE announced = %v", !c.ff)
+			if c.ff != 0 && !info.Caps.Has(ev.EvFf, c.ff) || c.ff == 0 && len(info.Caps.Codes[ev.EvFf]) > 0 {
+				t.Errorf("force feedback = %v, want %#x", info.Caps.Codes[ev.EvFf], c.ff)
 			}
 			if c.template == "touchscreen" {
 				if !slices.Contains(info.Caps.Props, ev.InputPropDirect) {
@@ -67,7 +68,7 @@ func TestTemplatesInKernel(t *testing.T) {
 
 			// Нажатие доходит до устройства (у Xbox — с заменой кода, как у xpad).
 			btn, want := uint16(ev.BtnSouth), uint16(ev.BtnSouth)
-			if c.template == "joystick" {
+			if c.template == "joystick" || c.template == "wheel" || c.template == "flightstick" {
 				btn, want = ev.BtnTrigger, ev.BtnTrigger
 			}
 			if err := d.Press(context.Background(), btn); err != nil {

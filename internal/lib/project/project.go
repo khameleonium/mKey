@@ -121,7 +121,7 @@ type Binding struct {
 type VirtualDevice struct {
 	// Name — имя в макросах ({pad2.South}): буквы, цифры и «_», начинается с буквы.
 	Name string `yaml:"name" json:"name"`
-	// Template — шаблон: xbox360, ds4, joystick, touchscreen, keyboard, mouse или custom.
+	// Template — шаблон: xbox360, ds4, wheel, flightstick, joystick, touchscreen, keyboard, mouse или custom.
 	Template string `yaml:"template" json:"template"`
 	// Buttons и Axes — набор кнопок и осей для шаблона custom: кнопки — именами mKey ("South")
 	// или ядра ("BTN_TRIGGER"), оси — именами ("LX", "ABS_THROTTLE") с диапазонами.

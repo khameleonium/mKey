@@ -801,6 +801,8 @@
   "vdev.template.custom.description": "Свой набор кнопок и осей: buttons и axes в проекте.",
   "vdev.template.ds4": "Геймпад DualShock 4",
   "vdev.template.ds4.description": "Похож на DualShock 4: те же кнопки и оси, что у Xbox, курки — и кнопкой, и осью, вибрация.",
+  "vdev.template.flightstick": "Лётный джойстик",
+  "vdev.template.flightstick.description": "Джойстик для лётных и космических симуляторов: ручка с поворотом, РУД, педали руля направления, ползунок, мини-стик, 4 шляпки и 56 кнопок.",
   "vdev.template.joystick": "Джойстик",
   "vdev.template.joystick.description": "Универсальный джойстик: 12 кнопок, 6 осей и крестовина.",
   "vdev.template.keyboard": "Клавиатура",
@@ -809,6 +811,8 @@
   "vdev.template.mouse.description": "Ещё одна мышь.",
   "vdev.template.touchscreen": "Сенсорный экран",
   "vdev.template.touchscreen.description": "Сенсорный экран на 10 касаний (касания из макросов появятся позже).",
+  "vdev.template.wheel": "Руль с педалями",
+  "vdev.template.wheel.description": "Руль с газом, тормозом, сцеплением, лепестками и коробкой передач. Игры узнают в нём популярную модель руля; запросы обратной связи руля принимаются.",
   "vdev.template.xbox360": "Геймпад Xbox 360",
   "vdev.template.xbox360.description": "Игры видят его как проводной геймпад Xbox 360: кнопки South/East/West/North (A/B/X/Y), LB/RB, курки LT/RT, стики LX/LY/RX/RY, крестовина, вибрация."
 }

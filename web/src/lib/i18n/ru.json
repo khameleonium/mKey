@@ -575,9 +575,11 @@
   "update.whats_new": "Что нового",
   "vdev.template.custom": "свой набор кнопок",
   "vdev.template.ds4": "геймпад DualShock 4",
+  "vdev.template.flightstick": "лётный джойстик",
   "vdev.template.joystick": "джойстик",
   "vdev.template.keyboard": "клавиатура",
   "vdev.template.mouse": "мышь",
   "vdev.template.touchscreen": "сенсорный экран",
+  "vdev.template.wheel": "руль с педалями",
   "vdev.template.xbox360": "геймпад Xbox 360"
 }

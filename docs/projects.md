@@ -38,13 +38,28 @@ devices:                                            # имена кнопок у
 ```
 
 Раздел `virtual_devices` — виртуальные устройства проекта (ADR-0028): существуют, пока проект
-включён; шаблоны — `xbox360`, `ds4`, `joystick`, `touchscreen`, `keyboard`, `mouse`, `custom`
-(для `custom` — `buttons: [South, BTN_TRIGGER…]` и `axes: { LX: { min: -100, max: 100 } }`):
+включён; шаблоны — `xbox360`, `ds4`, `wheel`, `flightstick`, `joystick`, `touchscreen`, `keyboard`,
+`mouse`, `custom` (для `custom` — `buttons: [South, BTN_TRIGGER…]` и `axes: { LX: { min: -100, max: 100 } }`):
 
 ```yaml
 virtual_devices:
   - name: pad2           # в макросах {pad2.South}, {pad2.LX=0.5}; в системе — «mKey pad2»
     template: xbox360
+```
+
+У руля и лётного джойстика — свои имена кнопок и осей (ADR-0039):
+
+| Шаблон | Оси | Кнопки |
+|---|---|---|
+| `wheel` — руль с педалями (игры узнают популярную модель руля, обратная связь руля принимается) | `Wheel` (поворот −1…1), `Gas`, `Brake`, `Clutch` (педали 0…1: 0 — отпущена), `DPadX`, `DPadY` | `Cross`, `Square`, `Circle`, `Triangle`, `ShiftUp`, `ShiftDown` (лепестки), `R2`, `L2`, `Share`, `Options`, `R3`, `L3`, `Gear1`…`Gear6`, `Reverse`, `Plus`, `Minus`, `DialRight`, `DialLeft`, `Enter`, `PS`, `DPadUp`… |
+| `flightstick` — лётный джойстик | `StickX`, `StickY`, `Twist` (поворот ручки), `Rudder` (−1…1), `Throttle` (РУД), `Slider` (0…1), `MiniX`, `MiniY`, шляпки `Hat1X`…`Hat4Y` (−1…1) | `Trigger` (= `Button1`), `Button1`…`Button56`, первая шляпка — ещё и `DPadUp`… |
+
+```yaml
+virtual_devices:
+  - name: wheel
+    template: wheel        # {wheel.Gas=1} — газ до упора, {wheel.Wheel=-0.5} — руль наполовину влево
+  - name: stick
+    template: flightstick  # {stick.Trigger}, {stick.Throttle=0.75}, {stick.Hat2Y=-1}
 ```
 
 Раздел `bindings` — привязки «физический ввод → виртуальный выход» (FR-VD-3, ADR-0028): работают

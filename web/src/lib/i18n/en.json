@@ -575,9 +575,11 @@
   "update.whats_new": "What's new",
   "vdev.template.custom": "custom",
   "vdev.template.ds4": "DualShock 4 gamepad",
+  "vdev.template.flightstick": "flight stick",
   "vdev.template.joystick": "joystick",
   "vdev.template.keyboard": "keyboard",
   "vdev.template.mouse": "mouse",
   "vdev.template.touchscreen": "touchscreen",
+  "vdev.template.wheel": "racing wheel with pedals",
   "vdev.template.xbox360": "Xbox 360 gamepad"
 }

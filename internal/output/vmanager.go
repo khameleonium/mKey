@@ -77,6 +77,23 @@ func (m *Module) TemplateInfo(id string) (contracts.VirtualTemplateInfo, bool) {
 	}
 	info := contracts.VirtualTemplateInfo{ID: id, Buttons: []string{}, Axes: []string{}}
 
+	// Свои имена шаблона (руль, лётный джойстик): по порядку, плюс крестовина кнопками.
+	if len(t.controls) > 0 {
+		for _, c := range t.controls {
+			if c.axis {
+				info.Axes = append(info.Axes, c.name)
+			} else {
+				info.Buttons = append(info.Buttons, c.name)
+			}
+		}
+		for _, c := range slices.Sorted(maps.Keys(t.buttonAxes)) {
+			if name, ok := keys.NameOf(c); ok {
+				info.Buttons = append(info.Buttons, name)
+			}
+		}
+		return info, true
+	}
+
 	// Кнопки: коды устройства — в коды макросов (обратно переназначению), затем кнопки,
 	// которые устройство передаёт осью (курки, крестовина Xbox).
 	back := map[uint16]uint16{}
@@ -255,6 +272,11 @@ func (m *Module) ResolveIn(v project.VirtualDevice, control string) (uint16, boo
 	setup, err := t.build(v)
 	if err != nil {
 		return 0, false, err
+	}
+
+	// Свои имена шаблона ({wheel.Gas}, {stick.Button40}).
+	if c, ok := t.lookupControl(control); ok {
+		return c.code, c.axis, nil
 	}
 
 	// Кнопка.
