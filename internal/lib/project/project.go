@@ -115,6 +115,10 @@ type Binding struct {
 	// RampMS — кнопка → ось: за сколько миллисекунд ось плавно доходит до положения Value
 	// (0 — сразу), 0…5000.
 	RampMS int `yaml:"ramp_ms,omitempty" json:"ramp_ms,omitempty"`
+	// Latch — кнопка → ось «как рычаг» (ADR-0040): после отпускания ось остаётся там, куда дошла
+	// (с ramp_ms — где её застало отпускание), а не возвращается в покой; value может быть 0
+	// («рычаг в ноль»). Для РУД: W — плавно вперёд, S — плавно назад.
+	Latch bool `yaml:"latch,omitempty" json:"latch,omitempty"`
 	// Steer — мышь → ось «как руль» (ADR-0040): движение мыши поворачивает ось, и она остаётся
 	// в этом положении, когда мышь остановилась (без Steer — возвращается в центр).
 	Steer bool `yaml:"steer,omitempty" json:"steer,omitempty"`

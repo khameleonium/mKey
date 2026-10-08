@@ -38,13 +38,14 @@ type CompiledBinding struct {
 	To BindingTarget
 	// Hide — прятать источник от системы.
 	Hide bool
-	// Invert, Deadzone, Sensitivity (1, если не задана), Threshold, Ramp, Steer, Recenter, Curve
+	// Invert, Deadzone, Sensitivity (1, если не задана), Threshold, Ramp, Latch, Steer, Recenter, Curve
 	// (1, если не задана) — настройки (project.Binding).
 	Invert      bool
 	Deadzone    float64
 	Sensitivity float64
 	Threshold   float64
 	Ramp        time.Duration
+	Latch       bool
 	Steer       bool
 	Recenter    time.Duration
 	Curve       float64
@@ -55,7 +56,7 @@ type CompiledBinding struct {
 // зависит от вида источника и цели:
 //
 //	кнопка → кнопка   без настроек
-//	кнопка → ось      value (−1…1, не 0), ramp_ms
+//	кнопка → ось      value (−1…1, не 0; с latch — и 0), ramp_ms, latch
 //	ось → ось         invert, deadzone, sensitivity, curve
 //	ось → кнопка      threshold (−1…1, не 0), invert, deadzone
 //	мышь → ось        invert, sensitivity, steer, recenter_ms (только со steer)
@@ -72,7 +73,7 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	name := strings.Trim(b.From, "{} ") + " → " + strings.Trim(b.To, "{} ")
 	c := CompiledBinding{From: src, To: to, Hide: b.Hide, Invert: b.Invert, Deadzone: b.Deadzone,
 		Sensitivity: b.Sensitivity, Threshold: b.Threshold, Ramp: time.Duration(b.RampMS) * time.Millisecond,
-		Steer: b.Steer, Recenter: time.Duration(b.RecenterMS) * time.Millisecond, Curve: b.Curve}
+		Latch: b.Latch, Steer: b.Steer, Recenter: time.Duration(b.RecenterMS) * time.Millisecond, Curve: b.Curve}
 	if c.Sensitivity == 0 {
 		c.Sensitivity = 1
 	}
@@ -84,13 +85,13 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	axisSrc := src.Type == evdev.EvAbs || src.Type == evdev.EvRel
 	set := map[string]bool{
 		"value": b.Value != 0, "ramp_ms": b.RampMS != 0, "invert": b.Invert, "deadzone": b.Deadzone != 0,
-		"sensitivity": b.Sensitivity != 0, "threshold": b.Threshold != 0, "steer": b.Steer,
+		"sensitivity": b.Sensitivity != 0, "threshold": b.Threshold != 0, "steer": b.Steer, "latch": b.Latch,
 		"recenter_ms": b.RecenterMS != 0, "curve": b.Curve != 0,
 	}
 	var allowed []string
 	switch {
 	case !axisSrc && to.Axis:
-		allowed = []string{"value", "ramp_ms"}
+		allowed = []string{"value", "ramp_ms", "latch"}
 	case !axisSrc:
 		allowed = nil
 	case src.Type == evdev.EvAbs && to.Axis:
@@ -106,7 +107,7 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	}
 
 	// Лишняя настройка — понятная ошибка; «положение у кнопки» — прежняя, более точная.
-	for _, opt := range []string{"value", "ramp_ms", "invert", "deadzone", "sensitivity", "threshold", "steer", "recenter_ms", "curve"} {
+	for _, opt := range []string{"value", "ramp_ms", "invert", "deadzone", "sensitivity", "threshold", "steer", "recenter_ms", "curve", "latch"} {
 		if !set[opt] || slices.Contains(allowed, opt) {
 			continue
 		}
@@ -118,7 +119,7 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 
 	// Обязательные настройки: положение у «кнопка → ось», порог у «ось → кнопка».
 	switch {
-	case !axisSrc && to.Axis && (b.Value == 0 || b.Value < -1 || b.Value > 1):
+	case !axisSrc && to.Axis && (b.Value == 0 && !b.Latch || b.Value < -1 || b.Value > 1):
 		return CompiledBinding{}, dsl.NewError(dsl.Pos{}, dsl.ErrBindingValue, "name", strings.Trim(b.To, "{} "))
 	case axisSrc && !to.Axis && (b.Threshold == 0 || b.Threshold < -1 || b.Threshold > 1):
 		return CompiledBinding{}, dsl.NewError(dsl.Pos{}, dsl.ErrBindingThreshold, "name", name)
