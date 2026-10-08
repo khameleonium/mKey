@@ -43,6 +43,8 @@ const (
 	PlaceConfig = "config"
 	// PlaceProjects — папка проектов.
 	PlaceProjects = "projects"
+	// PlaceBuilds — папка собранных файлов макросов (модуль builder, ADR-0042).
+	PlaceBuilds = "builds"
 	// PlaceRecordings — папка записей.
 	PlaceRecordings = "recordings"
 	// PlaceLuaScripts и PlaceShellScripts — папки скриптов Lua и bash.
