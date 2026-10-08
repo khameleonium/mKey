@@ -206,12 +206,14 @@ func (m *Module) handleWaitKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ожидание с ограничением времени; разрыв соединения тоже его прерывает.
+	// Ожидание с ограничением времени; разрыв соединения и остановка mKey тоже его прерывают.
 	timeout := time.Duration(req.TimeoutMS) * time.Millisecond
 	if timeout <= 0 || timeout > maxWait {
 		timeout = maxWait
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	wctx, done := m.waitContext(r)
+	defer done()
+	ctx, cancel := context.WithTimeout(wctx, timeout)
 	defer cancel()
 	if err := m.svc.keyState.WaitKey(ctx, k); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {

@@ -131,7 +131,10 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 	}
 	refresh()
 
-	// События до разрыва соединения; раз в 15 с — комментарий, чтобы соединение не закрылось.
+	// События до разрыва соединения или остановки mKey; раз в 15 с — комментарий, чтобы
+	// соединение не закрылось.
+	ctx, done := m.waitContext(r)
+	defer done()
 	events, unsub := m.svc.input.Subscribe(1024)
 	defer unsub()
 	lastAxis := map[string]time.Time{}
@@ -139,7 +142,7 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		case <-tick.C:
 			_, _ = fmt.Fprint(w, ": ping\n\n")

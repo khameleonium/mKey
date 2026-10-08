@@ -417,14 +417,17 @@ func (m *Module) handleStream(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, ": mkey stream\n\n")
 	flusher.Flush()
 
-	// Подписка на шину до разрыва соединения; раз в 15 с — комментарий, чтобы соединение не закрылось.
+	// Подписка на шину до разрыва соединения или остановки mKey; раз в 15 с — комментарий, чтобы
+	// соединение не закрылось.
+	ctx, done := m.waitContext(r)
+	defer done()
 	ch, cancel := m.bus.Subscribe("*")
 	defer cancel()
 	tick := time.NewTicker(15 * time.Second)
 	defer tick.Stop()
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		case <-tick.C:
 			_, _ = fmt.Fprint(w, ": ping\n\n")
@@ -485,7 +488,9 @@ func (m *Module) handleCaptureKey(w http.ResponseWriter, r *http.Request) {
 	if timeout <= 0 || timeout > time.Minute {
 		timeout = 15 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	wctx, done := m.waitContext(r)
+	defer done()
+	ctx, cancel := context.WithTimeout(wctx, timeout)
 	defer cancel()
 
 	// Читаем нажатия (не повторы) на любом устройстве.
@@ -496,7 +501,12 @@ func (m *Module) handleCaptureKey(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ctx.Done():
-			m.writeError(w, r, http.StatusRequestTimeout, "api.wait_timeout", nil)
+			// Время вышло — 408; mKey останавливается (или окно ушло) — «недоступно».
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				m.writeError(w, r, http.StatusRequestTimeout, "api.wait_timeout", nil)
+			} else {
+				m.unavailable(w, r)
+			}
 			return
 		case e, ok := <-events:
 			if !ok {

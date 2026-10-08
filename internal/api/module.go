@@ -82,6 +82,10 @@ type Module struct {
 	mu      sync.Mutex
 	servers []*http.Server
 	wg      sync.WaitGroup
+	// closing отменяется в начале Stop: запросы-ожидания (новости и монитор для окна, ожидание
+	// нажатия) завершаются сразу, а не держат остановку до таймаута (waitContext).
+	closing    context.Context
+	endWaiting context.CancelFunc
 	// port — фактически открытый TCP-порт.
 	port int
 }
@@ -214,6 +218,7 @@ func lookup[T any](s contracts.ServiceRegistry) T {
 // Start создаёт токен, открывает Unix-сокет и TCP-порт и запускает серверы.
 func (m *Module) Start(context.Context) error {
 	dir := m.cfg.RuntimeDir
+	m.closing, m.endWaiting = context.WithCancel(context.Background())
 
 	// Личный каталог времени выполнения (0700, владелец — текущий пользователь).
 	if err := paths.EnsurePrivateDir(dir); err != nil {
@@ -285,6 +290,12 @@ func (m *Module) serve(l net.Listener, h http.Handler) {
 
 // Stop останавливает серверы и удаляет файлы сокета, токена и сведений.
 func (m *Module) Stop(ctx context.Context) error {
+	// Запросы-ожидания завершаем сразу: поток новостей открыт всё время, пока открыто окно, и без
+	// этого остановка ждала бы его до таймаута.
+	if m.endWaiting != nil {
+		m.endWaiting()
+	}
+
 	// Корректно закрываем серверы; долгие запросы (выполняющиеся макросы) прерываются по таймауту.
 	m.mu.Lock()
 	servers := m.servers
@@ -308,6 +319,20 @@ func (m *Module) Stop(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// waitContext — контекст запроса-ожидания (поток, монитор, ожидание нажатия): отменяется при
+// разрыве соединения и в начале Stop. cancel нужно вызвать по завершении обработчика.
+func (m *Module) waitContext(r *http.Request) (ctx context.Context, cancel context.CancelFunc) {
+	ctx, cancelReq := context.WithCancel(r.Context())
+	if m.closing == nil {
+		return ctx, cancelReq
+	}
+	stop := context.AfterFunc(m.closing, cancelReq)
+	return ctx, func() {
+		stop()
+		cancelReq()
+	}
 }
 
 // reuseToken возвращает прежний токен из файла path, если файл — личный (0600, владелец — текущий

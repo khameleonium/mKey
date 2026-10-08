@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,7 +16,9 @@ import (
 	"sync"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/khameleonium/mKey/internal/bus"
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/i18n"
 	"github.com/khameleonium/mKey/internal/lib/dsl"
@@ -264,6 +267,41 @@ func TestStartStopUnixSocket(t *testing.T) {
 		if got := reuseToken(filepath.Join(dir, TokenFile)); got != "" {
 			t.Errorf("%s token reused: %q", name, got)
 		}
+	}
+}
+
+// TestStopWithOpenStream: открытый поток новостей (окно открыто) не задерживает остановку —
+// Stop завершает его сразу, а не ждёт таймаута корректного закрытия.
+func TestStopWithOpenStream(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule(t)
+	m.bus = bus.New(16)
+	dir := filepath.Join(t.TempDir(), "rt")
+	m.cfg = Config{Port: 0, RuntimeDir: dir}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Открываем поток через сокет и ждём его первую строку.
+	client := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(dir, SocketFile))
+	}}}
+	resp, err := client.Get("http://mkey/api/v1/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if line, err := bufio.NewReader(resp.Body).ReadString('\n'); err != nil || !strings.HasPrefix(line, ": mkey stream") {
+		t.Fatalf("stream start: %q %v", line, err)
+	}
+
+	// Остановка — сразу, поток закрыт.
+	start := time.Now()
+	if err := m.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("stop with an open stream took %v", took)
 	}
 }
 
