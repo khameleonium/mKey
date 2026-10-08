@@ -219,6 +219,15 @@ export interface VirtualDeviceInfo {
   error?: string;
 }
 
+/** Итог сборки самостоятельного файла макроса (POST /projects/{id}/build, ADR-0042). */
+export interface BuildResult {
+  path: string;
+  size: number;
+  files: string[];
+  /** download — адрес скачивания (если файл в папке собранных макросов). */
+  download?: string;
+}
+
 /** Виртуальное устройство любого проекта с состоянием (GET /devices/virtual → all, ADR-0041). */
 export interface VirtualCard {
   name: string;

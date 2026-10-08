@@ -161,11 +161,17 @@ func TestBuild(t *testing.T) {
 func TestBuildErrors(t *testing.T) {
 	t.Parallel()
 	m, _ := setup(t, map[string]string{
+		"empty":   "version: 1\nname: e\nevents: []\n",
 		"game":    game,
 		"missing": "version: 1\nname: x\nevents: [{id: e, trigger: {type: manual}, actions: [{play: нет}, {shell: {file: run.sh}}]}]\n",
 		"plugin":  "version: 1\nname: x\nevents: [{id: e, trigger: {type: manual}, actions: [{http: {url: 'http://x'}}]}]\n",
 	})
 	ctx := context.Background()
+
+	// Без записей и скриптов — пустой список, а не nil (окно читает его длину).
+	if res, err := m.Build(ctx, contracts.BuildRequest{Project: "empty"}); err != nil || res.Files == nil {
+		t.Fatalf("empty = %+v, %v", res, err)
+	}
 	for _, c := range []struct {
 		req  contracts.BuildRequest
 		want error

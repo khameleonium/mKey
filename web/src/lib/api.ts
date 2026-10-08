@@ -13,6 +13,7 @@ import type {
   RecordDevice,
   RecordSettings,
   UpdateInfo,
+  BuildResult,
   VirtualCard,
   VirtualDeviceInfo,
   VirtualState,
@@ -177,6 +178,8 @@ export const api = {
       name,
       content,
     }),
+  buildProject: (id: string, req: { mode: "events" | "once"; event?: string }) =>
+    request<BuildResult>("POST", `/projects/${enc(id)}/build`, req),
   deleteProject: (id: string) => request<{ ok: boolean }>("DELETE", `/projects/${enc(id)}`),
   setProjectEnabled: (id: string, on: boolean) =>
     request<{ ok: boolean }>("POST", `/projects/${enc(id)}/${on ? "enable" : "disable"}`, {}),

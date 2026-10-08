@@ -6,6 +6,7 @@
   onreload() — перечитать проект с диска.
 -->
 <script lang="ts">
+  import BuildDialog from "../builder/BuildDialog.svelte";
   import ProjectDevices from "../vdevices/ProjectDevices.svelte";
   import { api } from "../../lib/api";
   import CodeEditor from "../../lib/components/CodeEditor.svelte";
@@ -54,6 +55,17 @@
       else void onreload();
     }),
   );
+
+  /** building — открыто окно «Собрать в файл». */
+  let building = $state(false);
+
+  /** saveIfDirty сохраняет проект перед сборкой, если в нём есть изменения (false — не вышло). */
+  async function saveIfDirty(): Promise<boolean> {
+    if (!ed.dirty) return true;
+    const ok = await ed.save();
+    if (!ok) toast(ed.error, "error");
+    return ok;
+  }
 
   /** save сохраняет проект из конструктора. */
   async function save(): Promise<void> {
@@ -141,6 +153,9 @@
     onclick={async () => {
       if (await ed.check()) toast(t("editor.check_ok"));
     }}>{t("editor.check")}</button
+  >
+  <button onclick={() => (building = true)} title={t("build.button_hint")}
+    >📦 {t("build.button")}</button
   >
   <button class="primary" disabled={ed.saving || !ed.dirty} onclick={save}
     >{t("common.save")}</button
@@ -231,6 +246,17 @@
 
 {#if dry}
   <DryRunDialog title={dry.title} result={dry.result} onclose={() => (dry = null)} />
+{/if}
+
+<!-- Собрать самостоятельный файл макроса (FR-BUILD-1) -->
+{#if building}
+  <BuildDialog
+    project={ed.id}
+    name={ed.project.data.name || ed.id}
+    events={ed.project.events.map((e) => ({ id: e.data.id, name: e.data.name }))}
+    save={saveIfDirty}
+    onclose={() => (building = false)}
+  />
 {/if}
 
 <style>

@@ -157,7 +157,7 @@ func (m *Module) Build(_ context.Context, req contracts.BuildRequest) (contracts
 	if err != nil {
 		return contracts.BuildResult{}, err
 	}
-	res := contracts.BuildResult{Path: out, Size: size, Files: slices.Sorted(maps.Keys(files))}
+	res := contracts.BuildResult{Path: out, Size: size, Files: append([]string{}, slices.Sorted(maps.Keys(files))...)}
 	m.log.Info("macro built", "project", p.ID, "mode", mode, "path", out, "size", size, "files", len(files))
 	return res, nil
 }

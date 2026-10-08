@@ -142,3 +142,19 @@ test("virtual devices: create a wheel, test it live, delete it", async ({ page }
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
   await expect(page.getByText(/No virtual devices yet/)).toBeVisible();
 });
+
+test("build a standalone macro file from a project", async ({ page }) => {
+  // Проект из шаблона, «Собрать в файл» → «работать, как проект» → готово, файл можно скачать.
+  await page.getByRole("navigation").getByRole("link", { name: "Projects" }).click();
+  await page.getByRole("button", { name: /From a template/ }).click();
+  await page.getByRole("button", { name: /Autoclicker/ }).click();
+  await page.getByRole("button", { name: /Build a file/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Work like this project")).toBeVisible();
+  await dialog.getByRole("button", { name: "Build", exact: true }).click();
+  await expect(dialog.getByText(/^Done: /)).toBeVisible();
+  await expect(dialog.getByText(/mkey\/builds\//)).toBeVisible();
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: /Download the file/ }).click();
+  expect((await download).suggestedFilename().length).toBeGreaterThan(0);
+});
