@@ -2,7 +2,7 @@
 
 **Keyboard and mouse macros for Linux.** · [Русский](README.md)
 
-Creator: Илья Ульянов | khameleonium
+Creator: Ilya Ulyanov | khameleonium
 
 mKey presses keys and buttons for you: on a hotkey, on a timer, on a typed word or on another
 event. It records what you do and replays it. It turns your keyboard into a gamepad that games
@@ -138,4 +138,4 @@ If installed from a package, then also remove the `mkey` package with your packa
 
 ## License
 
-[MIT](LICENSE). Creator: Илья Ульянов | khameleonium
+[MIT](LICENSE). Creator: Ilya Ulyanov | khameleonium

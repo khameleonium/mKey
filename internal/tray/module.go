@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/khameleonium/mKey/internal/contracts"
-	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 	"github.com/khameleonium/mKey/internal/lib/sni"
 )
 
@@ -289,7 +288,7 @@ func (m *Module) menu() []sni.MenuItem {
 
 	// Создатель программы — неактивной строкой в самом низу (решение владельца).
 	sections = append(sections, []sni.MenuItem{{
-		Label: m.tr.T("app.creator", contracts.Arg{Name: "creator", Value: buildinfo.Creator}), Disabled: true,
+		Label: m.tr.T("app.creator"), Disabled: true,
 	}})
 
 	// Разделы — через разделитель.

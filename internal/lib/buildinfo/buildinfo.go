@@ -7,9 +7,10 @@
 // При сборке без ldflags (go build, go run) используются значения по умолчанию.
 package buildinfo
 
-// Creator — создатель mKey (решение владельца: упоминается везде — справка, окно, значок в трее,
-// README, пакеты).
-const Creator = "Илья Ульянов | khameleonium"
+// Creator — создатель mKey латиницей (решение владельца: упоминается везде) — для машиночитаемого
+// вывода (`mkey version --json`). В текстах для людей имя на языке интерфейса — i18n-ключ app.creator
+// («Создатель: Илья Ульянов | khameleonium» / «Creator: Ilya Ulyanov | khameleonium»).
+const Creator = "Ilya Ulyanov | khameleonium"
 
 // Сведения о сборке. Переменные, а не константы, потому что их задаёт компоновщик.
 var (

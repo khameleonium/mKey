@@ -171,7 +171,7 @@
   "api.update_check_failed": "Could not check for updates (no connection to GitHub?): {error}",
   "api.update_failed": "Update failed: {error}",
   "api.wait_timeout": "timed out",
-  "app.creator": "Creator: {creator}",
+  "app.creator": "Creator: Ilya Ulyanov | khameleonium",
   "category.input": "Key presses",
   "category.keyboard": "Keyboard",
   "category.logic": "Logic and variables",

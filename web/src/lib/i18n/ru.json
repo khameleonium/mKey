@@ -1,7 +1,7 @@
 {
   "api.module.name": "Окно и команды (API)",
   "app.connected": "mKey работает",
-  "app.creator": "Создатель: {creator}",
+  "app.creator": "Создатель: Илья Ульянов | khameleonium",
   "app.disconnected": "Нет связи",
   "app.disconnected_text": "Нет связи с mKey. Программа закрыта или перезапускается. Запустите её (в терминале: mkey) — окно подключится само.",
   "app.title": "mKey",

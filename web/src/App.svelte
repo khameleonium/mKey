@@ -6,7 +6,6 @@
 -->
 <script lang="ts">
   import { api } from "./lib/api";
-  import { CREATOR } from "./lib/creator";
   import Toasts from "./lib/components/Toasts.svelte";
   import { setLang, t } from "./lib/i18n/index.svelte";
   import { setTheme } from "./lib/theme.svelte";
@@ -87,7 +86,7 @@
     <div class="conn" class:off={!live.connected}>
       ● {live.connected ? t("app.connected") : t("app.disconnected")}
     </div>
-    <div class="creator">{t("app.creator", { creator: CREATOR })}</div>
+    <div class="creator">{t("app.creator")}</div>
   </nav>
 
   <main>

@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("home shows the creator and the running state", async ({ page }) => {
-  await expect(page.getByText("Creator: Илья Ульянов | khameleonium")).toBeVisible();
+  await expect(page.getByText("Creator: Ilya Ulyanov | khameleonium")).toBeVisible();
   await expect(page.getByRole("link", { name: "Scripts" })).toBeVisible();
 });
 

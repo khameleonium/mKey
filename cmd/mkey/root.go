@@ -17,7 +17,7 @@ func newRootCmd(tr *i18n.Translator) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "mkey",
 		Short:         tr.T("cli.root.short"),
-		Long:          tr.T(guiKey("cli.root.long")) + "\n\n" + tr.T("app.creator", i18n.A("creator", buildinfo.Creator)),
+		Long:          tr.T(guiKey("cli.root.long")) + "\n\n" + tr.T("app.creator"),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Без параметров: не установлен — мастер установки, установлен — окно программы.
@@ -90,7 +90,7 @@ func newVersionCmd(tr *i18n.Translator) *cobra.Command {
 				i18n.A("version", buildinfo.Version),
 				i18n.A("commit", buildinfo.Commit),
 				i18n.A("date", buildinfo.Date),
-			), tr.T("app.creator", i18n.A("creator", buildinfo.Creator)))
+			), tr.T("app.creator"))
 			return err
 		},
 	}

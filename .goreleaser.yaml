@@ -61,9 +61,9 @@ nfpms:
     ids: [mkey]
     package_name: mkey
     file_name_template: "{{ .ConventionalFileName }}"
-    vendor: "Илья Ульянов | khameleonium"
+    vendor: "Ilya Ulyanov | khameleonium"
     homepage: https://github.com/khameleonium/mKey
-    maintainer: "Илья Ульянов | khameleonium <siriusx666@gmail.com>"
+    maintainer: "Ilya Ulyanov | khameleonium <siriusx666@gmail.com>"
     description: |-
       Keyboard and mouse macros for Linux
       Hotkeys, a macro language, recording and replay, virtual gamepads and bindings,
@@ -108,7 +108,7 @@ release:
 
     Макросы клавиатуры и мыши для Linux · Keyboard and mouse macros for Linux.
 
-    Создатель: Илья Ульянов | khameleonium
+    Создатель: Илья Ульянов | khameleonium · Creator: Ilya Ulyanov | khameleonium
 
     **Установка:** скачайте `mkey_{{ .Version }}_linux_amd64.tar.gz` (обычный компьютер) или `…_arm64.tar.gz` (ARM),
     распакуйте и запустите `mkey` — мастер объяснит каждый шаг. Есть и пакеты: `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk`.
