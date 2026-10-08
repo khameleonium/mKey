@@ -181,7 +181,8 @@ paths:
                   current: { type: string, example: ru }
                   available: { type: array, items: { type: string }, example: [ru, us] }
                   can_switch: { type: boolean }
-                  source: { type: string, enum: [kde, gnome, config] }
+                  source: { type: string, example: x11, description: "Источник раскладок (kde, gnome, x11, свой из точки layout_source) или config" }
+                  blind: { type: boolean, description: "Раскладку системы не видно: текст печатается нажатиями клавиш как есть (ADR-0037)" }
   /api/v1/projects:
     get:
       summary: Проекты (id, name, enabled, events, remaps, path, error) и каталог проектов

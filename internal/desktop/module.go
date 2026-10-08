@@ -11,6 +11,7 @@ import (
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/desktop/gnome"
 	"github.com/khameleonium/mKey/internal/desktop/kde"
+	"github.com/khameleonium/mKey/internal/desktop/x11"
 )
 
 // ModuleID — идентификатор модуля.
@@ -32,14 +33,21 @@ type Module struct {
 	// log — логгер модуля; cfg — настройки.
 	log *slog.Logger
 	cfg Config
-	// compositor — окружение из модуля session ("" — модуль отключён).
+	// compositor — окружение из модуля session ("" — модуль отключён); session — сведения о сессии.
 	compositor string
+	session    contracts.SessionInfo
+	// ext — точки расширения: источники раскладок (встроенные и от других модулей и плагинов).
+	ext contracts.ExtensionRegistry
+	// warned — о каких сбоях источников раскладок уже написано в журнал (не повторять каждый раз).
+	warnMu sync.Mutex
+	warned map[string]bool
 	// connect подключается к сессионной шине D-Bus (в тестах подменяется).
 	connect func() (*dbus.Conn, error)
 	// conn — подключение к D-Bus (nil, если не нужно или не удалось).
 	conn *dbus.Conn
-	// adapter — выбранный адаптер раскладок; fallback — раскладки из настроек.
-	adapter  contracts.LayoutProvider
+	// kde — адаптер раскладок KDE (создаётся при запуске, нужен D-Bus); fallback — раскладки из
+	// настроек, когда ни один источник не видит раскладку.
+	kde      contracts.LayoutProvider
 	fallback contracts.LayoutProvider
 	// tr — переводчик уведомлений; ctx живёт до Stop; wg ждёт горутину уведомлений.
 	tr     contracts.Translator
@@ -73,7 +81,18 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 
 	// Окружение из модуля session (если он отключён — работаем на настройках).
 	if s, err := contracts.LookupService[contracts.Session](host.Services()); err == nil {
-		m.compositor = s.Info().Compositor
+		m.session = s.Info()
+		m.compositor = m.session.Compositor
+	}
+
+	// Встроенные источники раскладок по порядку: KDE (D-Bus, умеет переключать), GNOME (gsettings),
+	// X11 (любое окружение X11). Другие модули и плагины добавляют свои в ту же точку.
+	m.ext = host.Extensions()
+	m.warned = map[string]bool{}
+	for _, src := range []contracts.LayoutSource{kdeSource{m}, gnomeSource{gnome.New()}, x11.New("")} {
+		if err := m.ext.Register(contracts.PointLayoutSource, src); err != nil {
+			return err
+		}
 	}
 
 	// Подписки на события, о которых нужно уведомлять пользователя.
@@ -110,12 +129,9 @@ func (m *Module) Start(context.Context) error {
 		m.conn = conn
 	}
 
-	// Адаптер раскладок окружения.
-	switch {
-	case m.compositor == "kde" && m.conn != nil:
-		m.adapter = kde.New(m.conn)
-	case m.compositor == "gnome":
-		m.adapter = gnome.New()
+	// Адаптер раскладок KDE работает через D-Bus.
+	if m.conn != nil {
+		m.kde = kde.New(m.conn)
 	}
 
 	// Уведомления о важных событиях.
@@ -139,27 +155,97 @@ func (m *Module) Stop(context.Context) error {
 	return nil
 }
 
-// Layouts возвращает раскладки от адаптера окружения, а при его сбое — из настроек.
+// sources возвращает источники раскладок, которые работают в этой сессии, по порядку регистрации.
+func (m *Module) sources() []contracts.LayoutSource {
+	if m.ext == nil {
+		return nil
+	}
+	var out []contracts.LayoutSource
+	for _, e := range m.ext.List(contracts.PointLayoutSource) {
+		if src, ok := e.(contracts.LayoutSource); ok && src.Supports(m.session) {
+			out = append(out, src)
+		}
+	}
+	return out
+}
+
+// Layouts возвращает раскладки от первого источника, который их видит; ни один не видит —
+// раскладки из настроек с пометкой Blind (текст печатается нажатиями клавиш как есть).
 func (m *Module) Layouts(ctx context.Context) (contracts.LayoutInfo, error) {
-	if m.adapter != nil {
-		info, err := m.adapter.Layouts(ctx)
+	for _, src := range m.sources() {
+		info, err := src.Layouts(ctx)
 		if err == nil {
 			return info, nil
 		}
-		m.log.Warn("keyboard layouts from desktop failed, using config", "err", err)
+		m.warnOnce(src.Meta().ID, err)
 	}
 	return m.fallback.Layouts(ctx)
 }
 
-// Switch переключает раскладку через адаптер окружения, если он это умеет.
+// Switch переключает раскладку через первый источник, который видит раскладку.
 func (m *Module) Switch(ctx context.Context, name string) error {
-	if m.adapter == nil {
-		return contracts.ErrUnsupported
+	for _, src := range m.sources() {
+		if _, err := src.Layouts(ctx); err == nil {
+			return src.Switch(ctx, name)
+		}
 	}
-	return m.adapter.Switch(ctx, name)
+	return contracts.ErrUnsupported
 }
 
-// configLayouts — раскладки из настроек модуля (окружения без автоматического определения).
+// warnOnce пишет в журнал сбой источника раскладок один раз для каждой пары «источник, ошибка».
+func (m *Module) warnOnce(source string, err error) {
+	key := source + ": " + err.Error()
+	m.warnMu.Lock()
+	seen := m.warned[key]
+	m.warned[key] = true
+	m.warnMu.Unlock()
+	if !seen {
+		m.log.Warn("keyboard layouts unavailable from source", "source", source, "err", err)
+	}
+}
+
+// kdeSource — источник раскладок KDE Plasma (D-Bus org.kde.keyboard).
+type kdeSource struct{ m *Module }
+
+// Meta возвращает метаданные источника.
+func (kdeSource) Meta() contracts.ExtensionMeta {
+	return contracts.ExtensionMeta{ID: "kde", NameKey: "layout_source.kde", Provider: ModuleID}
+}
+
+// Supports — окружение KDE и подключение к D-Bus.
+func (s kdeSource) Supports(si contracts.SessionInfo) bool {
+	return si.Compositor == "kde" && s.m.kde != nil
+}
+
+// Layouts возвращает раскладки KDE.
+func (s kdeSource) Layouts(ctx context.Context) (contracts.LayoutInfo, error) {
+	return s.m.kde.Layouts(ctx)
+}
+
+// Switch переключает раскладку KDE.
+func (s kdeSource) Switch(ctx context.Context, name string) error { return s.m.kde.Switch(ctx, name) }
+
+// gnomeSource — источник раскладок GNOME (gsettings).
+type gnomeSource struct{ g *gnome.Layouts }
+
+// Meta возвращает метаданные источника.
+func (gnomeSource) Meta() contracts.ExtensionMeta {
+	return contracts.ExtensionMeta{ID: "gnome", NameKey: "layout_source.gnome", Provider: ModuleID}
+}
+
+// Supports — окружение GNOME.
+func (gnomeSource) Supports(si contracts.SessionInfo) bool { return si.Compositor == "gnome" }
+
+// Layouts возвращает раскладки GNOME.
+func (s gnomeSource) Layouts(ctx context.Context) (contracts.LayoutInfo, error) {
+	return s.g.Layouts(ctx)
+}
+
+// Switch — GNOME переключать раскладку извне не позволяет.
+func (s gnomeSource) Switch(ctx context.Context, name string) error { return s.g.Switch(ctx, name) }
+
+// configLayouts — раскладки из настроек модуля, когда ни один источник не видит раскладку: mKey
+// не знает, какая раскладка включена, поэтому Blind — текст печатается нажатиями клавиш как есть.
 type configLayouts struct {
 	cfg Config
 }
@@ -174,7 +260,7 @@ func (c configLayouts) Layouts(context.Context) (contracts.LayoutInfo, error) {
 	if current == "" {
 		current = available[0]
 	}
-	return contracts.LayoutInfo{Current: current, Available: available, Source: "config"}, nil
+	return contracts.LayoutInfo{Current: current, Available: available, Source: "config", Blind: true}, nil
 }
 
 // Switch не поддерживается: окружение неизвестно.
@@ -184,5 +270,7 @@ func (configLayouts) Switch(context.Context, string) error { return contracts.Er
 var (
 	_ contracts.Module         = (*Module)(nil)
 	_ contracts.LayoutProvider = (*Module)(nil)
+	_ contracts.LayoutSource   = kdeSource{}
+	_ contracts.LayoutSource   = gnomeSource{}
 	_ contracts.Notifier       = (*Module)(nil)
 )

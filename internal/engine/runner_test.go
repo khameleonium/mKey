@@ -490,3 +490,55 @@ func TestValidateBindings(t *testing.T) {
 		}
 	}
 }
+
+// countNotifier — уведомления для тестов: запоминает тексты.
+type countNotifier struct {
+	mu    sync.Mutex
+	texts []string
+}
+
+// Notify запоминает текст уведомления.
+func (n *countNotifier) Notify(_ context.Context, _, body string) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.texts = append(n.texts, body)
+	return nil
+}
+
+// TestTypeBlind: раскладку не видно (Blind) — текст печатается нажатиями клавиш как есть, без
+// переключения раскладки: латиница — клавишами us, кириллица — клавишами ru (при русской
+// раскладке у человека получится «Привет»); предупреждение — одно на всю работу.
+func TestTypeBlind(t *testing.T) {
+	t.Parallel()
+	lp := &fakeLayouts{info: contracts.LayoutInfo{Current: "us", Available: []string{"us"}, Source: "config", Blind: true}}
+	m, devs := newTestModule(clock.NewFake(time.Unix(0, 0)), lp)
+	n := &countNotifier{}
+	m.notifier, m.tr = n, fakeTr{}
+	for range 2 {
+		if err := m.Run(context.Background(), `{"Hi Привет"}`); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	}
+
+	// Без переключений; клавиши: в us-раскладке видны латиница и место кириллицы.
+	if len(lp.switches) != 0 {
+		t.Fatalf("switches = %v", lp.switches)
+	}
+	got := typed(t, devs.kb.log(), func(int) string { return "us" })
+	if got != "Hi GhbdtnHi Ghbdtn" {
+		t.Fatalf("typed %q", got)
+	}
+	gotRu := typed(t, devs.kb.log(), func(int) string { return "ru" })
+	if !strings.Contains(gotRu, "Привет") {
+		t.Fatalf("typed in ru %q", gotRu)
+	}
+	if len(n.texts) != 1 || n.texts[0] != "engine.layout_blind" {
+		t.Fatalf("notices = %v", n.texts)
+	}
+}
+
+// fakeTr — переводчик для тестов: возвращает ключ.
+type fakeTr struct{ contracts.Translator }
+
+// T возвращает ключ.
+func (fakeTr) T(key string, _ ...contracts.Arg) string { return key }

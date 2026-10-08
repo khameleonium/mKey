@@ -179,3 +179,31 @@ func TestParseKernel(t *testing.T) {
 		}
 	}
 }
+
+// fixedLayouts — раскладки для проверки диагностики.
+type fixedLayouts struct{ info contracts.LayoutInfo }
+
+func (f fixedLayouts) Layouts(context.Context) (contracts.LayoutInfo, error) { return f.info, nil }
+func (fixedLayouts) Switch(context.Context, string) error                    { return nil }
+
+// TestLayoutCheck: раскладка видна — строка с источником и раскладками; не видна — предупреждение
+// (без провала: mKey работает, текст печатается нажатиями клавиш как есть).
+func TestLayoutCheck(t *testing.T) {
+	t.Parallel()
+	m := &Module{
+		probe:   fakeProbe{kernel: "6.8.0", exists: map[string]bool{"/dev/uinput": true}, devices: devices},
+		session: fakeSession{contracts.SessionInfo{Type: "x11", Compositor: "cinnamon"}},
+		layouts: fixedLayouts{contracts.LayoutInfo{Current: "us", Available: []string{"us", "ru"}, Source: "x11"}},
+	}
+	if c := byID(t, m.Run(context.Background()), "layout"); c.Status != contracts.CheckOK || c.Args["layouts"] != "us, ru" || c.Args["source"] != "x11" {
+		t.Fatalf("visible = %+v", c)
+	}
+	m.layouts = fixedLayouts{contracts.LayoutInfo{Current: "us", Available: []string{"us"}, Source: "config", Blind: true}}
+	checks := m.Run(context.Background())
+	if c := byID(t, checks, "layout"); c.Status != contracts.CheckWarn || c.MessageKey != "setup.check.layout.blind" {
+		t.Fatalf("blind = %+v", c)
+	}
+	if !Healthy(checks) {
+		t.Fatal("blind layout must not fail the check")
+	}
+}

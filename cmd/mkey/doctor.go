@@ -14,6 +14,7 @@ import (
 
 	"github.com/khameleonium/mKey/internal/app"
 	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/desktop"
 	"github.com/khameleonium/mKey/internal/i18n"
 	"github.com/khameleonium/mKey/internal/platform"
 	"github.com/khameleonium/mKey/internal/registry"
@@ -37,10 +38,12 @@ func newDoctorCmd(tr *i18n.Translator) *cobra.Command {
 		Short: tr.T("cli.doctor.short"),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Для диагностики нужны только модули сессии, платформы и настройки.
+			// Для диагностики нужны модули сессии, платформы и настройки, а также
+			// рабочего стола (видна ли раскладка; необязателен — без него проверка пропускается).
 			entries := []registry.Entry{
 				{Module: session.New(), Core: true},
 				{Module: platform.New(), Core: true},
+				{Module: desktop.New(), Core: false},
 				{Module: setup.New(), Core: true},
 			}
 			return withModules(cmd.Context(), cmd, tr, entries, func(a *app.App) error {

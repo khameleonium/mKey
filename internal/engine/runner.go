@@ -74,6 +74,10 @@ type Module struct {
 	// screen — размер экрана для касаний в пикселях (nil — модуль desktop выключен).
 	screen   contracts.ScreenInfo
 	notifier contracts.Notifier
+	// tr — переводчик уведомлений; blindOnce — предупреждение «раскладка не видна» — один раз
+	// за работу демона.
+	tr        contracts.Translator
+	blindOnce sync.Once
 	// root живёт до Stop: от него наследуются контексты проектов.
 	root       context.Context
 	rootCancel context.CancelFunc
@@ -146,6 +150,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.inspect, _ = contracts.LookupService[contracts.Inspector](host.Services())
 	m.vdevs, _ = contracts.LookupService[contracts.VirtualDeviceManager](host.Services())
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	m.tr = host.I18n()
 	m.devOut, _ = contracts.LookupService[contracts.DeviceOutput](host.Services())
 	m.screen, _ = contracts.LookupService[contracts.ScreenInfo](host.Services())
 	if m.cfg.VarsFile != "" {
@@ -646,6 +651,10 @@ func (m *Module) typeText(ctx context.Context, r *run, s dsl.Step) error {
 			m.log.Warn("keyboard layout unknown, assuming us", "err", err)
 		}
 	}
+	// Раскладка не видна: печатаем нажатиями клавиш как есть, без переключений.
+	if info.Blind {
+		return m.typeBlind(ctx, r, kb, s, info)
+	}
 	current, ok := layout.Get(info.Current)
 	if !ok {
 		current, _ = layout.Get("us")
@@ -716,6 +725,58 @@ func (m *Module) findElsewhere(c rune, info contracts.LayoutInfo, currentName st
 		}
 	}
 	return nil, layout.Stroke{}, false
+}
+
+// typeBlind набирает текст, когда mKey не видит раскладку (LayoutInfo.Blind): каждый символ —
+// нажатие клавиши, на которой он находится в одной из известных раскладок (сначала — указанных
+// в настройках), без переключения раскладки. Что получится на экране, зависит от раскладки,
+// включённой у человека, — об этом mKey один раз предупреждает (журнал и уведомление).
+func (m *Module) typeBlind(ctx context.Context, r *run, kb contracts.VirtualDevice, s dsl.Step, info contracts.LayoutInfo) error {
+	m.blindOnce.Do(func() {
+		m.log.Warn("keyboard layout is not visible: typing text as plain key presses", "layouts", info.Available)
+		if m.notifier != nil && m.tr != nil {
+			_ = m.notifier.Notify(context.WithoutCancel(ctx), "mKey", m.tr.T("engine.layout_blind"))
+		}
+	})
+
+	// Таблицы по порядку: из настроек, затем остальные встроенные.
+	var tables []*layout.Layout
+	for _, name := range append(slices.Clone(info.Available), layout.Names()...) {
+		if l, ok := layout.Get(name); ok && !slices.Contains(tables, l) {
+			tables = append(tables, l)
+		}
+	}
+
+	// Символ за символом; "\r\n" — один Enter.
+	runes := []rune(s.Text)
+	for i := 0; i < len(runes); i++ {
+		c := runes[i]
+		if c == '\r' && i+1 < len(runes) && runes[i+1] == '\n' {
+			continue
+		}
+		if code, special := controlKey(c); special {
+			if err := m.tapStroke(ctx, r, kb, layout.Stroke{Code: code}); err != nil {
+				return err
+			}
+			continue
+		}
+		found := false
+		for _, l := range tables {
+			if st, ok := l.Find(c); ok {
+				if err := m.tapStroke(ctx, r, kb, st); err != nil {
+					return err
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return &dsl.Error{Pos: s.Pos, Code: dsl.ErrUntypeable, Args: map[string]string{
+				"char": string(c), "layouts": strings.Join(layout.Names(), ", "),
+			}}
+		}
+	}
+	return nil
 }
 
 // tapStroke нажимает клавишу символа. Shift зажимается, только если он нужен символу и ещё

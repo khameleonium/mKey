@@ -45,6 +45,8 @@ type Module struct {
 	// session и platform — сервисы других модулей (nil, если модуль отключён).
 	session  contracts.Session
 	platform contracts.Platform
+	// layouts — раскладки клавиатуры (модуль desktop; nil — отключён).
+	layouts contracts.LayoutProvider
 	// notifier и tr — для уведомления о проблемах при запуске (nil, если модуль desktop отключён).
 	notifier contracts.Notifier
 	tr       contracts.Translator
@@ -77,6 +79,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 		m.platform = p
 	}
 	m.notifier, _ = contracts.LookupService[contracts.Notifier](host.Services())
+	m.layouts, _ = contracts.LookupService[contracts.LayoutProvider](host.Services())
 	m.tr = host.I18n()
 	m.log = host.Logger()
 	if err := host.Config().Decode(&m.cfg); err != nil {
@@ -136,10 +139,13 @@ func (m *Module) startupCheck(ctx context.Context) {
 }
 
 // Run выполняет все проверки в порядке, удобном для чтения пользователем.
-func (m *Module) Run(context.Context) []contracts.Check {
+func (m *Module) Run(ctx context.Context) []contracts.Check {
 	checks := []contracts.Check{m.checkKernel()}
 	if m.session != nil {
 		checks = append(checks, m.checkSession())
+	}
+	if m.layouts != nil && m.session != nil && m.session.Info().Graphical() {
+		checks = append(checks, m.checkLayout(ctx))
 	}
 	if m.platform != nil {
 		checks = append(checks, m.checkInit())
@@ -208,6 +214,20 @@ func (m *Module) checkSession() contracts.Check {
 	} else {
 		c.Status, c.MessageKey = contracts.CheckWarn, "setup.check.session.none"
 	}
+	return c
+}
+
+// checkLayout сообщает, видит ли mKey раскладку клавиатуры (нужно для набора текста макросами):
+// видит — откуда и какие; не видит — предупреждение: текст печатается нажатиями клавиш как есть.
+func (m *Module) checkLayout(ctx context.Context) contracts.Check {
+	info, err := m.layouts.Layouts(ctx)
+	c := contracts.Check{ID: "layout"}
+	if err != nil || info.Blind {
+		c.Status, c.MessageKey = contracts.CheckWarn, "setup.check.layout.blind"
+		return c
+	}
+	c.Status, c.MessageKey = contracts.CheckOK, "setup.check.layout.ok"
+	c.Args = map[string]string{"source": info.Source, "layouts": strings.Join(info.Available, ", "), "current": info.Current}
 	return c
 }
 
