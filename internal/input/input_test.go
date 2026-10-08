@@ -306,3 +306,54 @@ func busOf(t *testing.T, mgr *registry.Manager) contracts.Bus {
 	t.Helper()
 	return mgr.Bus()
 }
+
+// TestConcurrentOpen: несколько одновременных попыток открыть одно устройство (inotify при
+// подключении присылает несколько событий) дают одно открытое устройство, а остановка модуля
+// не зависает на лишней горутине чтения.
+func TestConcurrentOpen(t *testing.T) {
+	t.Parallel()
+	// Открытие медленное (окно для гонки); устройство «подключают» после запуска модуля.
+	var mu sync.Mutex
+	opens := 0
+	slowOpen := func(p string) deviceReader {
+		time.Sleep(5 * time.Millisecond)
+		mu.Lock()
+		opens++
+		mu.Unlock()
+		return newFakeDevice(p, "8BitDo Ultimate 2C Wireless Controller", "usb-3/input0")
+	}
+	mod, mgr, dir := setupWith(t, &fakeFS{devices: map[string]*fakeDevice{}}, func(m *Module) {
+		m.open = func(p string) (deviceReader, error) { return slowOpen(p), nil }
+	})
+	path := filepath.Join(dir, "event7")
+	touch(t, path)
+
+	// Несколько одновременных попыток открыть (как события inotify при подключении).
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() { defer wg.Done(); mod.tryOpen(path) }()
+	}
+	wg.Wait()
+	n := 0
+	for _, d := range mod.Devices() {
+		if d.Info.Path == path {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("device opened %d times in Devices (opens %d)", n, opens)
+	}
+
+	// Остановка завершается (лишние копии закрыты, их горутины не запущены).
+	done := make(chan error, 1)
+	go func() { done <- mgr.Stop(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Stop hangs")
+	}
+}
