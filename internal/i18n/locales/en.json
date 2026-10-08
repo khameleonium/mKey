@@ -711,6 +711,7 @@
   "template.second_gamepad.name": "Second gamepad",
   "template.text_shortcut.description": "Type \"btw\" and a space to get \"by the way\".",
   "template.text_shortcut.name": "Text shortcuts",
+  "tray.cat_count": "{name} ({n} of {total})",
   "tray.device": "ID {id} {name}",
   "tray.device_own": "— emulated by mKey, not recorded",
   "tray.emergency": "Emergency stop",

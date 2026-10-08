@@ -412,8 +412,8 @@ func (m *Module) recordMenu() []sni.MenuItem {
 	return items
 }
 
-// kindsMenu — подменю «Что записывать»: подключённые устройства по категориям (имя, как его видит
-// система, и VID:PID) с галочками; виртуальные — отдельной категорией, свои устройства mKey —
+// kindsMenu — подменю «Что записывать»: подключённые устройства в подменю по категориям (имя, как
+// его видит система, и VID:PID) с галочками; виртуальные — отдельной категорией, свои устройства mKey —
 // без галочки (mKey их не читает). Внизу — «По умолчанию»: классы устройств для тех, у кого нет
 // своей галочки (в том числе подключённых позже). Всё сохраняет в config.yaml модуль записи.
 func (m *Module) kindsMenu() *sni.MenuItem {
@@ -422,26 +422,39 @@ func (m *Module) kindsMenu() *sni.MenuItem {
 	}
 	sub := sni.MenuItem{Label: m.tr.T("tray.record_kinds")}
 
-	// Устройства по категориям: заголовок категории — неактивной строкой.
+	// Устройства по категориям: у каждой категории своё подменю, в названии — сколько выбрано
+	// из тех, что можно записывать («Геймпады и джойстики (1 из 1)»).
+	var cats []*sni.MenuItem
+	counts := map[*sni.MenuItem][2]int{}
 	cat := ""
 	for _, d := range m.recorder.RecordDevices() {
-		if d.Category != cat {
-			if cat != "" {
-				sub.Children = append(sub.Children, sni.MenuItem{Separator: true})
-			}
+		if d.Category != cat || len(cats) == 0 {
 			cat = d.Category
-			sub.Children = append(sub.Children, sni.MenuItem{Label: m.tr.T("rec.cat." + cat), Disabled: true})
+			cats = append(cats, &sni.MenuItem{Label: m.tr.T("rec.cat." + cat)})
 		}
+		group := cats[len(cats)-1]
 		label := m.tr.T("tray.device", contracts.Arg{Name: "id", Value: d.ID}, contracts.Arg{Name: "name", Value: d.Name})
 		if d.Own {
-			sub.Children = append(sub.Children, sni.MenuItem{Label: label + " " + m.tr.T("tray.device_own"), Disabled: true})
+			group.Children = append(group.Children, sni.MenuItem{Label: label + " " + m.tr.T("tray.device_own"), Disabled: true})
 			continue
 		}
+		c := counts[group]
+		c[1]++
+		if d.Selected {
+			c[0]++
+		}
+		counts[group] = c
 		key, on := d.Key, d.Selected
-		sub.Children = append(sub.Children, sni.MenuItem{
+		group.Children = append(group.Children, sni.MenuItem{
 			Label: label, Checkable: true, Checked: on,
 			OnClick: func() { m.setDevice(key, !on) },
 		})
+	}
+	for _, g := range cats {
+		c := counts[g]
+		g.Label = m.tr.T("tray.cat_count", contracts.Arg{Name: "name", Value: g.Label},
+			contracts.Arg{Name: "n", Value: c[0]}, contracts.Arg{Name: "total", Value: c[1]})
+		sub.Children = append(sub.Children, *g)
 	}
 	if len(sub.Children) == 0 {
 		sub.Children = append(sub.Children, sni.MenuItem{Label: m.tr.T("tray.no_devices"), Disabled: true})

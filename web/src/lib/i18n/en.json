@@ -396,6 +396,7 @@
   "rec.cat.other": "Other",
   "rec.cat.touch": "Touchscreens and tablets",
   "rec.cat.virtual": "Virtual devices",
+  "rec.cat_count": "{name} ({n} of {total})",
   "rec.cli_hint": "The same from a terminal: mkey rec <name> to record, mkey play <name> to replay.",
   "rec.convert": "Make an event",
   "rec.convert_go": "Make",

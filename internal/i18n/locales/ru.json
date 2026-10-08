@@ -711,6 +711,7 @@
   "template.second_gamepad.name": "Второй геймпад",
   "template.text_shortcut.description": "Наберите «btw» и пробел — появится «by the way».",
   "template.text_shortcut.name": "Сокращения текста",
+  "tray.cat_count": "{name} ({n} из {total})",
   "tray.device": "ID {id} {name}",
   "tray.device_own": "— эмулирует mKey, не записывается",
   "tray.emergency": "Экстренная остановка",

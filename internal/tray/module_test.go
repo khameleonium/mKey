@@ -424,8 +424,8 @@ func TestFullMenu(t *testing.T) {
 		return len(full.ran) == 1 && full.stopped == 2 && len(full.notices) == 2
 	})
 
-	// «Что записывать»: устройства по категориям (заголовки неактивны), своё устройство mKey —
-	// без галочки, внизу — классы по умолчанию.
+	// «Что записывать»: подменю категорий со счётчиком выбранных, своё устройство mKey — без
+	// галочки, внизу — классы по умолчанию.
 	item.mu.Lock()
 	kinds, _ := find(item.menu, "What to record")
 	item.mu.Unlock()
@@ -433,9 +433,15 @@ func TestFullMenu(t *testing.T) {
 	for _, c := range kinds.Children {
 		labels = append(labels, map[bool]string{true: "[x] ", false: ""}[c.Checked]+c.Label+map[bool]string{true: " (off)", false: ""}[c.Disabled])
 	}
-	wantKinds := "Gamepads and joysticks (off)|ID 2dc8:310a Pad||Virtual devices (off)|ID 6d6b:0001 mKey Keyboard — emulated by mKey, not recorded (off)||By default (other and new devices)"
+	wantKinds := "Gamepads and joysticks (0 of 1)|Virtual devices (0 of 0)||By default (other and new devices)"
 	if got := strings.Join(labels, "|"); got != wantKinds {
 		t.Fatalf("kinds menu:\n%s\nwant\n%s", got, wantKinds)
+	}
+	if pads := kinds.Children[0].Children; len(pads) != 1 || pads[0].Label != "ID 2dc8:310a Pad" || !pads[0].Checkable {
+		t.Fatalf("gamepads submenu: %+v", pads)
+	}
+	if own := kinds.Children[1].Children; len(own) != 1 || !own[0].Disabled || own[0].Checkable {
+		t.Fatalf("virtual submenu: %+v", own)
 	}
 
 	// Галочка устройства: своё выбор сохраняется; снять последнюю можно — без ошибки.

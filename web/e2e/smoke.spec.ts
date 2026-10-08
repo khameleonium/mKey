@@ -90,7 +90,8 @@ test("recordings: what to record is saved at once", async ({ page }) => {
   // Без настоящих устройств — список пуст, но классы «по умолчанию» есть и сохраняются сразу.
   await page.getByText(/^What to record/).click();
   await expect(page.getByText("No devices found.")).toBeVisible();
-  const defaults = page.getByRole("group", { name: "By default" });
+  await page.getByText("By default", { exact: true }).click();
+  const defaults = page.locator("details.cat", { hasText: "By default" });
   await defaults.getByLabel("gamepad").check();
   const cfg = path.join(process.env.MKEY_E2E_ROOT ?? "", "config", "mkey", "config.yaml");
   await expect.poll(() => fs.readFileSync(cfg, "utf8")).toMatch(/kinds: \[.*gamepad.*\]/);

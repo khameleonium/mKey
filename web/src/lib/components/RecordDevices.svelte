@@ -1,5 +1,6 @@
 <!--
-  RecordDevices — выбор «что записывать» (FR-REC-2): подключённые устройства по категориям
+  RecordDevices — выбор «что записывать» (FR-REC-2): подключённые устройства в раскрывающихся
+  разделах по категориям (в названии — сколько выбрано)
   («Клавиатуры, мыши и тачпады», «Геймпады и джойстики», «Сенсорные экраны и планшеты», «Другие»,
   «Виртуальные устройства») с галочками — «ID 2dc8:310a 8BitDo Ultimate 2C Wireless Controller».
   Свои устройства mKey — в «Виртуальных», без галочки (mKey их не читает). Ниже — классы «по
@@ -83,8 +84,15 @@
   {#each CATEGORIES as cat (cat)}
     {@const list = devices.filter((d) => d.category === cat)}
     {#if list.length}
-      <fieldset>
-        <legend>{t("rec.cat." + cat)}</legend>
+      {@const pickable = list.filter((d) => !d.own)}
+      <details class="cat">
+        <summary
+          >{t("rec.cat_count", {
+            name: t("rec.cat." + cat),
+            n: pickable.filter((d) => d.selected).length,
+            total: pickable.length,
+          })}</summary
+        >
         {#each list as d (d.path)}
           {#if d.own}
             <div class="own muted">
@@ -101,14 +109,14 @@
             >
           {/if}
         {/each}
-      </fieldset>
+      </details>
     {/if}
   {/each}
 
   <!-- Классы по умолчанию: для устройств без своей галочки и подключённых позже -->
   {#if settings}
-    <fieldset>
-      <legend>{t("rec.kinds_default")}</legend>
+    <details class="cat">
+      <summary>{t("rec.kinds_default")}</summary>
       <p class="muted hint">{t("rec.kinds_default_hint")}</p>
       <div class="kinds">
         {#each KINDS as k (k)}
@@ -122,7 +130,7 @@
           >
         {/each}
       </div>
-    </fieldset>
+    </details>
   {/if}
 </div>
 
@@ -132,15 +140,17 @@
     flex-direction: column;
     gap: 8px;
   }
-  fieldset {
+  .cat {
     border: 1px solid var(--border);
     border-radius: var(--radius-s);
-    margin: 0;
-    padding: 6px 12px 8px;
+    padding: 6px 12px;
   }
-  legend {
+  .cat summary {
     font-weight: 600;
-    padding: 0 4px;
+    cursor: pointer;
+  }
+  .cat[open] summary {
+    margin-bottom: 4px;
   }
   .check {
     display: flex;

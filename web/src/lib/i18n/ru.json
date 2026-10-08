@@ -396,6 +396,7 @@
   "rec.cat.other": "Другие",
   "rec.cat.touch": "Сенсорные экраны и планшеты",
   "rec.cat.virtual": "Виртуальные устройства",
+  "rec.cat_count": "{name} ({n} из {total})",
   "rec.cli_hint": "То же из терминала: mkey rec <имя> — записать, mkey play <имя> — повторить.",
   "rec.convert": "Сделать событие",
   "rec.convert_go": "Сделать",
