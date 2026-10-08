@@ -144,6 +144,17 @@ responsibility.
 Settings → "Uninstall mKey" or `mkey uninstall` (you can keep your projects and settings).
 If installed from a package, then also remove the `mkey` package with your package manager.
 
+## Support the author
+
+If mKey helps you, support the author on **[Boosty](https://boosty.to/khameleonium)**. It helps
+keep the program growing: new devices, games and features.
+
 ## License
 
-[MIT](LICENSE). Creator: Ilya Ulyanov | khameleonium
+Since version 0.9.4 — **[PolyForm Noncommercial 1.0.0](LICENSE)**: mKey is free for personal and
+other noncommercial use (home, games, learning, schools, charities). Company use, selling built
+macros and paid services need the author's license — see [COMMERCIAL.md](COMMERCIAL.md). Versions
+up to and including 0.9.3 are under MIT. The plugin SDK (`pkg/pluginsdk`) and the example plugins
+are under MIT.
+
+Creator: Ilya Ulyanov | khameleonium

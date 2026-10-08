@@ -69,7 +69,7 @@ nfpms:
       Hotkeys, a macro language, recording and replay, virtual gamepads, a racing wheel
       and a flight stick with keyboard and mouse bindings, a visual event builder and plugins.
       Works on X11 and Wayland via evdev/uinput.
-    license: MIT
+    license: PolyForm-Noncommercial-1.0.0
     section: utils
     formats: [deb, rpm, apk, archlinux]
     bindir: /usr/bin
@@ -110,6 +110,8 @@ release:
     Макросы клавиатуры и мыши для Linux · Keyboard and mouse macros for Linux.
 
     Создатель: Илья Ульянов | khameleonium · Creator: Ilya Ulyanov | khameleonium
+
+    Лицензия: бесплатно для некоммерческого использования (PolyForm Noncommercial 1.0.0), коммерческое — [по лицензии автора](https://github.com/khameleonium/mKey/blob/main/COMMERCIAL.md) · License: free for noncommercial use; commercial use needs the author's license. ♥ [Поддержать автора / Support the author](https://boosty.to/khameleonium)
 
     **Установка:** скачайте `mkey_{{ .Version }}_linux_amd64.tar.gz` (обычный компьютер) или `…_arm64.tar.gz` (ARM),
     распакуйте и запустите `mkey` — мастер объяснит каждый шаг. Есть и пакеты: `.deb`, `.rpm`, `.pkg.tar.zst`, `.apk`.
