@@ -115,6 +115,15 @@ type Binding struct {
 	// RampMS — кнопка → ось: за сколько миллисекунд ось плавно доходит до положения Value
 	// (0 — сразу), 0…5000.
 	RampMS int `yaml:"ramp_ms,omitempty" json:"ramp_ms,omitempty"`
+	// Steer — мышь → ось «как руль» (ADR-0040): движение мыши поворачивает ось, и она остаётся
+	// в этом положении, когда мышь остановилась (без Steer — возвращается в центр).
+	Steer bool `yaml:"steer,omitempty" json:"steer,omitempty"`
+	// RecenterMS — с Steer: за сколько миллисекунд ось сама возвращается из упора в центр,
+	// когда мышь не движется (0 — держит положение), 0…10000.
+	RecenterMS int `yaml:"recenter_ms,omitempty" json:"recenter_ms,omitempty"`
+	// Curve — ось → ось: кривая отклика 0.2…5 (0 — 1, прямая): больше 1 — точнее у центра и
+	// быстрее к краю, меньше 1 — наоборот.
+	Curve float64 `yaml:"curve,omitempty" json:"curve,omitempty"`
 }
 
 // VirtualDevice — виртуальное устройство проекта.

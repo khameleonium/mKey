@@ -23,6 +23,11 @@ const (
 	MaxSensitivity = 10
 	// MaxRampMS — плавный наклон дольше 5 с не нужен ни в одной игре.
 	MaxRampMS = 5000
+	// MaxRecenterMS — возврат руля в центр дольше 10 с от «держит положение» не отличить.
+	MaxRecenterMS = 10000
+	// MinCurve и MaxCurve — пределы кривой отклика: за ними ось почти не двигается или сразу в упоре.
+	MinCurve = 0.2
+	MaxCurve = 5
 )
 
 // CompiledBinding — проверенная привязка, готовая к исполнению.
@@ -33,13 +38,16 @@ type CompiledBinding struct {
 	To BindingTarget
 	// Hide — прятать источник от системы.
 	Hide bool
-	// Invert, Deadzone, Sensitivity (1, если не задана), Threshold, Ramp — настройки
-	// (project.Binding).
+	// Invert, Deadzone, Sensitivity (1, если не задана), Threshold, Ramp, Steer, Recenter, Curve
+	// (1, если не задана) — настройки (project.Binding).
 	Invert      bool
 	Deadzone    float64
 	Sensitivity float64
 	Threshold   float64
 	Ramp        time.Duration
+	Steer       bool
+	Recenter    time.Duration
+	Curve       float64
 }
 
 // CompileBinding проверяет привязку b с уже разобранным источником src (кнопка или ось, см.
@@ -48,9 +56,9 @@ type CompiledBinding struct {
 //
 //	кнопка → кнопка   без настроек
 //	кнопка → ось      value (−1…1, не 0), ramp_ms
-//	ось → ось         invert, deadzone, sensitivity
+//	ось → ось         invert, deadzone, sensitivity, curve
 //	ось → кнопка      threshold (−1…1, не 0), invert, deadzone
-//	мышь → ось        invert, sensitivity
+//	мышь → ось        invert, sensitivity, steer, recenter_ms (только со steer)
 //	мышь → кнопка     threshold (знак — направление), invert
 //
 // Ошибка — *dsl.Error: ошибки ParseBindingTo, dsl.binding_value, dsl.axis_expected,
@@ -63,16 +71,21 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	}
 	name := strings.Trim(b.From, "{} ") + " → " + strings.Trim(b.To, "{} ")
 	c := CompiledBinding{From: src, To: to, Hide: b.Hide, Invert: b.Invert, Deadzone: b.Deadzone,
-		Sensitivity: b.Sensitivity, Threshold: b.Threshold, Ramp: time.Duration(b.RampMS) * time.Millisecond}
+		Sensitivity: b.Sensitivity, Threshold: b.Threshold, Ramp: time.Duration(b.RampMS) * time.Millisecond,
+		Steer: b.Steer, Recenter: time.Duration(b.RecenterMS) * time.Millisecond, Curve: b.Curve}
 	if c.Sensitivity == 0 {
 		c.Sensitivity = 1
+	}
+	if c.Curve == 0 {
+		c.Curve = 1
 	}
 
 	// Какие настройки заданы и какие допустимы для этого вида привязки.
 	axisSrc := src.Type == evdev.EvAbs || src.Type == evdev.EvRel
 	set := map[string]bool{
 		"value": b.Value != 0, "ramp_ms": b.RampMS != 0, "invert": b.Invert, "deadzone": b.Deadzone != 0,
-		"sensitivity": b.Sensitivity != 0, "threshold": b.Threshold != 0,
+		"sensitivity": b.Sensitivity != 0, "threshold": b.Threshold != 0, "steer": b.Steer,
+		"recenter_ms": b.RecenterMS != 0, "curve": b.Curve != 0,
 	}
 	var allowed []string
 	switch {
@@ -81,17 +94,19 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	case !axisSrc:
 		allowed = nil
 	case src.Type == evdev.EvAbs && to.Axis:
-		allowed = []string{"invert", "deadzone", "sensitivity"}
+		allowed = []string{"invert", "deadzone", "sensitivity", "curve"}
 	case src.Type == evdev.EvAbs:
 		allowed = []string{"threshold", "invert", "deadzone"}
+	case to.Axis && b.Steer:
+		allowed = []string{"invert", "sensitivity", "steer", "recenter_ms"}
 	case to.Axis:
-		allowed = []string{"invert", "sensitivity"}
+		allowed = []string{"invert", "sensitivity", "steer"}
 	default:
 		allowed = []string{"threshold", "invert"}
 	}
 
 	// Лишняя настройка — понятная ошибка; «положение у кнопки» — прежняя, более точная.
-	for _, opt := range []string{"value", "ramp_ms", "invert", "deadzone", "sensitivity", "threshold"} {
+	for _, opt := range []string{"value", "ramp_ms", "invert", "deadzone", "sensitivity", "threshold", "steer", "recenter_ms", "curve"} {
 		if !set[opt] || slices.Contains(allowed, opt) {
 			continue
 		}
@@ -111,17 +126,20 @@ func CompileBinding(b project.Binding, src DeviceKey, own []project.VirtualDevic
 	to.Value = b.Value
 	c.To = to
 
-	// Пределы значений.
+	// Пределы значений (0 у кривой — «не задана», поэтому её проверяем, только если задана).
 	for _, r := range []struct {
 		opt      string
 		v        float64
 		min, max float64
+		set      bool
 	}{
-		{"deadzone", b.Deadzone, 0, MaxDeadzone},
-		{"sensitivity", b.Sensitivity, 0, MaxSensitivity},
-		{"ramp_ms", float64(b.RampMS), 0, MaxRampMS},
+		{"deadzone", b.Deadzone, 0, MaxDeadzone, true},
+		{"sensitivity", b.Sensitivity, 0, MaxSensitivity, true},
+		{"ramp_ms", float64(b.RampMS), 0, MaxRampMS, true},
+		{"recenter_ms", float64(b.RecenterMS), 0, MaxRecenterMS, true},
+		{"curve", b.Curve, MinCurve, MaxCurve, b.Curve != 0},
 	} {
-		if r.v < r.min || r.v > r.max {
+		if r.set && (r.v < r.min || r.v > r.max) {
 			return CompiledBinding{}, dsl.NewError(dsl.Pos{}, dsl.ErrBindingRange, "name", name, "option", r.opt,
 				"min", strconv.FormatFloat(r.min, 'g', -1, 64), "max", strconv.FormatFloat(r.max, 'g', -1, 64))
 		}
