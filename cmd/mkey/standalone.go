@@ -130,9 +130,15 @@ func runStandalone(tr *i18n.Translator, exe string, c bundle.Contents) int {
 	logger := slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	// Модули без лишних; без проекта-примера; без устройств — только для проверок (MKEY_FAKE_BACKENDS).
+	// В режиме «выполнить и выйти» нет и значка в трее: он появился бы на секунду и пропал, а
+	// служба значков некоторых окружений падает от быстро исчезающих значков (SPEC §14, вопрос 5).
+	skip := standaloneSkip
+	if c.Manifest.Mode == bundle.ModeOnce {
+		skip = append(slices.Clone(skip), "tray")
+	}
 	var modules []registry.Entry
 	for _, e := range app.Modules() {
-		if !slices.Contains(standaloneSkip, e.Module.ID()) {
+		if !slices.Contains(skip, e.Module.ID()) {
 			modules = append(modules, e)
 		}
 	}
