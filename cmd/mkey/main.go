@@ -32,6 +32,11 @@ func main() {
 	}
 	tr := i18n.New(cat, lang)
 
+	// Собранный файл макроса (в конце программы — проект): работает сам, без команд mkey.
+	if handled, code := standaloneMain(tr, os.Args[1:]); handled {
+		os.Exit(code)
+	}
+
 	// Выполняем команду; ошибку печатаем на языке пользователя
 	// (готовые сообщения вроде ошибки в макросе — без префикса «Ошибка:»).
 	if err := newRootCmd(tr).Execute(); err != nil {
