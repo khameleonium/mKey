@@ -18,11 +18,14 @@ func defaultName(t time.Time) string {
 	return "mKeyRec_" + t.Format("02012006_150405")
 }
 
-// knownKinds — классы устройств, которые можно записывать.
-var knownKinds = []string{
-	string(ev.KindKeyboard), string(ev.KindMouse), string(ev.KindTouchpad), string(ev.KindTouchscreen),
-	string(ev.KindTablet), string(ev.KindGamepad), string(ev.KindJoystick), string(ev.KindOther),
-}
+// knownKinds — классы устройств, которые можно записывать (все классы evdev).
+var knownKinds = func() []string {
+	out := make([]string, len(ev.AllKinds))
+	for i, k := range ev.AllKinds {
+		out[i] = string(k)
+	}
+	return out
+}()
 
 // maxMergeMS — верхний предел окон склейки движений (больше секунды — путь курсора теряется).
 const maxMergeMS = 1000
@@ -66,15 +69,26 @@ func (m *Module) RecordSettings() contracts.RecordSettings {
 	return m.settingsOf(m.cfg)
 }
 
-// SetRecordSettings проверяет и меняет настройки записи; идущая запись дописывается
-// с прежними (contracts.Recorder).
+// SetRecordSettings проверяет и меняет настройки записи и сохраняет их в config.yaml
+// (modules.recorder), если демон дал contracts.ConfigWriter; идущая запись дописывается
+// с прежними (contracts.Recorder). Меняют из окна и из меню значка — результат один.
 func (m *Module) SetRecordSettings(s contracts.RecordSettings) error {
 	if err := checkSettings(s); err != nil {
 		return err
 	}
+
+	// Применяем.
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.cfg.Kinds, m.cfg.Moves, m.cfg.MergeMovesMS = slices.Clone(s.Kinds), s.Moves, s.MergeMovesMS
 	m.cfg.CenterPointer, m.cfg.CoalesceMS = s.CenterPointer, s.CoalesceMS
-	return nil
+	m.mu.Unlock()
+
+	// Сохраняем в файл настроек.
+	if m.writer == nil {
+		return nil
+	}
+	return m.writer.SetModuleValues(ModuleID, []contracts.ConfigValue{
+		{Key: "kinds", Value: s.Kinds}, {Key: "moves", Value: s.Moves}, {Key: "merge_moves_ms", Value: s.MergeMovesMS},
+		{Key: "center_pointer", Value: s.CenterPointer}, {Key: "coalesce_ms", Value: s.CoalesceMS},
+	})
 }

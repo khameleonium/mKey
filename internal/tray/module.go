@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/evdev"
 	"github.com/khameleonium/mKey/internal/lib/sni"
 )
 
@@ -180,6 +182,10 @@ func (m *Module) watch(ctx context.Context, emer, resumed, changes <-chan contra
 			}
 			if menuTopics[e.Topic] {
 				m.refresh()
+			}
+			// Запись без единого действия — предупредить, как бы её ни закончили (сочетание, окно, меню).
+			if info, ok := e.Payload.(contracts.RecordingInfo); ok && e.Topic == contracts.TopicRecordingStopped && info.Events == 0 {
+				m.notifyEmpty(info)
 			}
 		}
 	}
@@ -392,7 +398,59 @@ func (m *Module) recordMenu() []sni.MenuItem {
 		}
 		items = append(items, sub)
 	}
+	if k := m.kindsMenu(); k != nil {
+		items = append(items, *k)
+	}
 	return items
+}
+
+// kindsMenu — подменю «Что записывать»: галочки классов устройств из настроек записи; щелчок
+// включает или выключает класс (настройку сохраняет в config.yaml модуль записи).
+func (m *Module) kindsMenu() *sni.MenuItem {
+	if m.recorder == nil {
+		return nil
+	}
+	on := m.recorder.RecordSettings().Kinds
+	sub := sni.MenuItem{Label: m.tr.T("tray.record_kinds")}
+	for _, k := range evdev.AllKinds {
+		kind := string(k)
+		checked := slices.Contains(on, kind)
+		sub.Children = append(sub.Children, sni.MenuItem{
+			Label: m.tr.T("device.kind." + kind), Checkable: true, Checked: checked,
+			OnClick: func() { m.toggleKind(kind, !checked) },
+		})
+	}
+	return &sub
+}
+
+// toggleKind включает или выключает запись устройств класса kind и обновляет меню.
+func (m *Module) toggleKind(kind string, on bool) {
+	s := m.recorder.RecordSettings()
+	s.Kinds = slices.DeleteFunc(slices.Clone(s.Kinds), func(k string) bool { return k == kind })
+	if on {
+		s.Kinds = append(s.Kinds, kind)
+	}
+	if err := m.recorder.SetRecordSettings(s); err != nil {
+		title := m.tr.T("tray.error")
+		if len(s.Kinds) == 0 {
+			title = m.tr.T("tray.record_kinds_empty")
+		}
+		m.notify(title, err.Error())
+	}
+	m.refresh()
+}
+
+// notifyEmpty предупреждает, что в записи нет ни одного действия, и называет, какие устройства
+// записываются, — чаще всего нужное устройство (например, геймпад) просто не выбрано.
+func (m *Module) notifyEmpty(info contracts.RecordingInfo) {
+	var names []string
+	if m.recorder != nil {
+		for _, k := range m.recorder.RecordSettings().Kinds {
+			names = append(names, m.tr.T("device.kind."+k))
+		}
+	}
+	m.notify("mKey", m.tr.T("tray.recording_empty",
+		contracts.Arg{Name: "name", Value: info.Name}, contracts.Arg{Name: "kinds", Value: strings.Join(names, ", ")}))
 }
 
 // projectTitle — название проекта для меню: имя, иначе ID.
@@ -417,6 +475,10 @@ func (m *Module) stopRecording() {
 	info, err := m.recorder.StopRecording("")
 	if err != nil {
 		m.notify(m.tr.T("tray.error"), err.Error())
+		return
+	}
+	// Пустую запись не называем сохранённой — о ней предупреждает notifyEmpty (по событию шины).
+	if info.Events == 0 {
 		return
 	}
 	m.notify("mKey", m.tr.T("tray.recording_saved", contracts.Arg{Name: "name", Value: info.Name}))

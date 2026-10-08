@@ -7,10 +7,12 @@
 <script lang="ts">
   import { api } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
+  import { toast } from "./lib/toast.svelte";
   import { setLang, t } from "./lib/i18n/index.svelte";
   import { setTheme } from "./lib/theme.svelte";
   import { href, navigate, route } from "./lib/router.svelte";
-  import { connect, live, refreshStatus } from "./lib/stream.svelte";
+  import { connect, live, onTopic, refreshStatus } from "./lib/stream.svelte";
+  import type { RecordingInfo } from "./lib/types";
   import DevicesPage from "./features/devices/DevicesPage.svelte";
   import DiagnosticsPage from "./features/diagnostics/DiagnosticsPage.svelte";
   import EditorPage from "./features/editor/EditorPage.svelte";
@@ -59,6 +61,20 @@
       // Демон недоступен — остаются язык и тема, запомненные браузером.
     }
   }
+
+  // Запись без единого действия (как бы её ни закончили) — предупреждение в любом разделе окна:
+  // чаще всего нужное устройство (например, геймпад) не отмечено в «Что записывать».
+  $effect(() =>
+    onTopic("recorder.stopped", (data) => {
+      const info = data as RecordingInfo | null;
+      if (!info || info.events > 0) return;
+      void api
+        .recordSettings()
+        .then((s) => s.kinds.map((k) => t("devices.kind." + k)).join(", "))
+        .catch(() => "")
+        .then((kinds) => toast(t("rec.empty", { name: info.name, kinds }), "error"));
+    }),
+  );
 
   // Поток новостей, состояние, язык и тема из настроек и проверка первого запуска — при открытии окна.
   $effect(() => {

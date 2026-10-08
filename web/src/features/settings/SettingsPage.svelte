@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
+  import { KINDS } from "../../lib/kinds";
   import { comboText } from "../../lib/combo";
   import KeyCapture from "../../lib/components/KeyCapture.svelte";
   import Modal from "../../lib/components/Modal.svelte";
@@ -16,18 +17,6 @@
   import { errorText, toast } from "../../lib/toast.svelte";
   import UpdateCard from "../update/UpdateCard.svelte";
   import type { RecordSettings, Timing } from "../../lib/types";
-
-  /** KINDS — устройства, которые можно записывать (порядок — как в списке). */
-  const KINDS = [
-    "keyboard",
-    "mouse",
-    "touchpad",
-    "touchscreen",
-    "tablet",
-    "gamepad",
-    "joystick",
-    "other",
-  ];
 
   /** saveInterface запоминает язык и тему в config.yaml (их же видят команды и меню значка). */
   function saveInterface(): void {

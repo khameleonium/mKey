@@ -208,8 +208,13 @@ func runRec(cmd *cobra.Command, tr *i18n.Translator, name string, countdown int,
 	return nil
 }
 
-// printSaved печатает итог записи и подсказку, как её повторить.
+// printSaved печатает итог записи и подсказку, как её повторить; пустая запись — предупреждение,
+// как выбрать записываемые устройства.
 func printSaved(out io.Writer, tr *i18n.Translator, info contracts.RecordingInfo) {
+	if info.Events == 0 {
+		printf(out, "%s\n", tr.T("cli.rec.empty", i18n.A("name", info.Name), i18n.A("file", info.Path)))
+		return
+	}
 	printf(out, "%s\n", tr.T("cli.rec.saved", i18n.A("name", info.Name), i18n.A("seconds", seconds(info.DurationMS)),
 		i18n.A("events", info.Events), i18n.A("play", "mkey play "+shellQuote(info.Name)), i18n.A("file", info.Path)))
 }

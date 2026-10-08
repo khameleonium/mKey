@@ -70,6 +70,8 @@ type Module struct {
 	projects contracts.Projects
 	events   contracts.Events
 	tr       contracts.Translator
+	// writer сохраняет настройки записи в config.yaml (nil — без демона, например в тестах).
+	writer contracts.ConfigWriter
 
 	// mu защищает sess, plays и chord.
 	mu sync.Mutex
@@ -130,6 +132,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	m.vdm, _ = contracts.LookupService[contracts.VirtualDeviceManager](s)
 	m.projects, _ = contracts.LookupService[contracts.Projects](s)
 	m.events, _ = contracts.LookupService[contracts.Events](s)
+	m.writer, _ = contracts.LookupService[contracts.ConfigWriter](s)
 
 	// Сервисы и действие play.
 	if err := contracts.ProvideService[contracts.Recorder](s, m); err != nil {

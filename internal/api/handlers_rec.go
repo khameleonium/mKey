@@ -76,8 +76,9 @@ func (m *Module) handleRecordSettingsGet(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, m.svc.recorder.RecordSettings())
 }
 
-// handleRecordSettingsPut меняет настройки записи по умолчанию: применяются со следующей записи
-// и сохраняются в config.yaml (modules.recorder). Неверные — 400 api.record_settings_bad.
+// handleRecordSettingsPut меняет настройки записи по умолчанию: применяются со следующей записи;
+// в config.yaml (modules.recorder) их сохраняет сам модуль записи. Неверные — 400
+// api.record_settings_bad.
 func (m *Module) handleRecordSettingsPut(w http.ResponseWriter, r *http.Request) {
 	if m.svc.recorder == nil {
 		m.unavailable(w, r)
@@ -88,20 +89,16 @@ func (m *Module) handleRecordSettingsPut(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Применяем и сохраняем в config.yaml одной записью.
+	// Применяем (модуль записи сам сохраняет настройки в config.yaml).
 	if err := m.svc.recorder.SetRecordSettings(req); err != nil {
-		m.writeError(w, r, http.StatusBadRequest, "api.record_settings_bad", map[string]string{"error": err.Error()})
+		if errors.Is(err, contracts.ErrBadRecordSettings) {
+			m.writeError(w, r, http.StatusBadRequest, "api.record_settings_bad", map[string]string{"error": err.Error()})
+		} else {
+			m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
+		}
 		return
 	}
-	s := m.svc.recorder.RecordSettings()
-	if err := config.SetModuleValues(m.cfg.ConfigFile, "recorder", []config.KeyValue{
-		{Key: "kinds", Value: s.Kinds}, {Key: "moves", Value: s.Moves}, {Key: "merge_moves_ms", Value: s.MergeMovesMS},
-		{Key: "center_pointer", Value: s.CenterPointer}, {Key: "coalesce_ms", Value: s.CoalesceMS},
-	}); err != nil {
-		m.writeError(w, r, http.StatusInternalServerError, "api.internal", map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, s)
+	writeJSON(w, http.StatusOK, m.svc.recorder.RecordSettings())
 }
 
 // handleRecordings возвращает сохранённые записи и идущую запись (если есть).

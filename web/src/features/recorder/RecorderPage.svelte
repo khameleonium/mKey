@@ -1,7 +1,8 @@
 <!--
   RecorderPage — раздел «Записи» (FR-REC-2, FR-REC-4, FR-REC-6, T6.5): начать и закончить запись
   ввода, список сохранённых записей, воспроизведение (с отсчётом, скоростью и повторами),
-  превращение записи в блоки конструктора («Сделать событие») и удаление.
+  превращение записи в блоки конструктора («Сделать событие») и удаление. Галочки «Что записывать»
+  меняют настройки записи сразу (их же видно в «Настройках» и меню значка).
   То же умеют команды `mkey rec` и `mkey play`. Props: нет.
 -->
 <script lang="ts">
@@ -12,8 +13,9 @@
   import { navigate } from "../../lib/router.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
+  import { KINDS } from "../../lib/kinds";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type { RecordingInfo } from "../../lib/types";
+  import type { RecordingInfo, RecordSettings } from "../../lib/types";
 
   /** Данные раздела: записи и идущая запись. */
   let list = $state<RecordingInfo[]>([]);
@@ -29,6 +31,20 @@
   let countdown = $state(0);
   /** hotkey — сочетание «начать/закончить запись» ("" — выключено) для подсказки. */
   let hotkey = $state("");
+  /** rec — настройки записи (что записывать); null — ещё не загружены или недоступны. */
+  let rec = $state<RecordSettings | null>(null);
+
+  /** toggleKind включает или выключает запись устройств класса kind (сохраняется сразу). */
+  async function toggleKind(kind: string, on: boolean): Promise<void> {
+    if (!rec) return;
+    const kinds = on ? [...rec.kinds, kind] : rec.kinds.filter((k) => k !== kind);
+    try {
+      rec = await api.setRecordSettings({ ...rec, kinds });
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  }
+
   /** abort — отмена идущего воспроизведения (закрывает запрос — демон останавливает повтор). */
   let abort: AbortController | null = null;
 
@@ -46,6 +62,10 @@
   // Загрузка при открытии и при начале/конце записи (в том числе сочетанием в другой программе).
   $effect(() => {
     void load();
+    api
+      .recordSettings()
+      .then((s) => (rec = s))
+      .catch(() => (rec = null));
     api
       .hotkeys()
       .then((h) => (hotkey = h.record ?? ""))
@@ -70,7 +90,9 @@
   async function stop(): Promise<void> {
     try {
       const info = await api.stopRecording();
-      toast(t("rec.saved", { name: info.name, seconds: (info.duration_ms / 1000).toFixed(1) }));
+      // Пустая запись — о ней предупреждает окно целиком (App.svelte), «сохранена» не пишем.
+      if (info.events > 0)
+        toast(t("rec.saved", { name: info.name, seconds: (info.duration_ms / 1000).toFixed(1) }));
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -166,6 +188,22 @@
         <input bind:value={name} placeholder={t("rec.name_placeholder")} />
         <button class="primary" onclick={start}>⏺ {t("rec.start")}</button>
       </div>
+      {#if rec}
+        <!-- Что записывать: классы устройств (сохраняются сразу) -->
+        <div class="kinds" role="group" aria-label={t("rec.kinds")}>
+          <span class="muted">{t("rec.kinds")}</span>
+          {#each KINDS as k (k)}
+            <label class="check"
+              ><input
+                type="checkbox"
+                checked={rec.kinds.includes(k)}
+                onchange={(e) => void toggleKind(k, e.currentTarget.checked)}
+              />
+              {t("devices.kind." + k)}</label
+            >
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -260,6 +298,18 @@
   }
   .rec.on {
     border-left: 6px solid var(--danger);
+  }
+  .kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .kinds .check {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
   }
   .rec h2,
   .rec p {

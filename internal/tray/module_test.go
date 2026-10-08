@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -256,6 +257,7 @@ type fullServices struct {
 	played    []string
 	stopped   int
 	notices   []string
+	kinds     []string
 }
 
 func (f *fullServices) List() []contracts.ProjectState {
@@ -312,8 +314,23 @@ func (f *fullServices) StopRecording(string) (contracts.RecordingInfo, error) {
 	f.mu.Lock()
 	f.recording = false
 	f.mu.Unlock()
-	f.b.Publish(contracts.TopicRecordingStopped, nil)
-	return contracts.RecordingInfo{Name: "2026-10-01"}, nil
+	info := contracts.RecordingInfo{Name: "2026-10-01", Events: 3}
+	f.b.Publish(contracts.TopicRecordingStopped, info)
+	return info, nil
+}
+func (f *fullServices) RecordSettings() contracts.RecordSettings {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return contracts.RecordSettings{Kinds: slices.Clone(f.kinds)}
+}
+func (f *fullServices) SetRecordSettings(s contracts.RecordSettings) error {
+	if len(s.Kinds) == 0 {
+		return contracts.ErrBadRecordSettings
+	}
+	f.mu.Lock()
+	f.kinds = slices.Clone(s.Kinds)
+	f.mu.Unlock()
+	return nil
 }
 func (f *fullServices) Recordings() ([]contracts.RecordingInfo, error) {
 	return []contracts.RecordingInfo{{Name: "game"}, {Name: "broken", Problem: &contracts.RecordingProblem{Code: "key"}}}, nil
@@ -338,7 +355,7 @@ func (f *fullServices) Notify(_ context.Context, _, body string) error {
 func TestFullMenu(t *testing.T) {
 	t.Parallel()
 	m, svc, item := newTestModule(t)
-	full := &fullServices{b: m.bus, enabled: map[string]bool{"games": true}}
+	full := &fullServices{b: m.bus, enabled: map[string]bool{"games": true}, kinds: []string{"keyboard", "mouse"}}
 	m.projects, m.events, m.recorder, m.player, m.runner, m.notifier = full, full, full, full, full, full
 	ext := registry.NewExtensions()
 	for _, id := range []string{contracts.PlaceProjects, contracts.PlaceRecordings} {
@@ -351,7 +368,7 @@ func TestFullMenu(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	// Разделы меню; у проектов — галочки, «Повторить запись» — без записей с ошибкой.
-	want := "Open mKey|-|Projects|Run event|-|● Start recording|Replay recording|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey|-|Creator: " + buildinfo.Creator
+	want := "Open mKey|-|Projects|Run event|-|● Start recording|Replay recording|What to record|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey|-|Creator: " + buildinfo.Creator
 	if got := strings.Join(item.labels(), "|"); got != want {
 		t.Fatalf("menu =\n%s\nwant\n%s", got, want)
 	}
@@ -389,6 +406,34 @@ func TestFullMenu(t *testing.T) {
 		full.mu.Lock()
 		defer full.mu.Unlock()
 		return len(full.ran) == 1 && full.stopped == 2 && len(full.notices) == 2
+	})
+
+	// «Что записывать»: галочки по настройкам; щелчок включает геймпад, последний класс не выключить.
+	item.mu.Lock()
+	kinds, _ := find(item.menu, "What to record")
+	item.mu.Unlock()
+	if len(kinds.Children) != 8 || !kinds.Children[0].Checked || kinds.Children[5].Checked || kinds.Children[5].Label != "gamepad" {
+		t.Fatalf("kinds: %+v", kinds.Children)
+	}
+	click(t, item, "gamepad")
+	eventually(t, func() bool { return slices.Contains(full.RecordSettings().Kinds, "gamepad") })
+	full.mu.Lock()
+	full.kinds = []string{"mouse"}
+	full.mu.Unlock()
+	m.refresh()
+	click(t, item, "mouse")
+	eventually(t, func() bool {
+		full.mu.Lock()
+		defer full.mu.Unlock()
+		return len(full.kinds) == 1 && strings.Contains(strings.Join(full.notices, "|"), "invalid recording settings")
+	})
+
+	// Пустая запись (как бы её ни закончили) — предупреждение, какие устройства записываются.
+	m.bus.Publish(contracts.TopicRecordingStopped, contracts.RecordingInfo{Name: "empty"})
+	eventually(t, func() bool {
+		full.mu.Lock()
+		defer full.mu.Unlock()
+		return strings.Contains(strings.Join(full.notices, "|"), `Recording "empty" has no actions. Recorded now: mouse.`)
 	})
 
 	// Папка проектов открывается (и создаётся, если её нет).

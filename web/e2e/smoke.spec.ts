@@ -84,3 +84,24 @@ test("devices page works without real devices", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Watch presses" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Watch/ }).last()).toBeEnabled();
 });
+
+test("recordings: what to record is saved at once", async ({ page }) => {
+  await page.getByRole("navigation").getByRole("link", { name: "Recordings" }).click();
+  const kinds = page.getByRole("group", { name: "What to record:" });
+  await kinds.getByLabel("gamepad").check();
+  // Настройка сохраняется сразу — в файле настроек и после перезагрузки окна.
+  const cfg = path.join(process.env.MKEY_E2E_ROOT ?? "", "config", "mkey", "config.yaml");
+  await expect.poll(() => fs.readFileSync(cfg, "utf8")).toMatch(/kinds: \[.*gamepad.*\]/);
+  await page.reload();
+  await expect(
+    page.getByRole("group", { name: "What to record:" }).getByLabel("gamepad"),
+  ).toBeChecked();
+});
+
+test("an empty recording is reported", async ({ page }) => {
+  // Без настоящих устройств запись всегда пустая — окно предупреждает, что записывается.
+  await page.getByRole("navigation").getByRole("link", { name: "Recordings" }).click();
+  await page.getByRole("button", { name: /Start recording/ }).click();
+  await page.getByRole("button", { name: /Stop/ }).first().click();
+  await expect(page.getByText(/has no actions\. Recorded now:/)).toBeVisible();
+});

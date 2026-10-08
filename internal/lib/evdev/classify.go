@@ -23,6 +23,9 @@ const (
 	KindOther Kind = "other"
 )
 
+// AllKinds — все классы устройств в порядке показа человеку (окно, меню значка, настройки записи).
+var AllKinds = []Kind{KindKeyboard, KindMouse, KindTouchpad, KindTouchscreen, KindTablet, KindGamepad, KindJoystick, KindOther}
+
 // Classify определяет классы устройства по его возможностям.
 // Устройство может относиться к нескольким классам (например, клавиатура со встроенным тачпадом);
 // результат никогда не пустой — в крайнем случае KindOther.

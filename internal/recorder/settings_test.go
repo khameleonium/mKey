@@ -75,3 +75,39 @@ func TestRecordSettings(t *testing.T) {
 		t.Fatalf("recording without moves:\n%s", text)
 	}
 }
+
+// memWriter — запись настроек в память вместо config.yaml.
+type memWriter struct {
+	module string
+	values map[string]any
+}
+
+// SetModuleValues запоминает значения.
+func (w *memWriter) SetModuleValues(module string, values []contracts.ConfigValue) error {
+	w.module, w.values = module, map[string]any{}
+	for _, v := range values {
+		w.values[v.Key] = v.Value
+	}
+	return nil
+}
+
+// TestRecordSettingsSaved: смена настроек записи сохраняется в config.yaml (modules.recorder),
+// неверные — не сохраняются.
+func TestRecordSettingsSaved(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newTestModule(t)
+	w := &memWriter{}
+	m.writer = w
+	s := m.RecordSettings()
+	s.Kinds = []string{"keyboard", "gamepad"}
+	if err := m.SetRecordSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	if w.module != "recorder" || strings.Join(w.values["kinds"].([]string), ",") != "keyboard,gamepad" {
+		t.Fatalf("saved %s %v", w.module, w.values)
+	}
+	w.module = ""
+	if err := m.SetRecordSettings(contracts.RecordSettings{}); err == nil || w.module != "" {
+		t.Fatalf("bad settings saved: %v", err)
+	}
+}

@@ -89,11 +89,11 @@ func (f *fakeRecorder) SetRecordSettings(s contracts.RecordSettings) error {
 	return nil
 }
 
-// TestRecordSettingsAPI проверяет чтение и сохранение настроек записи в config.yaml.
+// TestRecordSettingsAPI проверяет чтение и смену настроек записи (в config.yaml их сохраняет
+// модуль записи — проверено в его тестах).
 func TestRecordSettingsAPI(t *testing.T) {
 	t.Parallel()
 	m, _ := newTestModule(t)
-	m.cfg.ConfigFile = filepath.Join(t.TempDir(), "config.yaml")
 	rec := &fakeRecorder{settings: contracts.RecordSettings{Kinds: []string{"keyboard"}, Moves: true}}
 	m.svc.recorder, m.svc.player = rec, rec
 	h := m.routes(true)
@@ -103,7 +103,7 @@ func TestRecordSettingsAPI(t *testing.T) {
 		t.Fatalf("get: %v", out)
 	}
 
-	// Неверные — 400 с кодом; верные применяются и сохраняются в config.yaml.
+	// Неверные — 400 с кодом; верные передаются модулю записи.
 	if code, out := call(t, h, "PUT", "/api/v1/settings/recording", `{"kinds":[]}`, nil); code != 400 ||
 		out["error"].(map[string]any)["code"] != "api.record_settings_bad" {
 		t.Fatalf("bad: %d %v", code, out)
@@ -111,12 +111,6 @@ func TestRecordSettingsAPI(t *testing.T) {
 	body := `{"kinds":["keyboard","mouse"],"moves":false,"merge_moves_ms":0,"center_pointer":false,"coalesce_ms":4}`
 	if code, out := call(t, h, "PUT", "/api/v1/settings/recording", body, nil); code != 200 || rec.settings.Moves {
 		t.Fatalf("put: %d %v", code, out)
-	}
-	data, _ := os.ReadFile(m.cfg.ConfigFile)
-	for _, want := range []string{"kinds: [keyboard, mouse]", "moves: false", "merge_moves_ms: 0", "center_pointer: false"} {
-		if !strings.Contains(string(data), want) {
-			t.Errorf("no %q in config:\n%s", want, data)
-		}
 	}
 }
 
