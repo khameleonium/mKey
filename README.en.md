@@ -1,3 +1,5 @@
+<img src="packaging/mkey.svg" alt="mKey icon" width="96" align="right" />
+
 # mKey
 
 **Keyboard and mouse macros for Linux.** · [Русский](README.md)

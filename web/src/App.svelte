@@ -104,7 +104,7 @@
 <div class="app">
   <!-- Боковое меню -->
   <nav>
-    <a class="logo" href={href("home")}><span class="key">m</span> mKey</a>
+    <a class="logo" href={href("home")}><img class="key" src="/favicon.svg" alt="" /> mKey</a>
     {#each NAV as item (item.name)}
       <a class="nav" class:active={current === item.name} href={href(item.name)}>
         <span class="icon" aria-hidden="true">{item.icon}</span>
@@ -202,15 +202,10 @@
     text-decoration: none;
     padding: 4px 8px 14px;
   }
+  /* Значок программы (packaging/mkey.svg) рядом с названием. */
   .key {
-    display: inline-grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 7px;
-    background: #4f7cff;
-    color: #fff;
-    box-shadow: 0 3px 0 #2b3a55;
+    width: 32px;
+    height: 32px;
   }
   .nav {
     display: flex;

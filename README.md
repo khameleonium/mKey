@@ -1,3 +1,5 @@
+<img src="packaging/mkey.svg" alt="Значок mKey" width="96" align="right" />
+
 # mKey
 
 **Макросы клавиатуры и мыши для Linux.** · [English](README.en.md)
