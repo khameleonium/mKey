@@ -200,11 +200,16 @@ export interface VirtualTemplateInfo {
 }
 
 /** Запись монитора нажатий (GET /api/v1/input/watch, поток «input»). */
+/** Группы событий монитора, которые можно скрыть: колёсико, оси геймпадов, движения мыши, касания. */
+export type WatchGroup = "wheel" | "axes" | "moves" | "touch";
+
 export interface WatchEntry {
   time: string;
   device_name: string;
   device: string;
-  kind: "key" | "axis" | "wheel" | "move";
+  kind: "key" | "axis" | "wheel" | "move" | "touch";
+  /** Группа для галочек «Показывать»: клавиши и кнопки (keys) видны всегда. */
+  group: WatchGroup | "keys";
   /** Имя для макросов: "A", "UnKey001", "Sega.Start"; "#код" — имени нет. */
   name: string;
   kernel: string;

@@ -13,6 +13,7 @@ const entry = (e: Partial<WatchEntry>): WatchEntry => ({
   device: "/dev/input/event3",
   device_name: "Kbd",
   kind: "key",
+  group: "keys",
   name: "A",
   kernel: "KEY_A",
   code: 30,
@@ -27,6 +28,9 @@ describe("monitor texts", () => {
     expect(describeWatch(entry({ kind: "wheel", value: 1 }), t)).toBe("devices.ev_wheel +1");
     expect(describeWatch(entry({ kind: "move", value: -3, dy: 2 }), t)).toBe(
       "devices.ev_move -3,2",
+    );
+    expect(describeWatch(entry({ kind: "touch", group: "touch", name: "X", value: 512 }), t)).toBe(
+      "devices.ev_touch X,512",
     );
   });
 

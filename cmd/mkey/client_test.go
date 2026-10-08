@@ -82,21 +82,21 @@ func TestLifecycle(t *testing.T) {
 	}
 }
 
-// TestWatchPath проверяет адрес потока монитора: без параметров, с перемещениями и устройством
-// (название с пробелом и кириллицей кодируется).
+// TestWatchPath проверяет адрес потока монитора: все группы, ни одной (только клавиши и кнопки)
+// и устройство (название с пробелом и кириллицей кодируется).
 func TestWatchPath(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		moves  bool
+		show   []string
 		device string
 		want   string
 	}{
-		{false, "", "/api/v1/input/watch"},
-		{true, "", "/api/v1/input/watch?moves=1"},
-		{true, "Мышь USB", "/api/v1/input/watch?device=%D0%9C%D1%8B%D1%88%D1%8C+USB&moves=1"},
+		{watchGroups, "", "/api/v1/input/watch?show=wheel%2Caxes%2Cmoves%2Ctouch"},
+		{nil, "", "/api/v1/input/watch?show="},
+		{[]string{"moves"}, "Мышь USB", "/api/v1/input/watch?device=%D0%9C%D1%8B%D1%88%D1%8C+USB&show=moves"},
 	} {
-		if got := watchPath(c.moves, c.device); got != c.want {
-			t.Errorf("watchPath(%v, %q) = %q, want %q", c.moves, c.device, got, c.want)
+		if got := watchPath(c.show, c.device); got != c.want {
+			t.Errorf("watchPath(%v, %q) = %q, want %q", c.show, c.device, got, c.want)
 		}
 	}
 }

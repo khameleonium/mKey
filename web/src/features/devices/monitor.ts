@@ -1,5 +1,5 @@
 // Тексты монитора нажатий (FR-DEV-8): строка журнала для экрана и для файла, имя файла журнала.
-import type { WatchEntry } from "../../lib/types";
+import type { WatchEntry, WatchGroup } from "../../lib/types";
 
 /** Translate — функция перевода (t из i18n): ключ и параметры → текст. */
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -15,10 +15,15 @@ export function describeWatch(e: WatchEntry, t: Translate): string {
       return t("devices.ev_wheel", {
         value: (e.value ?? 0) > 0 ? "+" + String(e.value) : String(e.value),
       });
+    case "touch":
+      return t("devices.ev_touch", { axis: e.name, value: e.value ?? 0 });
     default:
       return t("devices.ev_move", { dx: e.value ?? 0, dy: e.dy ?? 0 });
   }
 }
+
+/** WATCH_GROUPS — группы событий для галочек «Показывать» в порядке показа. */
+export const WATCH_GROUPS: WatchGroup[] = ["wheel", "axes", "moves", "touch"];
 
 /** pad дополняет число нулями слева до width цифр. */
 function pad(n: number, width = 2): string {

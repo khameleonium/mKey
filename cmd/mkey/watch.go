@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -31,12 +33,17 @@ type watchEvent struct {
 	DY         int32     `json:"dy"`
 }
 
+// watchGroups — группы событий монитора, которые можно скрыть (`--show`); клавиши и кнопки
+// видны всегда. Порядок — порядок в справке.
+var watchGroups = []string{"wheel", "axes", "moves", "touch"}
+
 // newDevicesWatchCmd создаёт команду `mkey devices watch` — показывать нажатия на всех устройствах
 // (или на одном: --device) непрерывно, пока не нажат Ctrl+C (FR-DEV-8). Нажатия сохраняются
 // в файл, только если человек сам попросил об этом (--out).
 func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
 	var (
 		moves       bool
+		show        []string
 		device, out string
 	)
 	cmd := &cobra.Command{
@@ -45,6 +52,13 @@ func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
 		Long:  tr.T("cli.watch.long"),
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Проверяем группы событий: неизвестная — понятная ошибка со списком.
+			for _, g := range show {
+				if !slices.Contains(watchGroups, g) {
+					return errors.New(tr.T("cli.watch.bad_show", i18n.A("group", g), i18n.A("groups", strings.Join(watchGroups, ", "))))
+				}
+			}
+
 			// Ctrl+C заканчивает наблюдение.
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
@@ -67,7 +81,7 @@ func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
 			// Поток событий от демона: строки «data: {…}»; каждая — на экран и в файл. Подсказка —
 			// когда демон принял поток (устройство нашлось).
 			opened := func() { printf(screen, "%s\n\n", tr.T("cli.watch.started")) }
-			err := c.stream(ctx, watchPath(moves, device), opened, func(data []byte) {
+			err := c.stream(ctx, watchPath(show, device), opened, func(data []byte) {
 				var e watchEvent
 				if json.Unmarshal(data, &e) != nil {
 					return
@@ -88,23 +102,23 @@ func newDevicesWatchCmd(tr *i18n.Translator) *cobra.Command {
 			return err
 		},
 	}
+	cmd.Flags().StringSliceVar(&show, "show", watchGroups, tr.T("cli.watch.flag.show"))
+	// --moves — от прежних версий: перемещения теперь видны и так (`--show`); флаг принимается
+	// и ничего не меняет.
 	cmd.Flags().BoolVar(&moves, "moves", false, tr.T("cli.watch.flag.moves"))
+	_ = cmd.Flags().MarkHidden("moves")
 	cmd.Flags().StringVar(&device, "device", "", tr.T("cli.watch.flag.device"))
 	cmd.Flags().StringVar(&out, "out", "", tr.T("cli.watch.flag.out"))
 	return cmd
 }
 
-// watchPath — адрес потока монитора: перемещения мыши (moves) и фильтр по устройству (device).
-func watchPath(moves bool, device string) string {
+// watchPath — адрес потока монитора: какие группы событий показывать кроме клавиш и кнопок
+// (show) и фильтр по устройству (device).
+func watchPath(show []string, device string) string {
 	q := url.Values{}
-	if moves {
-		q.Set("moves", "1")
-	}
+	q.Set("show", strings.Join(show, ","))
 	if device != "" {
 		q.Set("device", device)
-	}
-	if len(q) == 0 {
-		return "/api/v1/input/watch"
 	}
 	return "/api/v1/input/watch?" + q.Encode()
 }
@@ -123,6 +137,8 @@ func formatWatch(tr *i18n.Translator, e watchEvent) string {
 		what = tr.T("cli.watch.axis", i18n.A("axis", e.Name), i18n.A("value", e.Value))
 	case "wheel":
 		what = tr.T("cli.watch.wheel", i18n.A("value", fmt.Sprintf("%+d", e.Value)))
+	case "touch":
+		what = tr.T("cli.watch.touch", i18n.A("axis", e.Name), i18n.A("value", e.Value))
 	default:
 		what = tr.T("cli.watch.move", i18n.A("dx", fmt.Sprintf("%+d", e.Value)), i18n.A("dy", fmt.Sprintf("%+d", e.DY)))
 	}

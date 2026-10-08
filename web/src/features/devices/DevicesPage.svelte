@@ -17,9 +17,10 @@
     VirtualDeviceInfo,
     VirtualTemplateInfo,
     WatchEntry,
+    WatchGroup,
   } from "../../lib/types";
   import GamepadWizard from "./GamepadWizard.svelte";
-  import { clockText, describeWatch, logFileName, logText } from "./monitor";
+  import { WATCH_GROUPS, clockText, describeWatch, logFileName, logText } from "./monitor";
   import DeviceDetails from "../inspector/DeviceDetails.svelte";
   import RenameDialog from "../inspector/RenameDialog.svelte";
 
@@ -37,11 +38,17 @@
   let vtemplates = $state<VirtualTemplateInfo[]>([]);
   let wizard = $state(false);
 
-  /** watching — монитор включён; moves — показывать перемещения мыши; only — путь устройства,
+  /** watching — монитор включён; show — какие группы событий показывать (галочки, по умолчанию
+   *  все; клавиши и кнопки видны всегда; меняются и во время наблюдения); only — путь устройства,
    *  за которым следить ("" — все); log — записи на экране (новые сверху); saved — все записи
    *  наблюдения по порядку для «Сохранить в файл» (не больше MAX_SAVED). */
   let watching = $state(false);
-  let moves = $state(false);
+  let show = $state<Record<WatchGroup, boolean>>({
+    wheel: true,
+    axes: true,
+    moves: true,
+    touch: true,
+  });
   let only = $state("");
   let log = $state<(WatchEntry & { id: number })[]>([]);
   let saved: WatchEntry[] = [];
@@ -65,9 +72,9 @@
     saved = [];
     savedCount = 0;
     watching = true;
-    const q = [moves ? "moves=1" : "", only ? "device=" + encodeURIComponent(only) : ""];
-    const query = q.filter(Boolean).join("&");
-    source = new EventSource("/api/v1/input/watch" + (query ? "?" + query : ""));
+    // mKey присылает все группы: галочки отбирают их здесь, чтобы действовать сразу, без перезапуска.
+    const q = ["show=" + WATCH_GROUPS.join(","), only ? "device=" + encodeURIComponent(only) : ""];
+    source = new EventSource("/api/v1/input/watch?" + q.filter(Boolean).join("&"));
     source.addEventListener("input", (e: MessageEvent<string>) => {
       const entry = JSON.parse(e.data) as WatchEntry;
       // Удержание Esc 2 секунды — остановка (отпускание раньше отменяет таймер).
@@ -78,6 +85,8 @@
           escTimer = null;
         }
       }
+      // Скрытые галочками группы не показываются и не попадают в файл.
+      if (entry.group !== "keys" && !show[entry.group]) return;
       nextId += 1;
       log = [{ ...entry, id: nextId }, ...log].slice(0, MAX_LOG);
       saved.push(entry);
@@ -210,11 +219,18 @@
         {/each}
       </select></label
     >
-    <label class="row"
-      ><input type="checkbox" bind:checked={moves} /> {t("devices.watch_moves")}</label
-    >
     <button class="primary" onclick={startWatch}>● {t("devices.watch_start")}</button>
   {/if}
+  <!-- Что показывать кроме клавиш и кнопок (действует сразу, и во время наблюдения) -->
+  <fieldset class="show" title={t("devices.watch_show_hint")}>
+    <legend>{t("devices.watch_show")}</legend>
+    {#each WATCH_GROUPS as g (g)}
+      <label class="row"
+        ><input type="checkbox" bind:checked={show[g]} />
+        <span>{t("devices.watch_show." + g)}</span></label
+      >
+    {/each}
+  </fieldset>
   {#if savedCount > 0}
     <button onclick={saveLog} title={t("devices.watch_save_hint")}
       >💾 {t("devices.watch_save", { n: savedCount })}</button
@@ -355,6 +371,26 @@
   }
   .grow {
     flex: 1;
+  }
+  /* Галочки «Показывать» — строкой на всю ширину карточки, переносятся на узком экране. */
+  .show {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+  /* Галочка не отрывается от подписи: длинная подпись переносится рядом с ней. */
+  .show label {
+    flex-wrap: nowrap;
+  }
+  .show legend {
+    float: left;
+    margin-right: 4px;
+    padding: 0;
+    color: var(--muted);
   }
   .log {
     flex-basis: 100%;

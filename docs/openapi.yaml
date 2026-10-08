@@ -331,10 +331,11 @@ paths:
         "408": { $ref: "#/components/responses/Error" }
   /api/v1/input/watch:
     get:
-      summary: "Монитор нажатий (Server-Sent Events, событие input): клавиши, кнопки, оси (не чаще 10 раз в секунду на ось), колесо; ?moves=1 — и перемещения мыши; ?device=<ссылка> — только устройства по ссылке"
+      summary: "Монитор нажатий (Server-Sent Events, событие input): клавиши и кнопки всегда; ?show=wheel,axes,moves,touch — что ещё (колесо, оси геймпадов не чаще 10 раз в секунду на ось, сдвиги мыши и трекпойнта, касания сенсорных устройств); ?device=<ссылка> — только устройства по ссылке"
       description: |
-        Данные: {time, device, device_name, kind (key|axis|wheel|move), name (имя для макросов или #код),
-        kernel, code, action (down|up), value, dy}. Нажатия только передаются, пока открыт поток, и
+        Данные: {time, device, device_name, kind (key|axis|wheel|move|touch), group (keys|wheel|axes|moves|touch),
+        name (имя для макросов или #код; у touch — X или Y), kernel, code, action (down|up), value, dy}.
+        Без ?show — всё, кроме перемещений мыши (?moves=1 — и они), как в прежних версиях (ADR-0038). Нажатия только передаются, пока открыт поток, и
         демоном никуда не сохраняются (NFR-8): файл журнала создаёт окно или `mkey devices watch --out`
         по просьбе человека. ?device — путь, event6, постоянное имя или часть названия (все подходящие
         устройства); не нашлось — 404 api.device_not_found до начала потока.

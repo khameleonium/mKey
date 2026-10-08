@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,8 +26,11 @@ type watchEntry struct {
 	// Device и DeviceName — путь и имя устройства.
 	Device     string `json:"device"`
 	DeviceName string `json:"device_name"`
-	// Kind — вид: "key" (клавиша или кнопка), "axis" (ось геймпада/джойстика), "wheel" (колесо), "move" (мышь).
+	// Kind — вид: "key" (клавиша или кнопка), "axis" (ось геймпада/джойстика), "wheel" (колесо),
+	// "move" (сдвиг мыши или трекпойнта), "touch" (положение пальца или пера).
 	Kind string `json:"kind"`
+	// Group — что показывать (галочки окна, `--show`): "keys" (всегда), "wheel", "axes", "moves", "touch".
+	Group string `json:"group"`
 	// Name — имя для макросов ("A", "Mouse0", "South", "LX") или "#код", если имени нет.
 	Name string `json:"name"`
 	// Kernel — имя кода в ядре ("BTN_TRIGGER_HAPPY3"); Code — сам код.
@@ -45,8 +49,53 @@ type watchEntry struct {
 // axisInterval — не чаще одного сообщения об оси за это время: оси шлют сотни значений в секунду.
 const axisInterval = 100 * time.Millisecond
 
+// Группы событий монитора (кроме клавиш и кнопок — они видны всегда).
+const (
+	// watchWheel — колёсико и прокрутка.
+	watchWheel = "wheel"
+	// watchAxes — стики, курки и другие оси геймпадов и джойстиков.
+	watchAxes = "axes"
+	// watchMoves — сдвиги указателя от мыши и трекпойнта.
+	watchMoves = "moves"
+	// watchTouch — касания тачпада, сенсорного экрана и пера планшета.
+	watchTouch = "touch"
+)
+
+// watchShow — какие группы событий показывать; клавиши и кнопки показываются всегда.
+type watchShow map[string]bool
+
+// parseWatchShow читает группы из запроса: ?show=wheel,axes,moves,touch (пусто — только клавиши
+// и кнопки). Без ?show — прежнее поведение: всё, кроме перемещений мыши, а с ?moves=1 — и они.
+// Неизвестные группы пропускаются.
+func parseWatchShow(r *http.Request) watchShow {
+	q := r.URL.Query()
+	if !q.Has("show") {
+		return watchShow{watchWheel: true, watchAxes: true, watchTouch: true, watchMoves: q.Get("moves") == "1"}
+	}
+	show := watchShow{}
+	for _, g := range strings.Split(q.Get("show"), ",") {
+		show[strings.TrimSpace(g)] = true
+	}
+	return show
+}
+
+// watchDevice — что монитору нужно знать об устройстве: имя и сенсорное ли оно (тачпад,
+// сенсорный экран, планшет — их оси и «касания» относятся к группе touch).
+type watchDevice struct {
+	name  string
+	touch bool
+}
+
+// isTouch — устройство сенсорное: тачпад, сенсорный экран или графический планшет.
+func isTouch(kinds []ev.Kind) bool {
+	return slices.ContainsFunc(kinds, func(k ev.Kind) bool {
+		return k == ev.KindTouchpad || k == ev.KindTouchscreen || k == ev.KindTablet
+	})
+}
+
 // handleWatch — поток событий устройств (Server-Sent Events) до закрытия соединения.
-// ?moves=1 — показывать и перемещения мыши (по умолчанию нет: их слишком много);
+// ?show=wheel,axes,moves,touch — какие группы событий показывать кроме клавиш и кнопок
+// (parseWatchShow; без него — всё, кроме перемещений мыши, ?moves=1 — и они);
 // ?device=<ссылка> — только устройства по ссылке (путь, event6, постоянное имя или часть
 // названия, как у «Подробнее»); не нашлось ни одного — 404 api.device_not_found.
 func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +104,7 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 		m.unavailable(w, r)
 		return
 	}
-	moves := r.URL.Query().Get("moves") == "1"
+	show := parseWatchShow(r)
 
 	// Фильтр по устройству (nil — все устройства).
 	var only map[string]bool
@@ -73,11 +122,11 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprint(w, ": mkey watch\n\n")
 	flusher.Flush()
 
-	// Имена устройств по путям (обновляются, если встретилось новое устройство).
-	names := map[string]string{}
+	// Имена и вид устройств по путям (обновляются, если встретилось новое устройство).
+	names := map[string]watchDevice{}
 	refresh := func() {
 		for _, d := range m.svc.input.Devices() {
-			names[d.Info.Path] = d.Info.Name
+			names[d.Info.Path] = watchDevice{name: d.Info.Name, touch: isTouch(d.Kinds)}
 		}
 	}
 	refresh()
@@ -105,8 +154,8 @@ func (m *Module) handleWatch(w http.ResponseWriter, r *http.Request) {
 			if _, known := names[e.Device]; !known {
 				refresh()
 			}
-			entry, show := describeEvent(e, names[e.Device], moves, lastAxis)
-			if !show {
+			entry, ok := describeEvent(e, names[e.Device], show, lastAxis)
+			if !ok {
 				continue
 			}
 			m.labelEntry(&entry, e)
@@ -156,63 +205,100 @@ func (m *Module) labelEntry(entry *watchEntry, e contracts.InputEvent) {
 	}
 }
 
-// describeEvent переводит событие устройства в запись монитора. false — не показывать
-// (служебное, автоповтор, слишком частое значение оси, перемещение мыши без ?moves=1).
-func describeEvent(e contracts.InputEvent, deviceName string, moves bool, lastAxis map[string]time.Time) (watchEntry, bool) {
-	en := watchEntry{Time: e.Event.Time, Device: e.Device, DeviceName: deviceName, Code: e.Event.Code, Kernel: ev.CodeName(e.Event.Type, e.Event.Code)}
+// describeEvent переводит событие устройства dev в запись монитора. false — не показывать
+// (служебное, автоповтор, слишком частое значение оси, группа не выбрана в show).
+func describeEvent(e contracts.InputEvent, dev watchDevice, show watchShow, lastAxis map[string]time.Time) (watchEntry, bool) {
+	en := watchEntry{Time: e.Event.Time, Device: e.Device, DeviceName: dev.name, Code: e.Event.Code, Kernel: ev.CodeName(e.Event.Type, e.Event.Code), Group: "keys"}
 	if en.Time.IsZero() {
 		en.Time = time.Now()
 	}
+
+	// throttled — значение оси пришло раньше axisInterval после прошлого показанного.
+	throttled := func() bool {
+		id := e.Device + "/" + strconv.Itoa(int(e.Event.Code))
+		if en.Time.Sub(lastAxis[id]) < axisInterval {
+			return true
+		}
+		lastAxis[id] = en.Time
+		return false
+	}
+
 	switch e.Event.Type {
-	// Клавиши и кнопки: нажатие и отпускание (автоповтор не показываем).
+	// Клавиши и кнопки: нажатие и отпускание (автоповтор не показываем). У сенсорных устройств
+	// «касание» и «инструмент» (палец, перо, два пальца…) — часть касаний, а не кнопки.
 	case ev.EvKey:
 		if e.Event.Value == ev.ValueRepeat {
 			return en, false
+		}
+		if dev.touch && touchKey(e.Event.Code) {
+			en.Group = watchTouch
 		}
 		en.Kind, en.Name, en.Action = "key", keyName(e.Event.Code), "down"
 		if e.Event.Value == ev.ValueUp {
 			en.Action = "up"
 		}
-		return en, true
+		return en, show.has(en.Group)
 
-	// Оси геймпадов и джойстиков: не чаще раза в axisInterval на ось.
+	// Оси сенсорных устройств: только положение (X, Y), не чаще раза в axisInterval на ось;
+	// служебные (номер пальца, площадь касания) не показываем.
 	case ev.EvAbs:
-		id := e.Device + "/" + strconv.Itoa(int(e.Event.Code))
-		if en.Time.Sub(lastAxis[id]) < axisInterval {
+		if dev.touch {
+			en.Group, en.Kind, en.Value = watchTouch, "touch", e.Event.Value
+			switch e.Event.Code {
+			case ev.AbsX, ev.AbsMtPositionX:
+				en.Name = "X"
+			case ev.AbsY, ev.AbsMtPositionY:
+				en.Name = "Y"
+			default:
+				return en, false
+			}
+			return en, show[watchTouch] && !throttled()
+		}
+
+		// Оси геймпадов и джойстиков: не чаще раза в axisInterval на ось.
+		if !show[watchAxes] || throttled() {
 			return en, false
 		}
-		lastAxis[id] = en.Time
-		en.Kind, en.Value = "axis", e.Event.Value
+		en.Group, en.Kind, en.Value = watchAxes, "axis", e.Event.Value
 		en.Name = "#" + strconv.Itoa(int(e.Event.Code))
 		if n, ok := keys.AxisNameOf(e.Event.Code); ok {
 			en.Name = n
 		}
 		return en, true
 
-	// Колесо и (по желанию) перемещения мыши.
+	// Колесо и сдвиги указателя (мышь, трекпойнт).
 	case ev.EvRel:
 		switch e.Event.Code {
 		case ev.RelWheel, ev.RelHwheel:
-			en.Kind, en.Value = "wheel", e.Event.Value
+			en.Group, en.Kind, en.Value = watchWheel, "wheel", e.Event.Value
 			en.Name = "Wheel"
 			if e.Event.Code == ev.RelHwheel {
 				en.Name = "HWheel"
 			}
-			return en, true
+			return en, show[watchWheel]
 		case ev.RelX, ev.RelY:
-			if !moves {
-				return en, false
-			}
-			en.Kind, en.Name = "move", "Move"
+			en.Group, en.Kind, en.Name = watchMoves, "move", "Move"
 			if e.Event.Code == ev.RelX {
 				en.Value = e.Event.Value
 			} else {
 				en.DY = e.Event.Value
 			}
-			return en, true
+			return en, show[watchMoves]
 		}
 	}
 	return en, false
+}
+
+// has — показывать ли группу g; клавиши и кнопки ("keys") показываются всегда.
+func (s watchShow) has(g string) bool {
+	return g == "keys" || s[g]
+}
+
+// touchKey — код «касания» или «инструмента» сенсорного устройства: BTN_TOOL_PEN…BTN_TOOL_QUINTTAP
+// (0x140–0x148), BTN_TOUCH (0x14a), BTN_TOOL_DOUBLETAP…QUADTAP (0x14d–0x14f). Кнопки пера
+// (BTN_STYLUS*, 0x149, 0x14b, 0x14c) — настоящие кнопки (linux/input-event-codes.h).
+func touchKey(code uint16) bool {
+	return (code >= ev.BtnToolPen && code <= ev.BtnToolQuinttap) || code == ev.BtnTouch || (code >= ev.BtnToolDoubletap && code <= ev.BtnToolQuadtap)
 }
 
 // keyName возвращает имя клавиши для макросов или «#код», если имени нет.

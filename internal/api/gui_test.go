@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -360,43 +361,99 @@ func TestDescribeProblem(t *testing.T) {
 	}
 }
 
-// TestDescribeEvent проверяет записи монитора нажатий: клавиши, автоповтор, оси, колесо, мышь.
+// TestDescribeEvent проверяет записи монитора нажатий: клавиши, автоповтор, оси, колесо, мышь,
+// касания и выбор групп (?show).
 func TestDescribeEvent(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
 	axes := map[string]time.Time{}
+	all := watchShow{watchWheel: true, watchAxes: true, watchMoves: true, watchTouch: true}
+	kbd, pad := watchDevice{name: "Kbd"}, watchDevice{name: "Touchpad", touch: true}
 	ie := func(typ, code uint16, v int32, at time.Duration) contracts.InputEvent {
 		return contracts.InputEvent{Device: "/d", Event: ev.Event{Time: now.Add(at), Type: typ, Code: code, Value: v}}
 	}
 
-	// Клавиша: нажатие и отпускание с именем для макросов; автоповтор и SYN не показываются.
-	if e, ok := describeEvent(ie(ev.EvKey, ev.KeyA, 1, 0), "Kbd", false, axes); !ok || e.Name != "A" || e.Action != "down" || e.Kernel != "KEY_A" || e.DeviceName != "Kbd" {
+	// Клавиша: нажатие и отпускание с именем для макросов — даже если не выбрано ничего; автоповтор
+	// и SYN не показываются.
+	if e, ok := describeEvent(ie(ev.EvKey, ev.KeyA, 1, 0), kbd, watchShow{}, axes); !ok || e.Name != "A" || e.Action != "down" || e.Kernel != "KEY_A" || e.DeviceName != "Kbd" || e.Group != "keys" {
 		t.Fatalf("key down = %+v", e)
 	}
-	if e, ok := describeEvent(ie(ev.EvKey, 0x2ff, 0, 0), "", false, axes); !ok || e.Name != "#767" || e.Action != "up" {
+	if e, ok := describeEvent(ie(ev.EvKey, 0x2ff, 0, 0), kbd, all, axes); !ok || e.Name != "#767" || e.Action != "up" {
 		t.Fatalf("unknown key = %+v", e)
 	}
-	for _, x := range []contracts.InputEvent{ie(ev.EvKey, ev.KeyA, 2, 0), ie(ev.EvSyn, 0, 0, 0), ie(ev.EvRel, ev.RelX, 3, 0)} {
-		if _, ok := describeEvent(x, "", false, axes); ok {
+	for _, x := range []contracts.InputEvent{ie(ev.EvKey, ev.KeyA, 2, 0), ie(ev.EvSyn, 0, 0, 0)} {
+		if _, ok := describeEvent(x, kbd, all, axes); ok {
 			t.Fatalf("shown: %+v", x)
 		}
 	}
 
-	// Ось: не чаще раза в 100 мс; колесо; перемещение — только с moves.
-	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 100, 0), "", false, axes); !ok {
-		t.Fatal("first axis value hidden")
+	// Ось геймпада: не чаще раза в 100 мс; без группы axes — не показывается.
+	if e, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 100, 0), kbd, all, axes); !ok || e.Kind != "axis" || e.Group != watchAxes {
+		t.Fatalf("first axis value = %+v", e)
 	}
-	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 120, 50*time.Millisecond), "", false, axes); ok {
+	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 120, 50*time.Millisecond), kbd, all, axes); ok {
 		t.Fatal("axis not throttled")
 	}
-	if e, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 130, 150*time.Millisecond), "", false, axes); !ok || e.Value != 130 {
+	if e, ok := describeEvent(ie(ev.EvAbs, ev.AbsX, 130, 150*time.Millisecond), kbd, all, axes); !ok || e.Value != 130 {
 		t.Fatalf("axis after interval = %+v", e)
 	}
-	if e, ok := describeEvent(ie(ev.EvRel, ev.RelWheel, -1, 0), "", false, axes); !ok || e.Kind != "wheel" || e.Value != -1 {
+	if _, ok := describeEvent(ie(ev.EvAbs, ev.AbsY, 1, 0), kbd, watchShow{watchTouch: true}, axes); ok {
+		t.Fatal("axis shown without axes")
+	}
+
+	// Колесо и сдвиг мыши — каждое в своей группе.
+	if e, ok := describeEvent(ie(ev.EvRel, ev.RelWheel, -1, 0), kbd, all, axes); !ok || e.Kind != "wheel" || e.Value != -1 || e.Group != watchWheel {
 		t.Fatalf("wheel = %+v", e)
 	}
-	if e, ok := describeEvent(ie(ev.EvRel, ev.RelY, 4, 0), "", true, axes); !ok || e.Kind != "move" || e.DY != 4 {
+	if e, ok := describeEvent(ie(ev.EvRel, ev.RelY, 4, 0), kbd, all, axes); !ok || e.Kind != "move" || e.DY != 4 || e.Group != watchMoves {
 		t.Fatalf("move = %+v", e)
+	}
+	if _, ok := describeEvent(ie(ev.EvRel, ev.RelX, 3, 0), kbd, watchShow{watchWheel: true}, axes); ok {
+		t.Fatal("move shown without moves")
+	}
+
+	// Тачпад: положение пальца и «касание» — группа touch, служебные оси скрыты; без touch
+	// не видно ни того, ни другого, а настоящие кнопки тачпада видны.
+	if e, ok := describeEvent(ie(ev.EvAbs, ev.AbsMtPositionX, 512, 0), pad, all, axes); !ok || e.Kind != "touch" || e.Name != "X" || e.Group != watchTouch {
+		t.Fatalf("touch X = %+v", e)
+	}
+	if _, ok := describeEvent(ie(ev.EvAbs, 0x39, 7, 0), pad, all, axes); ok { // ABS_MT_TRACKING_ID
+		t.Fatal("tracking id shown")
+	}
+	if e, ok := describeEvent(ie(ev.EvKey, ev.BtnTouch, 1, 0), pad, all, axes); !ok || e.Group != watchTouch {
+		t.Fatalf("BTN_TOUCH = %+v", e)
+	}
+	noTouch := watchShow{watchAxes: true, watchMoves: true}
+	for _, x := range []contracts.InputEvent{ie(ev.EvKey, ev.BtnToolFinger, 1, 0), ie(ev.EvAbs, ev.AbsY, 300, time.Second)} {
+		if _, ok := describeEvent(x, pad, noTouch, axes); ok {
+			t.Fatalf("touch shown without touch: %+v", x)
+		}
+	}
+	if _, ok := describeEvent(ie(ev.EvKey, ev.BtnLeft, 1, 0), pad, noTouch, axes); !ok {
+		t.Fatal("touchpad button hidden")
+	}
+}
+
+// TestParseWatchShow проверяет выбор групп монитора: ?show и прежний ?moves=1.
+func TestParseWatchShow(t *testing.T) {
+	t.Parallel()
+	for q, want := range map[string]string{
+		"":                        "axes,touch,wheel",
+		"?moves=1":                "axes,moves,touch,wheel",
+		"?show=":                  "",
+		"?show=moves,touch,bogus": "bogus,moves,touch",
+	} {
+		show := parseWatchShow(httptest.NewRequest(http.MethodGet, "/api/v1/input/watch"+q, nil))
+		var got []string
+		for g, on := range show {
+			if on && g != "" {
+				got = append(got, g)
+			}
+		}
+		slices.Sort(got)
+		if strings.Join(got, ",") != want {
+			t.Errorf("%q = %v, want %s", q, got, want)
+		}
 	}
 }
 
