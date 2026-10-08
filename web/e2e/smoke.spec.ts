@@ -127,6 +127,16 @@ test("virtual devices: create a wheel, test it live, delete it", async ({ page }
   await page.keyboard.press("Escape");
   await expect(page.getByText(/Connected — games see it/)).toBeVisible();
 
+  // Раскладка в редакторе проекта: убрали клавишу газа, сохранили — на карточке на одну меньше.
+  await expect(page.getByText("Keys and axes assigned: 15")).toBeVisible();
+  await page.getByRole("button", { name: /Edit layout/ }).click();
+  await expect(page.getByRole("heading", { name: "Virtual devices and layout" })).toBeVisible();
+  await expect(page.getByText(/only virtual devices/)).toBeVisible();
+  await page.getByRole("button", { name: "remove" }).nth(1).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Virtual devices" }).click();
+  await expect(page.getByText("Keys and axes assigned: 14")).toBeVisible();
+
   // Удаление: устройство одно в проекте — удаляется проект целиком.
   await page.getByRole("button", { name: /Delete/ }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();

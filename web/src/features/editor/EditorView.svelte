@@ -6,6 +6,7 @@
   onreload() — перечитать проект с диска.
 -->
 <script lang="ts">
+  import ProjectDevices from "../vdevices/ProjectDevices.svelte";
   import { api } from "../../lib/api";
   import CodeEditor from "../../lib/components/CodeEditor.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
@@ -182,11 +183,23 @@
   <div class="workspace">
     <Palette />
     <div class="sheet">
+      <!-- Виртуальные устройства проекта и их раскладка (FR-VD-8) -->
+      {#if ed.project.data.virtual_devices?.length}
+        <ProjectDevices
+          devices={ed.project.data.virtual_devices}
+          bindings={ed.project.data.bindings ?? []}
+          onchange={(b) => ed.set(ed.project.data, "bindings", b)}
+        />
+      {/if}
       {#each ed.project.events as ev, i (ev.uid)}
         <EventRow {ev} index={i} total={ed.project.events.length} onrun={run} ondry={dryRun} />
       {/each}
       {#if ed.project.events.length === 0}
-        <div class="note">{t("editor.no_events")}</div>
+        <div class="note">
+          {t(
+            ed.project.data.virtual_devices?.length ? "vd.editor_only_devices" : "editor.no_events",
+          )}
+        </div>
       {/if}
       <button class="add-event" onclick={() => ed.addEvent()}>+ {t("editor.add_event")}</button>
     </div>
