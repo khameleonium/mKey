@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 	"github.com/khameleonium/mKey/internal/lib/evdev"
 	"github.com/khameleonium/mKey/internal/lib/project"
 	"github.com/khameleonium/mKey/internal/lib/sni"
@@ -304,10 +305,12 @@ func (m *Module) menu() []sni.MenuItem {
 	}
 	sections = append(sections, tail)
 
-	// Создатель программы — неактивной строкой в самом низу (решение владельца).
-	sections = append(sections, []sni.MenuItem{{
-		Label: m.tr.T("app.creator"), Disabled: true,
-	}})
+	// «Поддержать автора» и создатель программы — неактивной строкой в самом низу (решение владельца).
+	var about []sni.MenuItem
+	if m.opener != nil {
+		about = append(about, sni.MenuItem{Label: "♥ " + m.tr.T("tray.support"), OnClick: m.openSupport})
+	}
+	sections = append(sections, append(about, sni.MenuItem{Label: m.tr.T("app.creator"), Disabled: true}))
 
 	// Разделы — через разделитель.
 	var items []sni.MenuItem
@@ -676,6 +679,13 @@ func (m *Module) notify(title, body string) {
 	m.log.Info("tray notice", "title", title, "body", body)
 	if m.notifier != nil {
 		_ = m.notifier.Notify(context.Background(), title, body)
+	}
+}
+
+// openSupport открывает страницу «Поддержать автора» в браузере.
+func (m *Module) openSupport() {
+	if err := m.opener.OpenURL(context.Background(), buildinfo.SupportURL); err != nil {
+		m.log.Warn("cannot open support page", "err", err)
 	}
 }
 

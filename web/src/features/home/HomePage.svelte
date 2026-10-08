@@ -132,6 +132,19 @@
 {#if status}
   <p class="muted small">{t("home.version", { version: status.version })}</p>
 {/if}
+<!-- Лицензия и поддержка автора (ADR-0043) -->
+<p class="muted small">
+  {t("home.license")}
+  <a
+    href="https://github.com/khameleonium/mKey/blob/main/COMMERCIAL.md"
+    target="_blank"
+    rel="noopener">{t("home.license_more")}</a
+  >
+</p>
+<p class="small">
+  <a href="https://boosty.to/khameleonium" target="_blank" rel="noopener">♥ {t("app.support")}</a>
+  — {t("home.support_hint")}
+</p>
 
 <style>
   .state {

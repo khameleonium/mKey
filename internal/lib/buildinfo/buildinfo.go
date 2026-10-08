@@ -12,6 +12,17 @@ package buildinfo
 // («Создатель: Илья Ульянов | khameleonium» / «Creator: Ilya Ulyanov | khameleonium»).
 const Creator = "Ilya Ulyanov | khameleonium"
 
+// Лицензия и поддержка автора (решение владельца, 08.10.2026, ADR-0043): с версии 0.9.4 mKey
+// бесплатен для некоммерческого использования, коммерческое — по лицензии автора.
+const (
+	// License — лицензия программы (идентификатор SPDX).
+	License = "PolyForm-Noncommercial-1.0.0"
+	// CommercialURL — условия коммерческой лицензии.
+	CommercialURL = "https://github.com/khameleonium/mKey/blob/main/COMMERCIAL.md"
+	// SupportURL — «Поддержать автора».
+	SupportURL = "https://boosty.to/khameleonium"
+)
+
 // Сведения о сборке. Переменные, а не константы, потому что их задаёт компоновщик.
 var (
 	// Version — версия mKey по semver или "dev" для локальной сборки.

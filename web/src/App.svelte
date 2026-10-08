@@ -25,6 +25,9 @@
   import SettingsPage from "./features/settings/SettingsPage.svelte";
   import SetupWizard from "./features/setup/SetupWizard.svelte";
 
+  /** SUPPORT_URL — страница «Поддержать автора» (решение владельца, ADR-0043). */
+  const SUPPORT_URL = "https://boosty.to/khameleonium";
+
   /** Разделы бокового меню. */
   const NAV = [
     { name: "home", icon: "⌂" },
@@ -113,6 +116,7 @@
       ● {live.connected ? t("app.connected") : t("app.disconnected")}
     </div>
     <div class="creator">{t("app.creator")}</div>
+    <a class="support" href={SUPPORT_URL} target="_blank" rel="noopener">♥ {t("app.support")}</a>
   </nav>
 
   <main>
@@ -238,6 +242,11 @@
     font-size: 0.75rem;
     color: var(--muted);
     padding: 0 10px 6px;
+  }
+  /* «Поддержать автора» — неброская ссылка под создателем. */
+  .support {
+    font-size: 0.8rem;
+    padding: 0 10px 8px;
   }
   main {
     padding: 20px 24px 60px;

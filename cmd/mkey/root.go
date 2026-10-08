@@ -83,15 +83,18 @@ func newVersionCmd(tr *i18n.Translator) *cobra.Command {
 					"commit":  buildinfo.Commit,
 					"date":    buildinfo.Date,
 					"creator": buildinfo.Creator,
+					"license": buildinfo.License,
+					"support": buildinfo.SupportURL,
 				})
 			}
 
 			// Человекочитаемый вывод на языке пользователя; консольная сборка отмечена отдельно.
-			_, err := fmt.Fprintf(out, "%s\n%s\n", tr.T("cli.version.output",
+			_, err := fmt.Fprintf(out, "%s\n%s\n%s\n%s\n", tr.T("cli.version.output",
 				i18n.A("version", buildinfo.Version),
 				i18n.A("commit", buildinfo.Commit),
 				i18n.A("date", buildinfo.Date),
-			), tr.T("app.creator"))
+			), tr.T("app.creator"), tr.T("app.license", i18n.A("url", buildinfo.CommercialURL)),
+				tr.T("app.support", i18n.A("url", buildinfo.SupportURL)))
 			return err
 		},
 	}

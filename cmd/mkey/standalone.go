@@ -17,6 +17,7 @@ import (
 	"github.com/khameleonium/mKey/internal/app"
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/i18n"
+	"github.com/khameleonium/mKey/internal/lib/buildinfo"
 	"github.com/khameleonium/mKey/internal/lib/bundle"
 	"github.com/khameleonium/mKey/internal/registry"
 )
@@ -91,7 +92,8 @@ func standaloneInfo(tr *i18n.Translator, c bundle.Contents) string {
 	}
 	return tr.T("cli.standalone.info", i18n.A("name", c.Manifest.Name), i18n.A("mode", mode),
 		i18n.A("created", c.Manifest.Created), i18n.A("version", c.Manifest.Version),
-		i18n.A("files", strings.Join(files, ", ")), i18n.A("creator", tr.T("app.creator")))
+		i18n.A("files", strings.Join(files, ", ")), i18n.A("creator", tr.T("app.creator")+"\n"+
+			tr.T("app.license", i18n.A("url", buildinfo.CommercialURL))))
 }
 
 // runStandalone раскладывает содержимое во временную папку, запускает модули и работает, пока
