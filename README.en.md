@@ -38,6 +38,8 @@ X11 and Wayland — because it talks to input devices directly through the kerne
 - **"Virtual devices" page**: every device with its state in plain words ("connected" / "off"),
   one switch to turn it on, the **"New device"** wizard with ready layouts, a **live test** (see
   what the game receives), the layout in the project editor and checkmarks in the tray icon menu.
+- **Standalone macro file**: a project is built into one executable that works without an
+  installed mKey — on another computer, with a double-click ([details, in Russian](docs/build.md)).
 - **Plugins** in any language add new actions and triggers (HTTP request, webhook…).
 - **Safety**: **Esc + Backspace + Enter** pressed together stops everything at any moment and
   releases all keys.

@@ -206,6 +206,8 @@ internal/desktop/*   адаптеры X11/GNOME/KDE/Sway/Hyprland/wlroots/portal
 internal/script/*    Lua (gopher-lua) и bash            → docs/lua-api.md
 internal/recorder    запись/воспроизведение (mkey rec / mkey play) → docs/recording.md
 internal/lib/mkrec   формат записей .mkrec (библиотека)
+internal/builder     самостоятельный файл макроса (mkey build)      → docs/build.md
+internal/lib/bundle  формат самостоятельного файла (библиотека); запуск — cmd/mkey/standalone.go
 internal/tray        значок в трее; internal/lib/sni — протокол StatusNotifierItem
 internal/setup       doctor, privileged, install/uninstall, manifest
 internal/store       YAML-модели, схемы, миграции
