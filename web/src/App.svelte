@@ -14,6 +14,7 @@
   import { connect, live, onTopic, refreshStatus } from "./lib/stream.svelte";
   import type { RecordingInfo } from "./lib/types";
   import DevicesPage from "./features/devices/DevicesPage.svelte";
+  import VirtualDevicesPage from "./features/vdevices/VirtualDevicesPage.svelte";
   import DiagnosticsPage from "./features/diagnostics/DiagnosticsPage.svelte";
   import EditorPage from "./features/editor/EditorPage.svelte";
   import HomePage from "./features/home/HomePage.svelte";
@@ -31,6 +32,7 @@
     { name: "recordings", icon: "⏺" },
     { name: "scripts", icon: "✎" },
     { name: "devices", icon: "⌨" },
+    { name: "virtual", icon: "🎮" },
     { name: "plugins", icon: "⧉" },
     { name: "diagnostics", icon: "✚" },
     { name: "settings", icon: "⚙" },
@@ -145,6 +147,8 @@
       <ScriptsPage />
     {:else if route().name === "devices"}
       <DevicesPage />
+    {:else if route().name === "virtual"}
+      <VirtualDevicesPage />
     {:else if route().name === "plugins"}
       <PluginsPage />
     {:else if route().name === "diagnostics"}

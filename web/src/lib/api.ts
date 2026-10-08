@@ -13,7 +13,9 @@ import type {
   RecordDevice,
   RecordSettings,
   UpdateInfo,
+  VirtualCard,
   VirtualDeviceInfo,
+  VirtualState,
   VirtualTemplateInfo,
   DoctorCheck,
   DryRun,
@@ -126,9 +128,12 @@ export const api = {
   virtualDevices: () =>
     request<{
       devices: VirtualDeviceInfo[];
+      all?: VirtualCard[];
       templates: string[];
       template_info?: VirtualTemplateInfo[];
     }>("GET", "/devices/virtual"),
+  virtualState: (name: string) =>
+    request<VirtualState>("GET", `/devices/virtual/${enc(name)}/state`),
   deviceSettings: () => request<{ auto_ids: string }>("GET", "/settings/devices"),
   setDeviceSettings: (autoIds: string) =>
     request<{ auto_ids: string }>("PUT", "/settings/devices", { auto_ids: autoIds }),

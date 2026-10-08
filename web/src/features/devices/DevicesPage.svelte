@@ -10,16 +10,10 @@
 <script lang="ts">
   import { api } from "../../lib/api";
   import { t } from "../../lib/i18n/index.svelte";
+  import { navigate } from "../../lib/router.svelte";
   import { onTopic } from "../../lib/stream.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type {
-    InputDevice,
-    VirtualDeviceInfo,
-    VirtualTemplateInfo,
-    WatchEntry,
-    WatchGroup,
-  } from "../../lib/types";
-  import GamepadWizard from "./GamepadWizard.svelte";
+  import type { InputDevice, VirtualCard, WatchEntry, WatchGroup } from "../../lib/types";
   import { WATCH_GROUPS, clockText, describeWatch, logFileName, logText } from "./monitor";
   import DeviceDetails from "../inspector/DeviceDetails.svelte";
   import RenameDialog from "../inspector/RenameDialog.svelte";
@@ -32,11 +26,9 @@
   /** autoIds — авто-ID устройств по пути (UnKey…); mode — режим раздачи авто-ID. */
   let autoIds = $state<Record<string, string>>({});
   let mode = $state("");
-  /** virtuals — виртуальные устройства включённых проектов (null — модуль недоступен). */
-  let virtuals = $state<VirtualDeviceInfo[] | null>(null);
-  /** vtemplates — состав шаблонов (для мастера); wizard — открыт мастер «второй геймпад». */
-  let vtemplates = $state<VirtualTemplateInfo[]>([]);
-  let wizard = $state(false);
+  /** virtuals — виртуальные устройства mKey всех проектов (null — модуль недоступен); сами
+   *  устройства и мастер — на странице «Виртуальные устройства», здесь — только подсказка. */
+  let virtuals = $state<VirtualCard[] | null>(null);
 
   /** watching — монитор включён; show — какие группы событий показывать (галочки, по умолчанию
    *  все; клавиши и кнопки видны всегда; меняются и во время наблюдения); only — путь устройства,
@@ -129,8 +121,7 @@
       denied = r.status?.denied ?? [];
       autoIds = r.auto_ids ?? {};
       const v = await api.virtualDevices().catch(() => null);
-      virtuals = v?.devices ?? null;
-      vtemplates = v?.template_info ?? [];
+      virtuals = v ? (v.all ?? []) : null;
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -277,41 +268,25 @@
   </div>
 {/if}
 
-<!-- Виртуальные устройства проектов (FR-VD-1) -->
+<!-- Виртуальные устройства mKey — подсказка, где они (FR-VD-8): сами — на своей странице -->
 {#if virtuals !== null}
   <div class="card virtuals">
     <div class="vhead">
       <h2>{t("devices.virtual_title")}</h2>
-      {#if vtemplates.length}
-        <button class="primary" onclick={() => (wizard = true)}>🎮 {t("gpw.open_wizard")}</button>
-      {/if}
+      <button class="primary" onclick={() => navigate("virtual")}>🎮 {t("vd.where_open")}</button>
     </div>
-    {#if virtuals.length === 0}
-      <p class="muted">{t("devices.virtual_none")}</p>
-      <pre class="snippet">virtual_devices:
-  - name: pad2
-    template: xbox360</pre>
-      <p class="muted">{t("devices.virtual_hint")}</p>
-    {:else}
-      {#each virtuals as v (v.project + "/" + v.name)}
-        <div class="vrow">
-          <code>{v.name}</code>
-          <span>{t("vdev.template." + v.template)}</span>
-          <span class="muted">{t("devices.virtual_project", { project: v.project })}</span>
-          {#if v.error}
-            <span class="error-text">⚠ {v.error}</span>
-          {:else}
-            <span class="muted">{v.system_name}{v.node ? " · " + v.node : ""}</span>
-          {/if}
-        </div>
-      {/each}
-      <p class="muted">{t("devices.virtual_hint")}</p>
+    <p class="muted">{t("vd.where")}</p>
+    {#if virtuals.length}
+      <ul class="vlist">
+        {#each virtuals as v (v.project + "/" + v.name)}
+          <li>
+            {v.state === "on" ? "🟢" : v.state === "off" ? "⚪" : "⚠"}
+            {v.system_name} — {t(`vd.kind.${v.template}`)}
+          </li>
+        {/each}
+      </ul>
     {/if}
   </div>
-{/if}
-
-{#if wizard}
-  <GamepadWizard {devices} {autoIds} templates={vtemplates} onclose={() => (wizard = false)} />
 {/if}
 
 {#if denied.length}
@@ -492,19 +467,9 @@
   .virtuals h2 {
     margin-top: 0;
   }
-  .vrow {
-    display: grid;
-    grid-template-columns: minmax(6em, auto) minmax(10em, auto) minmax(10em, auto) 1fr;
-    gap: 12px;
-    padding: 4px 0;
-  }
-  .snippet {
-    font-family: var(--mono);
-    background: var(--surface-2);
-    padding: 6px 10px;
-    border-radius: var(--radius-s);
-  }
-  .error-text {
-    color: var(--danger);
+  .vlist {
+    margin: 6px 0 0;
+    padding-left: 0;
+    list-style: none;
   }
 </style>

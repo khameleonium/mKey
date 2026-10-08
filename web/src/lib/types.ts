@@ -98,6 +98,33 @@ export interface Project {
   variables?: Record<string, Variable>;
   events: ProjectEvent[];
   remaps?: { from: string; to: string; device?: string }[];
+  virtual_devices?: VirtualDeviceSpec[];
+  bindings?: Binding[];
+}
+
+/** Виртуальное устройство в проекте (раздел virtual_devices, ADR-0028). */
+export interface VirtualDeviceSpec {
+  name: string;
+  template: string;
+  buttons?: string[];
+  axes?: Record<string, { min: number; max: number }>;
+}
+
+/** Привязка «физический ввод → виртуальный выход» (раздел bindings, docs/projects.md). */
+export interface Binding {
+  from: string;
+  to: string;
+  value?: number;
+  hide?: boolean;
+  invert?: boolean;
+  deadzone?: number;
+  sensitivity?: number;
+  threshold?: number;
+  ramp_ms?: number;
+  latch?: boolean;
+  steer?: boolean;
+  recenter_ms?: number;
+  curve?: number;
 }
 
 /** Ответ GET /projects/{id}. */
@@ -190,6 +217,28 @@ export interface VirtualDeviceInfo {
   system_name: string;
   node?: string;
   error?: string;
+}
+
+/** Виртуальное устройство любого проекта с состоянием (GET /devices/virtual → all, ADR-0041). */
+export interface VirtualCard {
+  name: string;
+  template: string;
+  system_name: string;
+  project: string;
+  project_name: string;
+  /** on — подключено (игры видят), off — проект выключен, error — не удалось создать. */
+  state: "on" | "off" | "error";
+  error?: string;
+  node?: string;
+  bindings: number;
+  hides: boolean;
+  others: number;
+}
+
+/** Нажатое и положения осей подключённого виртуального устройства (GET /devices/virtual/{name}/state). */
+export interface VirtualState {
+  buttons: string[];
+  axes: Record<string, number>;
 }
 
 /** Состав шаблона виртуального устройства: кнопки и оси именами для макросов (GET /devices/virtual). */

@@ -3,7 +3,7 @@
 
 /** Route — текущий раздел и его параметры. */
 export interface Route {
-  /** name — раздел: "home", "projects", "editor", "recordings", "scripts", "devices", "plugins",
+  /** name — раздел: "home", "projects", "editor", "recordings", "scripts", "devices", "virtual", "plugins",
    *  "diagnostics", "settings", "setup". */
   name: string;
   /** param — параметр раздела (ID проекта для редактора). */

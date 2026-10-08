@@ -80,7 +80,7 @@ test("scripts: create, save with an error, check", async ({ page }) => {
 });
 
 test("devices page works without real devices", async ({ page }) => {
-  await page.getByRole("navigation").getByRole("link", { name: "Devices" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Devices", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Watch presses" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Watch/ }).last()).toBeEnabled();
 });
@@ -109,4 +109,26 @@ test("starting with nothing selected asks, an empty recording is reported", asyn
   await dialog.getByRole("button", { name: "Record anyway" }).click();
   await page.getByRole("button", { name: /Stop/ }).first().click();
   await expect(page.getByText(/has no actions\. Recorded: nothing selected/)).toBeVisible();
+});
+
+test("virtual devices: create a wheel, test it live, delete it", async ({ page }) => {
+  // Новое устройство: руль, мышь и клавиатура, проект создаётся выключенным.
+  await page.getByRole("navigation").getByRole("link", { name: "Virtual devices" }).click();
+  await page.getByRole("button", { name: /New device/ }).click();
+  await page.getByRole("button", { name: /Racing wheel with pedals/ }).click();
+  await expect(page.getByText("mouse left-right")).toBeVisible();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(page.getByText(/"mKey wheel" was created/)).toBeVisible();
+
+  // Включить и проверить: устройство подключено, проверка показывает оси руля.
+  await page.getByRole("button", { name: "Turn on and test" }).click();
+  await expect(page.getByText("Test: mKey wheel")).toBeVisible();
+  await expect(page.getByText("Gas — gas")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText(/Connected — games see it/)).toBeVisible();
+
+  // Удаление: устройство одно в проекте — удаляется проект целиком.
+  await page.getByRole("button", { name: /Delete/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByText(/No virtual devices yet/)).toBeVisible();
 });
