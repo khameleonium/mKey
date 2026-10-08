@@ -68,7 +68,7 @@ func (s *varStore) Set(name string, value any) error {
 		return err
 	}
 
-	// Сохраняемые переменные записываются сразу.
+	// Сохраняемые переменные — на диск (запись откладывается ненадолго, см. persistLater).
 	if persist && s.onPersist != nil {
 		s.onPersist()
 	}

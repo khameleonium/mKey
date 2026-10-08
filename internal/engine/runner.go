@@ -91,6 +91,14 @@ type Module struct {
 	runtimes map[string]*projectRuntime
 	// persist — файл сохраняемых переменных.
 	persist *persistFile
+	// saveMu защищает saveTimer и saveStopped: запись файла переменных откладывается на
+	// persistDelay (persistLater); saveWG ждёт запланированную запись при остановке.
+	saveMu      sync.Mutex
+	saveTimer   *time.Timer
+	saveStopped bool
+	saveWG      sync.WaitGroup
+	// writeMu — файл переменных читается, дополняется и записывается целиком, по одной записи.
+	writeMu sync.Mutex
 	// suspended — mKey приостановлен после экстренной остановки: триггеры не запускают события
 	// до `mkey resume` (ручной запуск и `mkey send` работают).
 	suspended atomic.Bool
@@ -212,6 +220,9 @@ func (m *Module) Stop(context.Context) error {
 	}
 	m.StopAll()
 	m.rootCancel()
+
+	// Сохраняемые переменные — на диск сейчас, не дожидаясь отложенной записи.
+	m.stopPersist(runtimes)
 	return nil
 }
 

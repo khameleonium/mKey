@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
@@ -412,7 +413,8 @@ func TestEmergencyTopic(t *testing.T) {
 	eventually(t, "running after resume", func() bool { return r.running("hold") == 1 })
 }
 
-// TestPersistVars проверяет сохранение переменных между перезапусками.
+// TestPersistVars проверяет сохранение переменных между перезапусками: изменения записываются
+// одной отложенной записью (не позже persistDelay), а остановка и выключение проекта — сразу.
 func TestPersistVars(t *testing.T) {
 	t.Parallel()
 	r := newEventRig(t)
@@ -421,20 +423,50 @@ variables: { total: { type: int, value: 0, persist: true } }
 events: [ { id: inc, trigger: { type: test }, actions: [ { set_var: { name: total, add: 5 } } ] } ]
 `
 	r.load(t, "p", src)
-	if err := r.m.RunEvent(context.Background(), "p", "inc"); err != nil {
+	inc := func(m *Module) {
+		t.Helper()
+		if err := m.RunEvent(context.Background(), "p", "inc"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	saved := func() float64 {
+		var all map[string]map[string]any
+		data, _ := os.ReadFile(r.m.persist.path)
+		_ = json.Unmarshal(data, &all)
+		v, _ := all["p"]["total"].(float64)
+		return v
+	}
+
+	// Два изменения подряд — записываются отложенной записью.
+	inc(r.m)
+	inc(r.m)
+	eventually(t, "saved after the delay", func() bool { return saved() == 10 })
+
+	// Остановка записывает последнее изменение сразу.
+	inc(r.m)
+	if err := r.m.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(r.m.persist.path)
-	if err != nil || len(data) == 0 {
-		t.Fatalf("vars file: %v", err)
+	if v := saved(); v != 15 {
+		t.Fatalf("saved on stop = %v", v)
 	}
 
 	// «Перезапуск»: новый движок с тем же файлом восстанавливает значение.
 	r2 := newEventRig(t)
 	r2.m.persist = r.m.persist
 	r2.load(t, "p", src)
-	if v, _ := r2.m.Vars("p").Get("total"); v.(int64) != 5 {
+	if v, _ := r2.m.Vars("p").Get("total"); v.(int64) != 15 {
 		t.Fatalf("restored total = %v", v)
+	}
+
+	// Выключение (удаление) проекта записывает его переменные сразу.
+	inc(r2.m)
+	r2.ps.mu.Lock()
+	delete(r2.ps.ps, "p")
+	r2.ps.mu.Unlock()
+	r2.m.reloadProject("p")
+	if v := saved(); v != 20 {
+		t.Fatalf("saved on deactivation = %v", v)
 	}
 }
 

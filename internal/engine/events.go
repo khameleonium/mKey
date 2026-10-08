@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/lib/dsl"
@@ -78,6 +79,12 @@ func (m *Module) reloadProject(id string) {
 		if old != nil {
 			m.teardown(old)
 			m.log.Info("project deactivated", "project", id)
+
+			// Его сохраняемые переменные — на диск сразу: отложенная запись берёт только
+			// взведённые проекты, а этот уже снят.
+			if len(old.vars.persisted()) > 0 {
+				m.savePersisted(map[string]*projectRuntime{id: old})
+			}
 		}
 		return
 	}
@@ -182,7 +189,7 @@ func (m *Module) build(p project.Project) (*projectRuntime, error) {
 	}
 	m.evMu.Unlock()
 	saved := m.persist.load()[p.ID]
-	vars, err := newVarStore(p.Variables, previous, saved, func() { m.savePersisted() })
+	vars, err := newVarStore(p.Variables, previous, saved, m.persistLater)
 	if err != nil {
 		return nil, err
 	}
@@ -436,16 +443,68 @@ func (m *Module) resetToggles() {
 	}
 }
 
-// savePersisted записывает сохраняемые переменные всех проектов.
-func (m *Module) savePersisted() {
+// persistDelay — через сколько после изменения сохраняемой переменной записывать файл: все
+// изменения за это время записываются одной записью (счётчик в быстром цикле меняется десятки
+// раз в секунду — переписывать файл каждый раз незачем). Выключение проекта и остановка mKey
+// записывают сразу.
+const persistDelay = time.Second
+
+// persistLater планирует запись сохраняемых переменных через persistDelay, если она ещё не
+// запланирована. После остановки ничего не планирует: остановка записывает всё сама.
+func (m *Module) persistLater() {
+	m.saveMu.Lock()
+	defer m.saveMu.Unlock()
+	if m.saveTimer != nil || m.saveStopped {
+		return
+	}
+	m.saveWG.Add(1)
+	m.saveTimer = time.AfterFunc(persistDelay, func() {
+		defer m.saveWG.Done()
+		m.saveMu.Lock()
+		m.saveTimer = nil
+		m.saveMu.Unlock()
+		m.savePersisted(nil)
+	})
+}
+
+// stopPersist (при остановке) отменяет запланированную запись, дожидается идущей и записывает
+// переменные проектов rts — снятых при остановке, — чтобы последние изменения не потерялись.
+func (m *Module) stopPersist(rts map[string]*projectRuntime) {
+	m.saveMu.Lock()
+	m.saveStopped = true
+	if m.saveTimer != nil && m.saveTimer.Stop() {
+		// Таймер не сработал и уже не сработает: его ожидание снимаем здесь.
+		m.saveWG.Done()
+	}
+	m.saveTimer = nil
+	m.saveMu.Unlock()
+	m.saveWG.Wait()
+	m.savePersisted(rts)
+}
+
+// savePersisted записывает сохраняемые переменные взведённых проектов и проектов extra (только
+// что снятых: среди взведённых их уже нет). Нечего записывать — файл не трогается. Записи идут
+// по одной (writeMu): каждая читает файл, дополняет его и записывает целиком.
+func (m *Module) savePersisted(extra map[string]*projectRuntime) {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
 	all := m.persist.load()
+	changed := false
 	m.evMu.Lock()
 	for id, rt := range m.runtimes {
 		if p := rt.vars.persisted(); len(p) > 0 {
-			all[id] = p
+			all[id], changed = p, true
 		}
 	}
 	m.evMu.Unlock()
+	for id, rt := range extra {
+		if p := rt.vars.persisted(); len(p) > 0 {
+			all[id], changed = p, true
+		}
+	}
+	if !changed {
+		return
+	}
 	if err := m.persist.save(all); err != nil {
 		m.log.Warn("save variables", "err", err)
 	}
