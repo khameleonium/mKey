@@ -251,6 +251,17 @@ func (m *Module) Device(name string) (contracts.VirtualDevice, error) {
 	return nil, fmt.Errorf("%w: %q", contracts.ErrUnknownVirtual, name)
 }
 
+// State возвращает нажатое и положения осей подключённого устройства (contracts.VirtualDeviceManager).
+func (m *Module) State(name string) (contracts.VirtualState, error) {
+	m.mu.Lock()
+	d, ok := m.vdevs[strings.ToLower(name)]
+	m.mu.Unlock()
+	if !ok {
+		return contracts.VirtualState{}, fmt.Errorf("%w: %q", contracts.ErrUnknownVirtual, name)
+	}
+	return d.state(), nil
+}
+
 // Resolve находит кнопку или ось устройства по имени (contracts.VirtualDeviceManager).
 func (m *Module) Resolve(device, control string) (uint16, bool, error) {
 	m.mu.Lock()

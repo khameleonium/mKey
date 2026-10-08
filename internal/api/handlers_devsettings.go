@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/lib/config"
@@ -36,8 +37,84 @@ func (m *Module) keyResolver() dsl.Resolver {
 	return r
 }
 
-// handleVirtualDevices возвращает виртуальные устройства включённых проектов и шаблоны (FR-VD-1):
-// {devices: [VirtualDeviceInfo], templates: [...], template_info: [VirtualTemplateInfo]}.
+// virtualCard — виртуальное устройство любого проекта для страницы «Виртуальные устройства»
+// (FR-VD-8): где описано, в каком оно состоянии и что вокруг него в проекте.
+type virtualCard struct {
+	// Name, Template, SystemName — имя в макросах, шаблон и имя в системе («mKey pad2»).
+	Name       string `json:"name"`
+	Template   string `json:"template"`
+	SystemName string `json:"system_name"`
+	// Project и ProjectName — проект, в котором устройство описано.
+	Project     string `json:"project"`
+	ProjectName string `json:"project_name"`
+	// State — "on" (подключено: игры его видят), "off" (проект выключен — устройства в системе
+	// нет) или "error" (проект включён, но устройство не создано; причина — Error).
+	State string `json:"state"`
+	Error string `json:"error,omitempty"`
+	// Node — файл устройства (/dev/input/eventN), пока оно подключено.
+	Node string `json:"node,omitempty"`
+	// Bindings — сколько привязок проекта управляют устройством; Hides — какая-то из них прячет
+	// клавиши от других программ (пока проект включён, они нажимают только устройство).
+	Bindings int  `json:"bindings"`
+	Hides    bool `json:"hides"`
+	// Others — сколько ещё в проекте событий, переназначений и других устройств: они включаются
+	// и выключаются вместе с этим устройством.
+	Others int `json:"others"`
+}
+
+// virtualCards собирает виртуальные устройства всех проектов (включённых и выключенных) с
+// состоянием: у включённых — по менеджеру устройств (подключено или ошибка), у выключенных — "off".
+func (m *Module) virtualCards() []virtualCard {
+	out := []virtualCard{}
+	if m.svc.projects == nil {
+		return out
+	}
+
+	// Состояние устройств включённых проектов — по имени и проекту.
+	live := map[string]contracts.VirtualDeviceInfo{}
+	for _, d := range m.svc.vdevs.List() {
+		live[strings.ToLower(d.Name)+"\x00"+d.Project] = d
+	}
+
+	// Устройства всех проектов по порядку проектов.
+	for _, st := range m.svc.projects.List() {
+		p := st.Project
+		for _, v := range p.VirtualDevices {
+			c := virtualCard{Name: v.Name, Template: v.Template, SystemName: contracts.VirtualNamePrefix + v.Name,
+				Project: p.ID, ProjectName: p.Name, State: "off",
+				Others: len(p.Events) + len(p.Remaps) + len(p.VirtualDevices) - 1}
+
+			// Привязки, которые управляют этим устройством ({pad2.…}).
+			prefix := "{" + strings.ToLower(v.Name) + "."
+			for _, b := range p.Bindings {
+				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(b.To)), prefix) {
+					c.Bindings++
+					c.Hides = c.Hides || b.Hide
+				}
+			}
+
+			// Состояние: включённый проект — по менеджеру; ошибка файла проекта — ошибка.
+			if p.IsEnabled() {
+				c.State = "on"
+				if d, ok := live[strings.ToLower(v.Name)+"\x00"+p.ID]; ok {
+					c.Node = d.Node
+					if d.Error != "" {
+						c.State, c.Error = "error", d.Error
+					}
+				}
+				if st.Error != "" {
+					c.State, c.Error = "error", st.Error
+				}
+			}
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// handleVirtualDevices возвращает виртуальные устройства и шаблоны (FR-VD-1, FR-VD-8):
+// {devices: [VirtualDeviceInfo] — включённых проектов, all: [virtualCard] — всех проектов с
+// состоянием, templates: [...], template_info: [VirtualTemplateInfo]}.
 func (m *Module) handleVirtualDevices(w http.ResponseWriter, r *http.Request) {
 	if m.svc.vdevs == nil {
 		m.unavailable(w, r)
@@ -50,7 +127,24 @@ func (m *Module) handleVirtualDevices(w http.ResponseWriter, r *http.Request) {
 			infos = append(infos, info)
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.vdevs.List(), "templates": m.svc.vdevs.Templates(), "template_info": infos})
+	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.vdevs.List(), "all": m.virtualCards(),
+		"templates": m.svc.vdevs.Templates(), "template_info": infos})
+}
+
+// handleVirtualState возвращает, что нажато и куда наклонены оси у подключённого виртуального
+// устройства (проверка вживую, FR-VD-8): {buttons, axes}. Не подключено — 404 api.virtual_off.
+func (m *Module) handleVirtualState(w http.ResponseWriter, r *http.Request) {
+	if m.svc.vdevs == nil {
+		m.unavailable(w, r)
+		return
+	}
+	name := r.PathValue("name")
+	st, err := m.svc.vdevs.State(name)
+	if err != nil {
+		m.writeError(w, r, http.StatusNotFound, "api.virtual_off", map[string]string{"name": name})
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // deviceSettings — настройки устройств в окне: каким устройствам давать авто-ID (FR-DEV-2).

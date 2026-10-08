@@ -137,8 +137,14 @@ paths:
       responses: { "200": { description: "{ok}" }, "400": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
   /api/v1/devices/virtual:
     get:
-      summary: "Виртуальные устройства включённых проектов (ADR-0028): {devices: [{name, template, project, system_name, node?, error?}], templates: [...], template_info: [{id, buttons: [South…], axes: [LX…]}]} — состав шаблонов для мастера «второй геймпад»"
-      responses: { "200": { description: "{devices, templates, template_info}" }, "503": { $ref: "#/components/responses/Error" } }
+      summary: "Виртуальные устройства (ADR-0028, ADR-0041): devices — включённых проектов [{name, template, project, system_name, node?, error?}]; all — всех проектов с состоянием [{name, template, system_name, project, project_name, state (on|off|error), error?, node?, bindings, hides, others}]; templates; template_info [{id, buttons, axes}] — состав шаблонов именами для макросов"
+      responses: { "200": { description: "{devices, all, templates, template_info}" }, "503": { $ref: "#/components/responses/Error" } }
+  /api/v1/devices/virtual/{name}/state:
+    get:
+      summary: "Что нажато и куда наклонены оси у подключённого виртуального устройства (проверка вживую, ADR-0041): {buttons: [South…], axes: {LX: 0.5, Gas: 1}} — оси с центром −1…1, «от нуля» 0…1; не подключено — 404 api.virtual_off"
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: "{buttons, axes}" }, "404": { $ref: "#/components/responses/Error" }, "503": { $ref: "#/components/responses/Error" } }
   /api/v1/settings/devices:
     get:
       summary: "Настройки устройств: {auto_ids} — каким устройствам давать авто-ID (smart, all, unusual; ADR-0026)"

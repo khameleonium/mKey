@@ -170,6 +170,7 @@
   "api.update_cannot": "mKey cannot update itself: {reason}",
   "api.update_check_failed": "Could not check for updates (no connection to GitHub?): {error}",
   "api.update_failed": "Update failed: {error}",
+  "api.virtual_off": "The device \"{name}\" is not connected right now: turn its project on.",
   "api.wait_timeout": "timed out",
   "app.creator": "Creator: Ilya Ulyanov | khameleonium",
   "category.input": "Key presses",

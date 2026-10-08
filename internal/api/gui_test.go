@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,6 +39,19 @@ func (p *memProjects) Get(id string) (contracts.ProjectState, bool) {
 		st.Error = err.Error()
 	}
 	return st, true
+}
+
+// List возвращает проекты по порядку ID.
+func (p *memProjects) List() []contracts.ProjectState {
+	p.mu.Lock()
+	ids := slices.Sorted(maps.Keys(p.files))
+	p.mu.Unlock()
+	out := make([]contracts.ProjectState, 0, len(ids))
+	for _, id := range ids {
+		st, _ := p.Get(id)
+		out = append(out, st)
+	}
+	return out
 }
 
 func (p *memProjects) Raw(id string) ([]byte, error) {

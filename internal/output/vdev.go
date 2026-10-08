@@ -241,6 +241,18 @@ type vdevice struct {
 	held      map[uint16]bool
 	touching  bool
 	nextTrack int32
+	// axes — последние отправленные значения осей (для проверки вживую, State); пусто — покой.
+	axes map[uint16]int32
+}
+
+// setAxisValue запоминает отправленное значение оси (для State).
+func (v *vdevice) setAxisValue(code uint16, value int32) {
+	v.mu.Lock()
+	if v.axes == nil {
+		v.axes = map[uint16]int32{}
+	}
+	v.axes[code] = value
+	v.mu.Unlock()
 }
 
 // isTouch сообщает, что устройство — сенсорный экран (multitouch, protocol B).
@@ -376,9 +388,14 @@ func (v *vdevice) button(ctx context.Context, code uint16, down bool) error {
 		events = append(events, ev.Event{Type: ev.EvKey, Code: dev, Value: value})
 	}
 
-	// Отправка и учёт нажатого.
+	// Отправка и учёт нажатого (и положения оси у кнопок-осей).
 	if err := v.Emit(ctx, events...); err != nil {
 		return err
+	}
+	for _, e := range events {
+		if e.Type == ev.EvAbs {
+			v.setAxisValue(e.Code, e.Value)
+		}
 	}
 	v.mu.Lock()
 	if down {
@@ -399,7 +416,12 @@ func (v *vdevice) SetAxis(ctx context.Context, code uint16, value float64) error
 	if v.t.inverted[code] {
 		value = 1 - max(0, min(1, value))
 	}
-	return v.Emit(ctx, ev.Event{Type: ev.EvAbs, Code: code, Value: axisValue(info, value, v.t.oneSided[code])})
+	raw := axisValue(info, value, v.t.oneSided[code])
+	if err := v.Emit(ctx, ev.Event{Type: ev.EvAbs, Code: code, Value: raw}); err != nil {
+		return err
+	}
+	v.setAxisValue(code, raw)
+	return nil
 }
 
 // axisValue переводит положение из макроса в значение оси: −1…1 — на весь диапазон (0 — середина),
@@ -453,8 +475,65 @@ func (v *vdevice) ReleaseAll() error {
 	}
 	v.mu.Lock()
 	clear(v.held)
+	clear(v.axes)
 	v.mu.Unlock()
 	return err
+}
+
+// state возвращает нажатые кнопки и положения осей именами для макросов (contracts.VirtualState):
+// имена шаблона ({wheel.Gas}), иначе общие; оси без имени не показываются.
+func (v *vdevice) state() contracts.VirtualState {
+	v.mu.Lock()
+	held := slices.Sorted(maps.Keys(v.held))
+	axes := maps.Clone(v.axes)
+	v.mu.Unlock()
+
+	// Имена шаблона по коду: кнопки и оси отдельно.
+	btnNames, axisNames := map[uint16]string{}, map[uint16]string{}
+	for _, c := range v.t.controls {
+		if c.axis {
+			axisNames[c.code] = c.name
+		} else if _, dup := btnNames[c.code]; !dup {
+			btnNames[c.code] = c.name
+		}
+	}
+
+	// Кнопки.
+	out := contracts.VirtualState{Buttons: []string{}, Axes: map[string]float64{}}
+	for _, code := range held {
+		name, ok := btnNames[code]
+		if !ok {
+			name, ok = keys.NameOf(code)
+		}
+		if ok {
+			out.Buttons = append(out.Buttons, name)
+		}
+	}
+
+	// Оси: значение — как в макросах (−1…1 или 0…1, у педалей 0 — отпущена).
+	for code, info := range v.setup.Abs {
+		name, ok := axisNames[code]
+		if !ok {
+			name, ok = keys.AxisNameOf(code)
+		}
+		span := float64(info.Maximum - info.Minimum)
+		if !ok || span <= 0 {
+			continue
+		}
+		raw, moved := axes[code]
+		if !moved {
+			raw = info.Value
+		}
+		f := float64(raw-info.Minimum) / span
+		switch {
+		case v.t.inverted[code]:
+			f = 1 - f
+		case !v.t.oneSided[code]:
+			f = f*2 - 1
+		}
+		out.Axes[name] = math.Round(f*1000) / 1000
+	}
+	return out
 }
 
 // Проверки на этапе компиляции, что vdevice реализует контракты.

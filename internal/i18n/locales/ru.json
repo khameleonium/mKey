@@ -170,6 +170,7 @@
   "api.update_cannot": "mKey не может обновить себя сам: {reason}",
   "api.update_check_failed": "Не удалось проверить обновления (нет связи с GitHub?): {error}",
   "api.update_failed": "Не получилось обновить: {error}",
+  "api.virtual_off": "Устройство «{name}» сейчас не подключено: включите его проект.",
   "api.wait_timeout": "время ожидания истекло",
   "app.creator": "Создатель: Илья Ульянов | khameleonium",
   "category.input": "Нажатия",

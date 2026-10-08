@@ -345,3 +345,30 @@ func TestFlightstick(t *testing.T) {
 		t.Fatalf("info = %+v", info)
 	}
 }
+
+// TestState проверяет состояние для проверки вживую: имена шаблона, педаль «насколько нажата»,
+// руль в центре по умолчанию, нажатая кнопка; после сброса — покой.
+func TestState(t *testing.T) {
+	t.Parallel()
+	v := newVdevModule(nil)
+	d, _ := v.pad(t, "wheel", "wheel")
+	v.vdevs["wheel"] = d
+	ctx := context.Background()
+	if err := d.SetAxis(ctx, ev.AbsZ, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Press(ctx, ev.BtnJoystick+4); err != nil {
+		t.Fatal(err)
+	}
+	st, err := v.State("Wheel")
+	if err != nil || st.Axes["Gas"] != 1 || st.Axes["Brake"] != 0 || st.Axes["Wheel"] != 0 || strings.Join(st.Buttons, ",") != "ShiftUp" {
+		t.Fatalf("state = %+v, %v", st, err)
+	}
+	_ = d.ReleaseAll()
+	if st, _ := v.State("wheel"); st.Axes["Gas"] != 0 || len(st.Buttons) != 0 {
+		t.Fatalf("after reset = %+v", st)
+	}
+	if _, err := v.State("nope"); !errors.Is(err, contracts.ErrUnknownVirtual) {
+		t.Fatalf("unknown = %v", err)
+	}
+}
