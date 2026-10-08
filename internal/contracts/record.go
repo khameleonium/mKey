@@ -36,8 +36,12 @@ type RecordOptions struct {
 // RecordSettings — настройки записи по умолчанию (секция modules.recorder в config.yaml): с ними
 // запись начинается без вопросов — сочетанием, из меню значка, из окна и командой mkey rec.
 type RecordSettings struct {
-	// Kinds — какие устройства записывать ("keyboard", "mouse", "touchpad", "gamepad"…).
+	// Kinds — классы устройств, которые записываются по умолчанию ("keyboard", "mouse", "gamepad"…):
+	// для устройств без своего выбора в Devices, в том числе подключённых позже. Может быть пустым.
 	Kinds []string `json:"kinds"`
+	// Devices — выбор для отдельных устройств: ключ RecordDevice.Key («2dc8:310a 8BitDo Ultimate 2C
+	// Wireless Controller») → записывать ли. Важнее Kinds; хранится и для отключённых устройств.
+	Devices map[string]bool `json:"devices,omitempty"`
 	// Moves — записывать движения мыши (false — только нажатия кнопок и колесо).
 	Moves bool `json:"moves"`
 	// MergeMovesMS — движения мыши ближе этого (мс) склеиваются в одно при записи: файл короче,
@@ -48,6 +52,36 @@ type RecordSettings struct {
 	CenterPointer bool `json:"center_pointer"`
 	// CoalesceMS — движения мыши ближе этого (мс) склеиваются при воспроизведении (0 — нет).
 	CoalesceMS int `json:"coalesce_ms"`
+}
+
+// Категории устройств в выборе «что записывать» (RecordDevice.Category): как их видит человек.
+const (
+	RecordCatKeyboards = "keyboards" // клавиатуры, мыши и тачпады
+	RecordCatGamepads  = "gamepads"  // геймпады и джойстики
+	RecordCatTouch     = "touch"     // сенсорные экраны и графические планшеты
+	RecordCatOther     = "other"     // всё, что не удалось отнести к известной категории
+	RecordCatVirtual   = "virtual"   // созданные программами (в том числе самим mKey)
+)
+
+// RecordDevice — устройство в выборе «что записывать».
+type RecordDevice struct {
+	// Key — ключ выбора: «VID:PID имя» (одинаков после переподключения и перезагрузки).
+	Key string `json:"key"`
+	// ID — «2dc8:310a»; Name — имя, как его видит система; Path — /dev/input/eventN.
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// Category — RecordCat*; Kinds — классы устройства.
+	Category string   `json:"category"`
+	Kinds    []string `json:"kinds"`
+	// Virtual — создано программой; Own — создано самим mKey (не записывается: mKey не читает
+	// свои устройства, иначе записывал бы сам себя).
+	Virtual bool `json:"virtual,omitempty"`
+	Own     bool `json:"own,omitempty"`
+	// Selected — будет ли записываться (свой выбор из Devices, иначе по Kinds); Explicit — выбор задан
+	// для этого устройства.
+	Selected bool `json:"selected"`
+	Explicit bool `json:"explicit,omitempty"`
 }
 
 // RecordingInfo — сведения о записи.
@@ -61,7 +95,8 @@ type RecordingInfo struct {
 	DurationMS int64 `json:"duration_ms"`
 	// Events — число записанных событий (без служебных).
 	Events int `json:"events"`
-	// Devices — имена записанных устройств.
+	// Devices — имена устройств: при начале записи — выбранные из подключённых (пусто — запись будет
+	// пустой: ни одно подключённое устройство не выбрано), по окончании — записанные.
 	Devices []string `json:"devices,omitempty"`
 	// StopHotkey — сочетание, которым можно закончить идущую запись из любой программы ("" — нет).
 	StopHotkey string `json:"stop_hotkey,omitempty"`
@@ -104,6 +139,9 @@ type Recorder interface {
 	SetRecordHotkey(combo string) error
 	// RecordSettings возвращает настройки записи по умолчанию.
 	RecordSettings() RecordSettings
+	// RecordDevices возвращает подключённые устройства для выбора «что записывать» (по категориям,
+	// в порядке показа) с тем, будут ли они записываться по текущим настройкам.
+	RecordDevices() []RecordDevice
 	// SetRecordSettings проверяет и меняет настройки записи (действуют со следующей записи).
 	// ErrBadRecordSettings — неизвестный класс устройств или значение вне допустимого.
 	SetRecordSettings(s RecordSettings) error

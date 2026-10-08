@@ -25,6 +25,8 @@ type InputDevice struct {
 	Info evdev.Info `json:"info"`
 	// Kinds — классы устройства (клавиатура, мышь, геймпад…).
 	Kinds []evdev.Kind `json:"kinds"`
+	// Virtual — устройство создано программой (uinput, /sys/devices/virtual), а не подключено.
+	Virtual bool `json:"virtual,omitempty"`
 }
 
 // InputEvent — событие физического устройства.
@@ -81,6 +83,9 @@ type InputSource interface {
 	EmergencyCombo() string
 	// SetEmergencyCombo меняет сочетание экстренной остановки сразу (не меньше двух клавиш).
 	SetEmergencyCombo(combo string) error
+	// OwnDevices возвращает собственные виртуальные устройства mKey, которые есть в системе
+	// (их mKey никогда не читает): путь, имя и VID:PID — чтобы показать человеку, что эмулирует mKey.
+	OwnDevices() []InputDevice
 }
 
 // InputHandler — синхронный обработчик событий физических устройств.
