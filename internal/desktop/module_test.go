@@ -98,3 +98,22 @@ func TestScreenSize(t *testing.T) {
 		t.Fatal("bad format accepted")
 	}
 }
+
+// TestOffline проверяет режим без живой сессии: встроенных источников нет (раскладки — из
+// настроек, «вслепую»), к D-Bus модуль не подключается.
+func TestOffline(t *testing.T) {
+	t.Parallel()
+	m := NewOffline()
+	if n := len(m.builtinSources()); n != 0 || len(New().builtinSources()) != 4 {
+		t.Fatalf("builtin sources in offline mode: %d", n)
+	}
+	if _, err := m.connect(); err == nil {
+		t.Fatal("offline module connects to D-Bus")
+	}
+	m.log, m.ext, m.warned = slog.New(slog.DiscardHandler), registry.NewExtensions(), map[string]bool{}
+	m.fallback = configLayouts{cfg: m.cfg}
+	m.session = contracts.SessionInfo{Type: "x11", Display: ":0"}
+	if info, err := m.Layouts(context.Background()); err != nil || !info.Blind || info.Source != "config" {
+		t.Fatalf("Layouts = %+v, %v", info, err)
+	}
+}

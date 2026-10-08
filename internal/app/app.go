@@ -7,6 +7,7 @@ import (
 
 	"github.com/khameleonium/mKey/internal/bus"
 	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/desktop"
 	"github.com/khameleonium/mKey/internal/i18n"
 	"github.com/khameleonium/mKey/internal/input"
 	"github.com/khameleonium/mKey/internal/output"
@@ -85,7 +86,8 @@ func (a *App) Stop(ctx context.Context) error {
 	return a.Manager.Stop(ctx)
 }
 
-// fakeBackends заменяет в списке модули ввода и вывода на их варианты без настоящих устройств
+// fakeBackends заменяет в списке модули ввода и вывода на их варианты без настоящих устройств,
+// модуль рабочего стола — на вариант, не трогающий живую сессию (раскладки, уведомления),
 // и убирает значок в трее и проверку обновлений (им нечего делать в проверочном запуске).
 func fakeBackends(entries []registry.Entry) []registry.Entry {
 	out := make([]registry.Entry, 0, len(entries))
@@ -95,6 +97,8 @@ func fakeBackends(entries []registry.Entry) []registry.Entry {
 			e.Module = input.NewFake()
 		case output.ModuleID:
 			e.Module = output.NewFake()
+		case desktop.ModuleID:
+			e.Module = desktop.NewOffline()
 		case "tray", update.ModuleID:
 			continue
 		}

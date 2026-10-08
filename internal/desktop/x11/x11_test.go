@@ -21,6 +21,11 @@ type fakeServer struct {
 	rules  string
 	group  byte
 	cookie []byte
+	// revert — как окружение, откатывающее чужую смену раскладки: после XkbLatchLockState
+	// второй запрос состояния снова видит прежнюю группу.
+	revert bool
+	locked byte
+	reads  int
 }
 
 // serve обслуживает одно соединение до его закрытия.
@@ -100,9 +105,15 @@ func (s *fakeServer) serve(t *testing.T, c net.Conn) {
 		case h[0] == xkbMajor && h[1] == xkbUseExtension:
 			reply(nil, func(b []byte) { b[1] = 1 })
 		case h[0] == xkbMajor && h[1] == xkbGetState:
+			if s.revert {
+				if s.reads++; s.reads == 2 {
+					s.group = s.locked
+				}
+			}
 			reply(nil, func(b []byte) { b[12] = s.group })
 		case h[0] == xkbMajor && h[1] == xkbLatchLockSt:
 			if req[4] == 1 {
+				s.locked, s.reads = s.group, 0
 				s.group = req[5]
 			}
 		default:
@@ -146,6 +157,12 @@ func TestLayouts(t *testing.T) {
 	}
 	if err := l.Switch(ctx, "de"); err == nil {
 		t.Fatal("unknown layout switched")
+	}
+
+	// Окружение вернуло прежнюю раскладку — ошибка, а не тихий набор не той раскладкой.
+	s.revert = true
+	if err := l.Switch(ctx, "ru"); err == nil || !strings.Contains(err.Error(), "reverted") {
+		t.Fatalf("reverted switch = %v", err)
 	}
 
 	// Чужой cookie — понятная ошибка установки соединения.

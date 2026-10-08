@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/godbus/dbus/v5"
 
 	"github.com/khameleonium/mKey/internal/contracts"
+	"github.com/khameleonium/mKey/internal/desktop/cinnamon"
 	"github.com/khameleonium/mKey/internal/desktop/gnome"
 	"github.com/khameleonium/mKey/internal/desktop/kde"
 	"github.com/khameleonium/mKey/internal/desktop/x11"
@@ -43,12 +45,16 @@ type Module struct {
 	warned map[string]bool
 	// connect подключается к сессионной шине D-Bus (в тестах подменяется).
 	connect func() (*dbus.Conn, error)
+	// offline — режим без живой сессии (NewOffline): ни D-Bus, ни встроенных источников раскладок.
+	offline bool
 	// conn — подключение к D-Bus (nil, если не нужно или не удалось).
 	conn *dbus.Conn
 	// kde — адаптер раскладок KDE (создаётся при запуске, нужен D-Bus); fallback — раскладки из
 	// настроек, когда ни один источник не видит раскладку.
 	kde      contracts.LayoutProvider
 	fallback contracts.LayoutProvider
+	// cinnamon — адаптер раскладок Cinnamon (создаётся при запуске, нужен D-Bus).
+	cinnamon contracts.LayoutProvider
 	// tr — переводчик уведомлений; ctx живёт до Stop; wg ждёт горутину уведомлений.
 	tr     contracts.Translator
 	ctx    context.Context
@@ -62,6 +68,26 @@ type Module struct {
 // New создаёт модуль.
 func New() *Module {
 	return &Module{connect: func() (*dbus.Conn, error) { return dbus.ConnectSessionBus() }, cfg: Config{Layouts: []string{"us"}}}
+}
+
+// NewOffline создаёт модуль, который не трогает живую сессию: не подключается к D-Bus (нет
+// уведомлений) и не регистрирует встроенные источники раскладок — раскладки из настроек.
+// Для проверочного запуска без настоящих устройств (`mkey daemon --fake-backends`, автотесты):
+// иначе тест с набором текста переключал бы раскладку на рабочем столе человека.
+func NewOffline() *Module {
+	m := New()
+	m.offline = true
+	m.connect = func() (*dbus.Conn, error) { return nil, errors.New("offline mode") }
+	return m
+}
+
+// builtinSources — встроенные источники раскладок по порядку: KDE, GNOME, X11; в режиме без
+// живой сессии — ни одного.
+func (m *Module) builtinSources() []contracts.LayoutSource {
+	if m.offline {
+		return nil
+	}
+	return []contracts.LayoutSource{kdeSource{m}, gnomeSource{gnome.New()}, cinnamonSource{m}, x11.New("")}
 }
 
 // ID возвращает идентификатор модуля.
@@ -89,7 +115,7 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 	// X11 (любое окружение X11). Другие модули и плагины добавляют свои в ту же точку.
 	m.ext = host.Extensions()
 	m.warned = map[string]bool{}
-	for _, src := range []contracts.LayoutSource{kdeSource{m}, gnomeSource{gnome.New()}, x11.New("")} {
+	for _, src := range m.builtinSources() {
 		if err := m.ext.Register(contracts.PointLayoutSource, src); err != nil {
 			return err
 		}
@@ -121,17 +147,21 @@ func (m *Module) Init(_ context.Context, host contracts.Host) error {
 func (m *Module) Start(context.Context) error {
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 
-	// D-Bus сессии.
+	// D-Bus сессии (в режиме без живой сессии не подключаемся).
 	conn, err := m.connect()
-	if err != nil {
+	switch {
+	case m.offline:
+		m.log.Info("offline mode: no notifications, keyboard layouts from config")
+	case err != nil:
 		m.log.Warn("session D-Bus unavailable: no notifications, keyboard layouts from config", "err", err)
-	} else {
+	default:
 		m.conn = conn
 	}
 
-	// Адаптер раскладок KDE работает через D-Bus.
+	// Адаптеры раскладок KDE и Cinnamon работают через D-Bus.
 	if m.conn != nil {
 		m.kde = kde.New(m.conn)
+		m.cinnamon = cinnamon.New(m.conn)
 	}
 
 	// Уведомления о важных событиях.
@@ -225,6 +255,30 @@ func (s kdeSource) Layouts(ctx context.Context) (contracts.LayoutInfo, error) {
 // Switch переключает раскладку KDE.
 func (s kdeSource) Switch(ctx context.Context, name string) error { return s.m.kde.Switch(ctx, name) }
 
+// cinnamonSource — источник раскладок Cinnamon (D-Bus org.Cinnamon): Cinnamon откатывает смену
+// раскладки другими программами, поэтому переключать нужно его же методом, а не через X11.
+type cinnamonSource struct{ m *Module }
+
+// Meta возвращает метаданные источника.
+func (cinnamonSource) Meta() contracts.ExtensionMeta {
+	return contracts.ExtensionMeta{ID: "cinnamon", NameKey: "layout_source.cinnamon", Provider: ModuleID}
+}
+
+// Supports — окружение Cinnamon и подключение к D-Bus.
+func (s cinnamonSource) Supports(si contracts.SessionInfo) bool {
+	return si.Compositor == "cinnamon" && s.m.cinnamon != nil
+}
+
+// Layouts возвращает раскладки Cinnamon.
+func (s cinnamonSource) Layouts(ctx context.Context) (contracts.LayoutInfo, error) {
+	return s.m.cinnamon.Layouts(ctx)
+}
+
+// Switch переключает раскладку Cinnamon.
+func (s cinnamonSource) Switch(ctx context.Context, name string) error {
+	return s.m.cinnamon.Switch(ctx, name)
+}
+
 // gnomeSource — источник раскладок GNOME (gsettings).
 type gnomeSource struct{ g *gnome.Layouts }
 
@@ -272,5 +326,6 @@ var (
 	_ contracts.LayoutProvider = (*Module)(nil)
 	_ contracts.LayoutSource   = kdeSource{}
 	_ contracts.LayoutSource   = gnomeSource{}
+	_ contracts.LayoutSource   = cinnamonSource{}
 	_ contracts.Notifier       = (*Module)(nil)
 )
