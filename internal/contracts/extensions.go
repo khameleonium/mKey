@@ -51,6 +51,9 @@ const (
 	// PointScriptLanguage — языки файлов-скриптов (ScriptLanguage) для раздела «Скрипты» окна
 	// (FR-UI-1.7): модули lua и shell.
 	PointScriptLanguage ExtensionPoint = "script_language"
+	// PointLayoutSource — источники раскладок клавиатуры (LayoutSource): встроенные (KDE, GNOME,
+	// X11) и добавленные модулями или плагинами для других окружений.
+	PointLayoutSource ExtensionPoint = "layout_source"
 )
 
 // AllExtensionPoints возвращает список всех известных точек расширения в стабильном порядке.
@@ -59,7 +62,7 @@ func AllExtensionPoints() []ExtensionPoint {
 		PointTrigger, PointCondition, PointAction, PointDSLCommand,
 		PointDesktopAdapter, PointDeviceTemplate, PointDeviceProfile,
 		PointInitSystem, PointElevator, PointDeviceAccess, PointPackageManager,
-		PointLuaExtension, PointRouteProvider, PointPlace, PointProjectTemplate, PointScriptLanguage,
+		PointLuaExtension, PointRouteProvider, PointPlace, PointProjectTemplate, PointScriptLanguage, PointLayoutSource,
 	}
 }
 

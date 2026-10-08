@@ -26,8 +26,22 @@ type LayoutInfo struct {
 	Available []string `json:"available"`
 	// CanSwitch — окружение позволяет mKey переключать раскладку.
 	CanSwitch bool `json:"can_switch"`
-	// Source — откуда получены сведения: "kde", "gnome", "config".
+	// Source — откуда получены сведения: ID источника раскладок ("kde", "gnome", "x11"…) или
+	// "config" — ни один источник не видит раскладку в этой сессии.
 	Source string `json:"source"`
+	// Blind — раскладку не видно (Source "config"): mKey печатает текст нажатиями клавиш как есть,
+	// без переключения раскладки, — нужную раскладку включает сам человек.
+	Blind bool `json:"blind,omitempty"`
+}
+
+// LayoutSource — источник раскладок для окружения (точка расширения PointLayoutSource): встроенные —
+// KDE, GNOME, X11; модуль или плагин может добавить свой для другого окружения. Модуль desktop
+// берёт первый источник, который работает в текущей сессии (Supports).
+type LayoutSource interface {
+	Extension
+	LayoutProvider
+	// Supports сообщает, умеет ли источник узнавать раскладку в сессии s.
+	Supports(s SessionInfo) bool
 }
 
 // LayoutProvider сообщает и переключает раскладку клавиатуры (контракт десктоп-адаптеров, FR-AD-4).
