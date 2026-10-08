@@ -85,6 +85,12 @@ type Module struct {
 	// plays — отмена идущих воспроизведений.
 	plays map[*int]context.CancelFunc
 
+	// listMu защищает summaries — сведения о файлах записей по путям (Recordings): список
+	// показывают меню значка и окно при каждом открытии, а читать файл целиком нужно, только
+	// если он изменился.
+	listMu    sync.Mutex
+	summaries map[string]recordingSummary
+
 	// Фоновое чтение событий и подписки на шину.
 	cancel context.CancelFunc
 	wg     sync.WaitGroup

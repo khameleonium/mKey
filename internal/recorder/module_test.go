@@ -1,6 +1,7 @@
 package recorder
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -499,6 +500,53 @@ func TestConvertRecording(t *testing.T) {
 	}
 	if _, err := m.ConvertRecording("нет", contracts.ConvertOptions{}); !errors.Is(err, contracts.ErrRecordingNotFound) {
 		t.Fatalf("missing: %v", err)
+	}
+}
+
+// TestRecordingsCache: список записей перечитывает только изменившиеся файлы (размер или время
+// изменения), отдаёт копии сведений и забывает удалённые файлы.
+func TestRecordingsCache(t *testing.T) {
+	t.Parallel()
+	m, _, _ := newTestModule(t)
+	writeRecording(t, m.cfg.Dir, "a", "0.100 0 ^{A}\n0.200 0 ~{A}\n")
+	path := filepath.Join(m.cfg.Dir, "a"+mkrec.FileExt)
+	list, err := m.Recordings()
+	if err != nil || len(list) != 1 || list[0].Events != 2 || len(list[0].Devices) != 2 {
+		t.Fatalf("first listing: %+v %v", list, err)
+	}
+	list[0].Devices[0] = "changed by the caller"
+
+	// Содержимое другое, но размер и время изменения прежние — файл не перечитывается.
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), int(fi.Size())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, fi.ModTime(), fi.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = m.Recordings()
+	if len(list) != 1 || list[0].Problem != nil || list[0].Events != 2 || list[0].Devices[0] != "Kbd" {
+		t.Fatalf("unchanged file was re-read or the copy was shared: %+v", list)
+	}
+
+	// Время изменения другое — файл перечитан (теперь он испорчен).
+	later := fi.ModTime().Add(time.Second)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = m.Recordings(); len(list) != 1 || list[0].Problem == nil {
+		t.Fatalf("changed file not re-read: %+v", list)
+	}
+
+	// Удалённый файл исчезает из списка и из сохранённых сведений.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ = m.Recordings(); len(list) != 0 || len(m.summaries) != 0 {
+		t.Fatalf("removed file kept: %+v, %d summaries", list, len(m.summaries))
 	}
 }
 

@@ -465,38 +465,88 @@ func (m *Module) Recordings() ([]contracts.RecordingInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	m.listMu.Lock()
+	defer m.listMu.Unlock()
+	if m.summaries == nil {
+		m.summaries = map[string]recordingSummary{}
+	}
 	out := []contracts.RecordingInfo{}
+	seen := make(map[string]bool, len(entries))
 	for _, e := range entries {
-		// Только файлы записей (черновики начинаются с точки).
+		// Только файлы записей (черновики начинаются с точки); файл, удалённый за это время, — пропускаем.
 		name, ok := strings.CutSuffix(e.Name(), mkrec.FileExt)
 		if !ok || strings.HasPrefix(name, ".") || e.IsDir() {
 			continue
 		}
-		path := filepath.Join(m.cfg.Dir, e.Name())
-		info := contracts.RecordingInfo{Name: name, Path: path}
-		if rec, err := readRecording(path); err == nil {
-			// Дата — из строки created; её нет (файл написан вручную) — дата изменения файла.
-			info.Created = rec.Header.Created
-			if fi, err := e.Info(); err == nil && info.Created.IsZero() {
-				info.Created = fi.ModTime()
-			}
-			info.DurationMS = rec.Duration.Milliseconds()
-			info.Events = len(rec.Frames)
-			for _, d := range rec.Header.Devices {
-				info.Devices = append(info.Devices, d.Name)
-			}
-		} else {
-			// Файл не читается (ошибка после ручной правки, запись первой версии) — показываем
-			// с датой изменения и описанием ошибки, чтобы человек знал, что и где поправить.
-			if fi, err := e.Info(); err == nil {
-				info.Created = fi.ModTime()
-			}
-			info.Problem = recordingProblem(err)
+		fi, err := e.Info()
+		if err != nil {
+			continue
 		}
-		out = append(out, info)
+		path := filepath.Join(m.cfg.Dir, e.Name())
+		seen[path] = true
+
+		// Файл не менялся (тот же размер и время изменения) — прежние сведения; иначе читаем его.
+		s, ok := m.summaries[path]
+		if !ok || s.size != fi.Size() || !s.modTime.Equal(fi.ModTime()) {
+			s = recordingSummary{size: fi.Size(), modTime: fi.ModTime(), info: summarize(name, path, fi)}
+			m.summaries[path] = s
+		}
+		out = append(out, s.copyInfo())
+	}
+
+	// Сведения об удалённых файлах больше не нужны.
+	for path := range m.summaries {
+		if !seen[path] {
+			delete(m.summaries, path)
+		}
 	}
 	slices.SortFunc(out, func(a, b contracts.RecordingInfo) int { return b.Created.Compare(a.Created) })
 	return out, nil
+}
+
+// recordingSummary — сведения о файле записи для списка и признаки файла, по которым видно, что
+// он с тех пор не менялся (размер и время изменения).
+type recordingSummary struct {
+	size    int64
+	modTime time.Time
+	info    contracts.RecordingInfo
+}
+
+// copyInfo возвращает копию сведений: вызывающий может менять их, не затрагивая сохранённые.
+func (s recordingSummary) copyInfo() contracts.RecordingInfo {
+	info := s.info
+	info.Devices = slices.Clone(info.Devices)
+	if info.Problem != nil {
+		p := *info.Problem
+		info.Problem = &p
+	}
+	return info
+}
+
+// summarize читает файл записи name (путь path, сведения о файле fi) и возвращает сведения для
+// списка: длительность, число событий, устройства — или описание ошибки, если файл не читается.
+func summarize(name, path string, fi os.FileInfo) contracts.RecordingInfo {
+	info := contracts.RecordingInfo{Name: name, Path: path}
+	rec, err := readRecording(path)
+	if err != nil {
+		// Файл не читается (ошибка после ручной правки, запись первой версии) — показываем
+		// с датой изменения и описанием ошибки, чтобы человек знал, что и где поправить.
+		info.Created = fi.ModTime()
+		info.Problem = recordingProblem(err)
+		return info
+	}
+
+	// Дата — из строки created; её нет (файл написан вручную) — дата изменения файла.
+	info.Created = rec.Header.Created
+	if info.Created.IsZero() {
+		info.Created = fi.ModTime()
+	}
+	info.DurationMS = rec.Duration.Milliseconds()
+	info.Events = len(rec.Frames)
+	for _, d := range rec.Header.Devices {
+		info.Devices = append(info.Devices, d.Name)
+	}
+	return info
 }
 
 // recordingProblem описывает ошибку чтения файла записи для списка записей.
