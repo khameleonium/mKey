@@ -134,7 +134,8 @@ func TestMenuIDsAfterUpdate(t *testing.T) {
 	})
 	o := &menuObject{m: m}
 
-	// Было: Record=1, Stop all=2. Стало: Record, подменю Replay (с записью), Stop all.
+	// Было: Record=1, Stop all=2. Стало: Record, подменю Replay (с записью), Stop all —
+	// прежние пункты сохраняют номера, новое подменю получает новый.
 	m.set([]MenuItem{
 		{Label: "Record"},
 		{Label: "Replay", Children: []MenuItem{{Label: "rec1", OnClick: func() { clicked <- "rec1" }}}},
@@ -142,12 +143,25 @@ func TestMenuIDsAfterUpdate(t *testing.T) {
 	})
 	_, root, _ := o.GetLayout(0, -1, nil)
 	replay := root.Children[1].Value().(layout)
-	if replay.ID <= 2 || replay.Props["children-display"].Value() != "submenu" {
-		t.Fatalf("replay = %+v", replay)
+	if replay.ID <= 2 || replay.Props["children-display"].Value() != "submenu" ||
+		root.Children[0].Value().(layout).ID != 1 || root.Children[2].Value().(layout).ID != 2 {
+		t.Fatalf("root = %+v", root)
 	}
 
-	// Щелчок по старому номеру 2 ничего не делает; по записи в подменю — запускает её.
-	_ = o.Event(2, "clicked", dbus.MakeVariant(0), 0)
+	// Пункт «Record» стал подменю — номер новый (вид пункта по номеру не меняется).
+	m.set([]MenuItem{{Label: "Record", Children: []MenuItem{{Label: "x"}}}})
+	if _, r2, _ := o.GetLayout(0, -1, nil); r2.Children[0].Value().(layout).ID == 1 {
+		t.Fatal("submenu reused the id of a plain item")
+	}
+	m.set([]MenuItem{
+		{Label: "Record"},
+		{Label: "Replay", Children: []MenuItem{{Label: "rec1", OnClick: func() { clicked <- "rec1" }}}},
+		{Label: "Stop all", OnClick: func() { clicked <- "stop" }},
+	})
+
+	// Щелчок по записи в подменю — запускает её (номер подменю и записи прежние).
+	_, root, _ = o.GetLayout(0, -1, nil)
+	replay = root.Children[1].Value().(layout)
 	rec := replay.Children[0].Value().(layout)
 	_ = o.Event(rec.ID, "clicked", dbus.MakeVariant(0), 0)
 	if got := <-clicked; got != "rec1" {
@@ -158,9 +172,9 @@ func TestMenuIDsAfterUpdate(t *testing.T) {
 	}
 }
 
-// TestAboutToShow проверяет обновление меню перед открытием: пункты те же — меню не
-// перестраивается (номера в открытом меню остаются верными); изменились (запись удалили) —
-// меню заменяется и панель просят перечитать его; перед открытием подменю ничего не делается.
+// TestAboutToShow проверяет обновление меню перед открытием меню или подменю: пункты те же — меню
+// не перестраивается; изменились (запись удалили) — меню заменяется, панель просят перечитать
+// его, а оставшиеся пункты сохраняют номера (уже открытое подменю остаётся верным).
 func TestAboutToShow(t *testing.T) {
 	t.Parallel()
 	recs := []string{"rec1", "rec2"}
@@ -183,18 +197,21 @@ func TestAboutToShow(t *testing.T) {
 		t.Fatalf("revision = %d", rev)
 	}
 
-	// Запись удалили: перед открытием подменю — ничего, перед открытием меню — новое меню.
+	// Запись удалили: перед открытием подменю (номер 2) — новое меню; номера подменю и rec2 прежние.
+	_, before, _ := o.GetLayout(0, -1, nil)
+	oldReplay := before.Children[1].Value().(layout)
+	oldRec2 := oldReplay.Children[1].Value().(layout).ID
 	recs = []string{"rec2"}
-	if changed, _ := o.AboutToShow(2); changed {
-		t.Fatal("submenu rebuilt")
+	if changed, _ := o.AboutToShow(oldReplay.ID); !changed {
+		t.Fatal("submenu not refreshed")
 	}
-	if upd, _, _ := o.AboutToShowGroup([]int32{0}); len(upd) != 1 || upd[0] != 0 {
-		t.Fatalf("updates = %v", upd)
+	_, sub, err := o.GetLayout(oldReplay.ID, -1, nil)
+	if err != nil || len(sub.Children) != 1 || sub.Children[0].Value().(layout).ID != oldRec2 ||
+		sub.Children[0].Value().(layout).Props["label"].Value() != "rec2" {
+		t.Fatalf("replay = %+v, %v", sub, err)
 	}
-	_, root, _ := o.GetLayout(0, -1, nil)
-	replay := root.Children[1].Value().(layout)
-	if len(replay.Children) != 1 || replay.Children[0].Value().(layout).Props["label"].Value() != "rec2" {
-		t.Fatalf("replay = %+v", replay)
+	if upd, _, _ := o.AboutToShowGroup([]int32{0}); len(upd) != 0 {
+		t.Fatalf("unchanged menu updates = %v", upd)
 	}
 
 	// Без источника меню не меняется.

@@ -53,28 +53,33 @@ type menuEvent struct {
 	Timestamp uint32
 }
 
-// menu — меню значка (с подменю). ID пунктов — номера при обходе дерева в глубину (0 — корень).
-// При каждой замене пунктов (set) номера продолжаются, а не начинаются заново: панель (KDE
-// libdbusmenu-qt) узнаёт пункты по номеру и, если на прежнем номере обычного пункта появилось
-// подменю, оставляет его обычным пунктом — щелчок по нему ничего не делал. Кроме того, щелчок,
-// отправленный панелью по старому меню, не попадёт в другой пункт нового меню.
+// menu — меню значка (с подменю), 0 — корень. Номер пункта постоянен, пока пункт есть в меню:
+// он привязан к пути пункта (родитель, вид — подменю, разделитель или пункт, — текст и номер
+// среди одноимённых). Панели запрашивают подменю по номеру уже после того, как показали корень
+// (Cinnamon/xapp — в момент открытия подменю): если бы номера менялись при каждом обновлении,
+// подменю открывалось бы пустым. Новые пункты получают новые номера, а номер никогда не
+// переходит к пункту другого вида: KDE libdbusmenu-qt запоминает вид пункта по номеру (обычный
+// пункт на месте прежнего подменю не открывался бы), и щелчок по старому меню не попадёт в чужой
+// пункт.
 type menu struct {
 	conn *dbus.Conn
 	// source возвращает свежие пункты перед открытием меню (nil — не спрашивать; Options.OnMenuShow).
 	source func() []MenuItem
-	// mu защищает items, tree, next и revision; items — пункты, из которых построено tree;
-	// revision растёт при каждой смене пунктов; next — первый номер для следующего набора пунктов.
+	// mu защищает items, tree, ids, next и revision; items — пункты, из которых построено tree;
+	// ids — постоянные номера по пути пункта; next — следующий свободный номер; revision растёт
+	// при каждой смене пунктов.
 	mu       sync.Mutex
 	items    []MenuItem
 	tree     tree
+	ids      map[string]int32
 	next     int32
 	revision uint32
 }
 
 // newMenu создаёт меню с пунктами items.
 func newMenu(conn *dbus.Conn, items []MenuItem) *menu {
-	m := &menu{conn: conn, next: 1, revision: 1, items: items}
-	m.tree, m.next = flatten(items, m.next)
+	m := &menu{conn: conn, next: 1, revision: 1, items: items, ids: map[string]int32{}}
+	m.tree, m.next = flatten(items, m.ids, m.next)
 	return m
 }
 
@@ -126,7 +131,7 @@ func (m *menu) export() error {
 func (m *menu) set(items []MenuItem) {
 	m.mu.Lock()
 	m.items = items
-	m.tree, m.next = flatten(items, m.next)
+	m.tree, m.next = flatten(items, m.ids, m.next)
 	m.revision++
 	rev := m.revision
 	m.mu.Unlock()
@@ -204,23 +209,41 @@ type tree struct {
 	ids      []int32
 }
 
-// flatten нумерует пункты дерева в глубину, начиная с start: пункт, затем его подменю.
-// Возвращает дерево и первый свободный номер.
-func flatten(items []MenuItem, start int32) (tree, int32) {
+// flatten нумерует пункты дерева в глубину (пункт, затем его подменю): номер пункта берётся из ids
+// по его пути, новый путь получает номер next (и запоминается в ids). Возвращает дерево и
+// следующий свободный номер.
+func flatten(items []MenuItem, ids map[string]int32, next int32) (tree, int32) {
 	t := tree{items: map[int32]MenuItem{}, children: map[int32][]int32{}}
-	next := start
-	var walk func(parent int32, list []MenuItem)
-	walk = func(parent int32, list []MenuItem) {
+	var walk func(parent int32, parentKey string, list []MenuItem)
+	walk = func(parent int32, parentKey string, list []MenuItem) {
+		seen := map[string]int{}
 		for _, it := range list {
-			id := next
-			next++
+			// Путь: родитель / вид:текст#номер среди одноимённых.
+			kind := "item"
+			switch {
+			case it.Separator:
+				kind = "sep"
+			case len(it.Children) > 0:
+				kind = "sub"
+			}
+			base := kind + ":" + it.Label
+			key := fmt.Sprintf("%s/%s#%d", parentKey, base, seen[base])
+			seen[base]++
+
+			// Постоянный номер пути или новый.
+			id, ok := ids[key]
+			if !ok {
+				id = next
+				next++
+				ids[key] = id
+			}
 			t.items[id] = it
 			t.ids = append(t.ids, id)
 			t.children[parent] = append(t.children[parent], id)
-			walk(id, it.Children)
+			walk(id, key, it.Children)
 		}
 	}
-	walk(0, items)
+	walk(0, "", items)
 	return t, next
 }
 
@@ -307,14 +330,10 @@ func (o *menuObject) EventGroup(events []menuEvent) ([]int32, *dbus.Error) {
 	return bad, nil
 }
 
-// AboutToShow — панель скоро откроет меню id. Перед открытием всего меню (id 0) пункты
-// собираются заново; true — меню изменилось, панель перечитает его. Перед открытием подменю
-// ничего не перестраивается: оно уже свежее (обновилось вместе с корнем), а смена номеров
-// сломала бы пункты, которые панель уже показывает.
-func (o *menuObject) AboutToShow(id int32) (bool, *dbus.Error) {
-	if id != 0 {
-		return false, nil
-	}
+// AboutToShow — панель скоро откроет меню или подменю id: пункты собираются заново; true — меню
+// изменилось, панель перечитает его. Номера неизменившихся пунктов постоянны, поэтому уже
+// показанные пункты остаются верными.
+func (o *menuObject) AboutToShow(_ int32) (bool, *dbus.Error) {
 	return o.m.refresh(), nil
 }
 
@@ -322,7 +341,7 @@ func (o *menuObject) AboutToShow(id int32) (bool, *dbus.Error) {
 // перечитать (корень, если меню изменилось), и неизвестные номера (их не бывает: незнакомые
 // номера просто пропускаются).
 func (o *menuObject) AboutToShowGroup(ids []int32) ([]int32, []int32, *dbus.Error) {
-	if containsID(ids, 0) && o.m.refresh() {
+	if len(ids) > 0 && o.m.refresh() {
 		return []int32{0}, []int32{}, nil
 	}
 	return []int32{}, []int32{}, nil
