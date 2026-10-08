@@ -15,6 +15,7 @@ import (
 
 	"github.com/khameleonium/mKey/internal/contracts"
 	"github.com/khameleonium/mKey/internal/lib/evdev"
+	"github.com/khameleonium/mKey/internal/lib/project"
 	"github.com/khameleonium/mKey/internal/lib/sni"
 )
 
@@ -269,6 +270,9 @@ func (m *Module) menu() []sni.MenuItem {
 	if e := m.eventsMenu(); e != nil {
 		proj = append(proj, *e)
 	}
+	if v := m.virtualMenu(); v != nil {
+		proj = append(proj, *v)
+	}
 	sections = append(sections, proj)
 
 	// Запись и повтор, остановка макросов.
@@ -329,22 +333,66 @@ func (m *Module) projectsMenu() *sni.MenuItem {
 		p, on := st.Project, st.Project.IsEnabled()
 		sub.Children = append(sub.Children, sni.MenuItem{
 			Label: projectTitle(p.Name, p.ID), Checkable: true, Checked: on,
-			OnClick: func() {
-				// Проект с ошибкой не включается: человек видит, что не так.
-				if !on && m.events != nil {
-					if err := m.events.ValidateProject(p); err != nil {
-						m.notify(m.tr.T("tray.project_invalid", contracts.Arg{Name: "project", Value: projectTitle(p.Name, p.ID)}), err.Error())
-						return
-					}
-				}
-				if err := m.projects.SetEnabled(p.ID, !on); err != nil {
-					m.notify(m.tr.T("tray.error"), err.Error())
-				}
-			},
+			OnClick: func() { m.setProject(p, !on) },
 		})
 	}
 	if len(sub.Children) == 0 {
 		sub.Children = []sni.MenuItem{{Label: m.tr.T("tray.no_projects"), Disabled: true}}
+	}
+	return &sub
+}
+
+// setProject включает или выключает проект p; проект с ошибкой не включается — человек видит,
+// что не так. true — получилось.
+func (m *Module) setProject(p project.Project, on bool) bool {
+	if on && m.events != nil {
+		if err := m.events.ValidateProject(p); err != nil {
+			m.notify(m.tr.T("tray.project_invalid", contracts.Arg{Name: "project", Value: projectTitle(p.Name, p.ID)}), err.Error())
+			return false
+		}
+	}
+	if err := m.projects.SetEnabled(p.ID, on); err != nil {
+		m.notify(m.tr.T("tray.error"), err.Error())
+		return false
+	}
+	return true
+}
+
+// virtualMenu — подменю «Виртуальные устройства» (FR-VD-8): устройства всех проектов с галочкой
+// «подключено»; щелчок включает или выключает проект устройства (устройство живёт в проекте,
+// ADR-0028) и объясняет, что произошло. Внизу — «Открыть страницу устройств…».
+func (m *Module) virtualMenu() *sni.MenuItem {
+	if m.projects == nil {
+		return nil
+	}
+	sub := sni.MenuItem{Label: m.tr.T("tray.virtual")}
+	for _, st := range m.projects.List() {
+		p, on := st.Project, st.Project.IsEnabled()
+		for _, v := range p.VirtualDevices {
+			system := contracts.VirtualNamePrefix + v.Name
+			sub.Children = append(sub.Children, sni.MenuItem{
+				Label:     system + " — " + m.tr.T("vdev.template."+v.Template),
+				Checkable: true, Checked: on,
+				OnClick: func() {
+					if !m.setProject(p, !on) {
+						return
+					}
+					arg := contracts.Arg{Name: "system", Value: system}
+					if on {
+						m.notify(m.tr.T("tray.virtual_off", arg), "")
+					} else {
+						m.notify(m.tr.T("tray.virtual_on", arg), m.tr.T("tray.virtual_on_hint"))
+					}
+				},
+			})
+		}
+	}
+	if len(sub.Children) == 0 {
+		sub.Children = []sni.MenuItem{{Label: m.tr.T("tray.no_virtual"), Disabled: true}}
+	}
+	if m.gui != nil && m.opener != nil {
+		sub.Children = append(sub.Children, sni.MenuItem{Separator: true},
+			sni.MenuItem{Label: m.tr.T("tray.virtual_open"), OnClick: func() { m.openGUIAt("#/virtual") }})
 	}
 	return &sub
 }
@@ -632,13 +680,16 @@ func (m *Module) notify(title, body string) {
 }
 
 // openGUI открывает веб-интерфейс в браузере.
-func (m *Module) openGUI() {
+func (m *Module) openGUI() { m.openGUIAt("") }
+
+// openGUIAt открывает веб-интерфейс на разделе fragment ("#/virtual"; "" — главная).
+func (m *Module) openGUIAt(fragment string) {
 	if m.gui == nil || m.opener == nil {
 		return
 	}
 	url, err := m.gui.GUIURL()
 	if err == nil {
-		err = m.opener.OpenURL(context.Background(), url)
+		err = m.opener.OpenURL(context.Background(), url+fragment)
 	}
 	if err != nil {
 		m.log.Warn("cannot open web interface", "err", err)

@@ -268,7 +268,11 @@ func (f *fullServices) List() []contracts.ProjectState {
 	var out []contracts.ProjectState
 	for _, id := range []string{"games", "work"} {
 		on := f.enabled[id]
-		out = append(out, contracts.ProjectState{Project: project.Project{ID: id, Name: strings.ToUpper(id[:1]) + id[1:], Enabled: &on}})
+		p := project.Project{ID: id, Name: strings.ToUpper(id[:1]) + id[1:], Enabled: &on}
+		if id == "work" {
+			p.VirtualDevices = []project.VirtualDevice{{Name: "wheel", Template: "wheel"}}
+		}
+		out = append(out, contracts.ProjectState{Project: p})
 	}
 	return out
 }
@@ -384,7 +388,7 @@ func TestFullMenu(t *testing.T) {
 	defer func() { _ = m.Stop(context.Background()) }()
 
 	// Разделы меню; у проектов — галочки, «Повторить запись» — без записей с ошибкой.
-	want := "Open mKey|-|Projects|Run event|-|● Start recording|Replay recording|What to record|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey|-|Creator: " + buildinfo.Creator
+	want := "Open mKey|-|Projects|Run event|Virtual devices|-|● Start recording|Replay recording|What to record|Stop all macros|-|Open the projects folder|Open the recordings folder|-|Emergency stop|Quit mKey|-|Creator: " + buildinfo.Creator
 	if got := strings.Join(item.labels(), "|"); got != want {
 		t.Fatalf("menu =\n%s\nwant\n%s", got, want)
 	}
@@ -400,14 +404,31 @@ func TestFullMenu(t *testing.T) {
 		t.Errorf("events: %+v replay: %+v", events.Children, replay.Children)
 	}
 
-	// Включить «Work»: меню обновляется, его событие появляется.
-	click(t, item, "Work")
+	// «Виртуальные устройства»: руль проекта «Work» без галочки (проект выключен), внизу —
+	// «Открыть страницу устройств».
+	item.mu.Lock()
+	virtual, _ := find(item.menu, "Virtual devices")
+	item.mu.Unlock()
+	if len(virtual.Children) != 3 || virtual.Children[0].Label != "mKey wheel — Racing wheel with pedals" || virtual.Children[0].Checked || !virtual.Children[1].Separator {
+		t.Fatalf("virtual: %+v", virtual.Children)
+	}
+
+	// Включить руль: включается проект «Work» и приходит уведомление «подключено»; его событие
+	// появляется в меню.
+	click(t, item, "mKey wheel — Racing wheel with pedals")
 	eventually(t, func() bool {
 		item.mu.Lock()
 		defer item.mu.Unlock()
 		ev, _ := find(item.menu, "Run event")
-		return len(ev.Children) == 2
+		w, _ := find(item.menu, "mKey wheel — Racing wheel with pedals")
+		return len(ev.Children) == 2 && w.Checked
 	})
+	full.mu.Lock()
+	if len(full.notices) != 1 || !strings.Contains(full.notices[0], "restart it") {
+		t.Errorf("notices: %v", full.notices)
+	}
+	full.notices = nil
+	full.mu.Unlock()
 
 	// Запуск события, начало и конец записи (пункт меняется), остановка всего.
 	click(t, item, "Games → Combo")
