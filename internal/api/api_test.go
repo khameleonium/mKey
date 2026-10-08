@@ -237,12 +237,33 @@ func TestStartStopUnixSocket(t *testing.T) {
 		t.Fatalf("send via socket: %d, runs %v", resp.StatusCode, runner.runs)
 	}
 
-	// Остановка удаляет файлы.
+	// Остановка удаляет сокет, токен остаётся.
+	token := m.token
 	if err := m.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, SocketFile)); !os.IsNotExist(err) {
 		t.Fatal("socket must be removed")
+	}
+
+	// Перезапуск: прежний токен (открытое окно не теряет вход); чужой или испорченный — новый.
+	m2, _ := newTestModule(t)
+	m2.cfg = Config{Port: 0, RuntimeDir: dir}
+	if err := m2.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if m2.token != token {
+		t.Fatal("token not reused after restart")
+	}
+	_ = m2.Stop(context.Background())
+	for name, prep := range map[string]func(p string){
+		"broken":   func(p string) { _ = os.WriteFile(p, []byte("not-a-token\n"), 0o600) },
+		"too-open": func(p string) { _ = os.WriteFile(p, []byte(token+"\n"), 0o600); _ = os.Chmod(p, 0o644) },
+	} {
+		prep(filepath.Join(dir, TokenFile))
+		if got := reuseToken(filepath.Join(dir, TokenFile)); got != "" {
+			t.Errorf("%s token reused: %q", name, got)
+		}
 	}
 }
 

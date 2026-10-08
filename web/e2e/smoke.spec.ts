@@ -158,3 +158,15 @@ test("build a standalone macro file from a project", async ({ page }) => {
   await dialog.getByRole("button", { name: /Download the file/ }).click();
   expect((await download).suggestedFilename().length).toBeGreaterThan(0);
 });
+
+test("an old sign-in is told apart from a stopped mKey", async ({ browser }) => {
+  // Окно без действующего входа (как после перезагрузки компьютера): mKey работает, но не
+  // пускает — окно просит открыть себя заново, а не пишет «программа не запущена».
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/");
+  await expect(page.getByText(/uses an old sign-in/)).toBeVisible();
+  await expect(page.getByText("Sign-in needed")).toBeVisible();
+  await expect(page.getByText(/Start it/)).toHaveCount(0);
+  await ctx.close();
+});

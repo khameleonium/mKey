@@ -113,7 +113,11 @@
     {/each}
     <span class="spacer"></span>
     <div class="conn" class:off={!live.connected}>
-      ● {live.connected ? t("app.connected") : t("app.disconnected")}
+      ● {live.connected
+        ? t("app.connected")
+        : live.unauthorized
+          ? t("app.unauthorized")
+          : t("app.disconnected")}
     </div>
     <div class="creator">{t("app.creator")}</div>
     <a class="support" href={SUPPORT_URL} target="_blank" rel="noopener">♥ {t("app.support")}</a>
@@ -121,7 +125,9 @@
 
   <main>
     <!-- Плашки поверх любой страницы -->
-    {#if !live.connected}
+    {#if !live.connected && live.unauthorized}
+      <div class="note error banner">{t("app.unauthorized_text")}</div>
+    {:else if !live.connected}
       <div class="note error banner">{t("app.disconnected_text")}</div>
     {/if}
     {#if live.suspended && route().name !== "home"}

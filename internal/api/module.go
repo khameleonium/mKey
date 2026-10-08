@@ -15,7 +15,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/khameleonium/mKey/internal/contracts"
@@ -218,10 +220,14 @@ func (m *Module) Start(context.Context) error {
 		return fmt.Errorf("%s: runtime dir: %w", ModuleID, err)
 	}
 
-	// Новый токен при каждом запуске.
-	token, err := newToken()
-	if err != nil {
-		return err
+	// Токен: прежний из личного каталога (окно в браузере остаётся «входом» после перезапуска
+	// mKey; каталог в памяти и очищается при перезагрузке компьютера), иначе новый.
+	token := reuseToken(filepath.Join(dir, TokenFile))
+	if token == "" {
+		var err error
+		if token, err = newToken(); err != nil {
+			return err
+		}
 	}
 	m.token = token
 	if err := os.WriteFile(filepath.Join(dir, TokenFile), []byte(token+"\n"), 0o600); err != nil {
@@ -294,13 +300,35 @@ func (m *Module) Stop(ctx context.Context) error {
 	}
 	m.wg.Wait()
 
-	// Убираем файлы, чтобы клиенты не пытались подключиться к остановленному демону.
-	for _, f := range []string{SocketFile, TokenFile, InfoFile} {
+	// Убираем файлы, чтобы клиенты не пытались подключиться к остановленному демону. Токен
+	// остаётся: следующий запуск возьмёт его, и открытое окно не потеряет вход (ADR-0044).
+	for _, f := range []string{SocketFile, InfoFile} {
 		if err := os.Remove(filepath.Join(m.cfg.RuntimeDir, f)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// reuseToken возвращает прежний токен из файла path, если файл — личный (0600, владелец — текущий
+// пользователь) и токен правильного вида (64 шестнадцатеричных знака); иначе — "".
+func reuseToken(path string) string {
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() || st.Mode().Perm() != 0o600 {
+		return ""
+	}
+	if sys, ok := st.Sys().(*syscall.Stat_t); !ok || int(sys.Uid) != os.Getuid() {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	t := strings.TrimSpace(string(data))
+	if b, err := hex.DecodeString(t); err != nil || len(b) != 32 {
+		return ""
+	}
+	return t
 }
 
 // newToken создаёт случайный токен (256 бит).

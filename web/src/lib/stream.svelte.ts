@@ -1,7 +1,7 @@
 // Поток новостей от демона (Server-Sent Events, GET /api/v1/stream) и общее состояние программы:
 // связь с демоном, приостановка после экстренной остановки, выполняющиеся события.
 // Страницы подписываются на изменения через onTopic, чтобы перечитать свои данные.
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import { emit } from "./topics";
 
 export { onTopic } from "./topics";
@@ -10,6 +10,9 @@ export { onTopic } from "./topics";
 export const live = $state({
   /** connected — связь с демоном есть. */
   connected: false,
+  /** unauthorized — mKey работает, но не пускает окно: вход устарел (новый токен после
+   *  перезагрузки компьютера). Помогает открыть окно заново: значок в трее или `mkey gui`. */
+  unauthorized: false,
   /** suspended — mKey приостановлен после экстренной остановки. */
   suspended: false,
   /** running — сколько выполнений идёт по каждому событию ("проект/событие" → число). */
@@ -23,10 +26,12 @@ export async function refreshStatus(): Promise<void> {
   try {
     const st = await api.status();
     live.connected = true;
+    live.unauthorized = false;
     live.suspended = st.grab_suspended;
     live.version = st.version;
-  } catch {
+  } catch (e) {
     live.connected = false;
+    live.unauthorized = e instanceof ApiError && e.status === 401;
   }
 }
 
@@ -58,9 +63,14 @@ export function connect(): void {
     void refreshStatus();
   };
 
-  // Обрыв: EventSource переподключается сам; пока — «нет связи».
+  // Обрыв: EventSource переподключается сам; пока — «нет связи». Если поток закрыт насовсем
+  // (ответ не 200 — например, вход устарел), узнаём причину и, если это не вход, пробуем снова.
   es.onerror = () => {
     live.connected = false;
+    if (es.readyState !== EventSource.CLOSED) return;
+    void refreshStatus().then(() => {
+      if (!live.unauthorized) setTimeout(connect, 3000);
+    });
   };
 
   // События потока.

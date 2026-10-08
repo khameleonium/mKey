@@ -6,6 +6,8 @@
   "app.disconnected_text": "No connection to mKey. The program is closed or restarting. Start it (in a terminal: mkey) — this window will reconnect by itself.",
   "app.support": "Support the author",
   "app.title": "mKey",
+  "app.unauthorized": "Sign-in needed",
+  "app.unauthorized_text": "mKey is running, but this window uses an old sign-in (the computer was restarted or mKey was reinstalled). Open the window again: the mKey tray icon → \"Open\", or in a terminal: mkey gui.",
   "build.building": "Building…",
   "build.button": "Build a file",
   "build.button_hint": "Build the project into one executable that works without an installed mKey",
