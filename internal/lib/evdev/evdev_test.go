@@ -1,6 +1,7 @@
 package evdev
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -210,5 +211,40 @@ func TestNoBitQueryForRepeat(t *testing.T) {
 	t.Parallel()
 	if _, ok := maxCodes[EvRep]; ok {
 		t.Fatal("EV_REP must not be queried with EVIOCGBIT")
+	}
+}
+
+// TestReadEventsNoAlloc: чтение событий разбирает целые события и не выделяет память на каждое
+// чтение (у мыши их тысячи в секунду). Вместо устройства — канал os.Pipe.
+func TestReadEventsNoAlloc(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close(); _ = w.Close() }()
+	d := &Device{file: r}
+	frame := make([]byte, 0, 2*EventSize)
+	for _, e := range []Event{{Type: EvKey, Code: 30, Value: 1}, {Type: EvSyn}} {
+		b, _ := e.MarshalBinary()
+		frame = append(frame, b...)
+	}
+	buf := make([]Event, 64)
+
+	// Пачка из двух событий читается целиком.
+	if _, err := w.Write(frame); err != nil {
+		t.Fatal(err)
+	}
+	got, err := d.ReadEvents(buf)
+	if err != nil || len(got) != 2 || got[0].Code != 30 || got[0].Value != 1 || got[1].Type != EvSyn {
+		t.Fatalf("read = %+v, %v", got, err)
+	}
+
+	// Повторные чтения память не выделяют.
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = w.Write(frame)
+		_, _ = d.ReadEvents(buf)
+	})
+	if allocs != 0 {
+		t.Fatalf("ReadEvents allocates %v times per read", allocs)
 	}
 }

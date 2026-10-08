@@ -110,6 +110,10 @@ type Device struct {
 	file *os.File
 	// info — сведения, прочитанные при открытии.
 	info Info
+	// raw — байты событий для ReadEvents, один буфер на устройство: чтение идёт на каждое
+	// событие (у мыши — тысячи раз в секунду), а новый буфер на каждое чтение нагружал бы
+	// сборщик мусора.
+	raw []byte
 }
 
 // Open открывает устройство по пути (например, "/dev/input/event3") и читает его сведения.
@@ -143,9 +147,13 @@ func (d *Device) Close() error { return d.file.Close() }
 
 // ReadEvents блокирующе читает события в буфер buf и возвращает прочитанные.
 // Возвращает ошибку os.ErrClosed после Close и syscall.ENODEV, если устройство отключили.
+// Читает одна горутина на устройство: одновременные вызовы для одного устройства не допускаются.
 func (d *Device) ReadEvents(buf []Event) ([]Event, error) {
-	// Читаем столько целых событий, сколько поместится в buf.
-	raw := make([]byte, len(buf)*EventSize)
+	// Читаем столько целых событий, сколько поместится в buf (буфер байтов — от прошлых чтений).
+	if size := len(buf) * EventSize; cap(d.raw) < size {
+		d.raw = make([]byte, size)
+	}
+	raw := d.raw[:len(buf)*EventSize]
 	n, err := d.file.Read(raw)
 	if err != nil {
 		return nil, err
