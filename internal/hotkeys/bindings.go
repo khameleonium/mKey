@@ -22,8 +22,9 @@ import (
 // Виды привязок (настройки — contracts.CompileBinding):
 //   - кнопка → кнопка, кнопка → ось (положение value, плавно — ramp_ms);
 //   - ось → ось (invert, deadzone, sensitivity), ось → кнопка (порог threshold);
-//   - мышь → ось (движение мыши наклоняет стик, остановилась — стик возвращается в центр),
-//     мышь → кнопка (движение или колесо в сторону threshold держит кнопку нажатой).
+//   - мышь → ось (движение мыши наклоняет стик, остановилась — стик возвращается в центр; со steer —
+//     «как руль»: движение поворачивает ось, она держит положение или плавно возвращается за
+//     recenter_ms), мышь → кнопка (движение или колесо в сторону threshold держит кнопку нажатой).
 
 // bindQueue — размер очереди действий привязок: с запасом на быстрые нажатия и движения осей.
 const bindQueue = 4096
@@ -39,6 +40,9 @@ const (
 	// mouseRelease — через сколько после последнего движения мыши отпускается кнопка «мышь → кнопка»
 	// (один щелчок колеса — короткое нажатие).
 	mouseRelease = 60 * time.Millisecond
+	// steerFull — сколько единиц движения мыши поворачивают руль (steer) от центра до упора при
+	// чувствительности 1: ≈ движение мыши на 5–10 см — руль можно держать точно, не упираясь в стол.
+	steerFull = 1000.0
 	// mouseDecay — во сколько раз за шаг уменьшается наклон стика, когда мышь не движется: стик
 	// возвращается в центр за ~50 мс, но не дёргается между отчётами мыши (мышь 125 Гц шлёт их раз в 8 мс).
 	mouseDecay = 0.5
@@ -111,7 +115,7 @@ func (st *bindState) busy() bool {
 		return true
 	}
 	for b, s := range st.mouse {
-		if s.acc != 0 || s.cur != 0 || st.pressed[b] {
+		if s.acc != 0 || st.pressed[b] || s.cur != 0 && (!b.Steer || b.Recenter > 0) {
 			return true
 		}
 	}
@@ -407,8 +411,8 @@ func (m *Module) applyAxis(ctx context.Context, st *bindState, b *binding, v flo
 	}
 }
 
-// shape применяет к положению оси мёртвую зону: малые отклонения — центр, остальное растягивается
-// на весь ход (переворот уже сделан в normalizeAbs).
+// shape применяет к положению оси мёртвую зону (малые отклонения — центр, остальное растягивается
+// на весь ход) и кривую отклика (|v|^curve с тем же знаком; переворот уже сделан в normalizeAbs).
 func shape(v float64, b *binding) float64 {
 	if dz := b.Deadzone; dz > 0 {
 		a := math.Abs(v)
@@ -416,6 +420,9 @@ func shape(v float64, b *binding) float64 {
 			return 0
 		}
 		v = math.Copysign((a-dz)/(1-dz), v)
+	}
+	if b.Curve > 0 && b.Curve != 1 {
+		v = math.Copysign(math.Pow(math.Abs(v), b.Curve), v)
 	}
 	return v
 }
@@ -444,8 +451,9 @@ func (m *Module) feedMouse(ctx context.Context, st *bindState, b *binding, d flo
 		return
 	}
 
-	// Мышь → ось: движение копится до шага таймера.
+	// Мышь → ось: движение копится до шага таймера (руль — запоминает, когда мышь двигалась).
 	s.acc += d
+	s.last = time.Now()
 	st.touched[axisKey{device: b.To.Device, code: b.To.Code}] = b
 }
 
@@ -476,12 +484,26 @@ func (m *Module) stepBindings(st *bindState, now time.Time) {
 			}
 			continue
 		}
-		next := s.cur * mouseDecay
-		if s.acc != 0 {
+		var next float64
+		switch {
+		// Руль: движение поворачивает ось от текущего положения; мышь стоит — ось держит
+		// положение или возвращается в центр со скоростью «из упора за recenter_ms».
+		case b.Steer && s.acc != 0:
+			next = max(-1, min(1, s.cur+s.acc*b.Sensitivity/steerFull))
+		case b.Steer && b.Recenter > 0 && now.Sub(s.last) >= bindTick:
+			step := float64(bindTick) / float64(b.Recenter)
+			next = s.cur - math.Copysign(min(step, math.Abs(s.cur)), s.cur)
+		case b.Steer:
+			next = s.cur
+
+		// Стик: наклон по движению за шаг, нет движения — плавно к центру.
+		case s.acc != 0:
 			next = max(-1, min(1, s.acc*b.Sensitivity/mouseFull))
-		}
-		if math.Abs(next) < 0.02 {
-			next = 0
+		default:
+			next = s.cur * mouseDecay
+			if math.Abs(next) < 0.02 {
+				next = 0
+			}
 		}
 		s.acc = 0
 		if next != s.cur {

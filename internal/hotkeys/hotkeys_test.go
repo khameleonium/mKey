@@ -737,6 +737,65 @@ func TestAxisBindings(t *testing.T) {
 	}
 }
 
+// TestSteerAndCurve проверяет «мышь как руль» (steer: угол копится и держится; recenter_ms —
+// возврат в центр, когда мышь стоит) и кривую отклика у «ось → ось» (ADR-0040).
+func TestSteerAndCurve(t *testing.T) {
+	t.Parallel()
+	m, _ := newTestModule()
+	out := &fakeOut{}
+	outs := fakeOutputs{out: out}
+	m.devs, m.vdm = outs, outs
+	m.projects = fakeProjects{p: project.Project{ID: "p",
+		VirtualDevices: []project.VirtualDevice{{Name: "pad2", Template: "xbox360"}},
+		Bindings: []project.Binding{
+			{From: "{MouseX}", To: "{pad2.RX}", Steer: true},
+			{From: "{MouseY}", To: "{pad2.LY}", Steer: true, RecenterMS: 100},
+			{From: "{LX}", To: "{pad2.LX}", Curve: 2},
+		}}}
+	m.reloadRemaps()
+	if len(m.bindings) != 3 {
+		t.Fatalf("bindings = %d", len(m.bindings))
+	}
+	m.wg.Add(1)
+	go m.bindWorker()
+	defer func() { _ = m.Stop(context.Background()) }()
+	wait := func(pred func(string) bool, what string) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for !pred(out.got()) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s; outputs:\n%s", what, out.got())
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	has := func(s string) func(string) bool { return func(got string) bool { return strings.Contains(got, s) } }
+
+	// Руль: 500 единиц — половина поворота, ещё 250 — три четверти; мышь стоит — угол держится.
+	axis(m, mousePath, ev.EvRel, ev.RelX, 500)
+	wait(has("pad2:ABS_RX=0.5"), "steer half")
+	axis(m, mousePath, ev.EvRel, ev.RelX, 250)
+	wait(has("pad2:ABS_RX=0.75"), "steer accumulates")
+	time.Sleep(60 * time.Millisecond)
+	if got := out.got(); !strings.HasSuffix(got, "pad2:ABS_RX=0.75") {
+		t.Fatalf("steer must hold its angle: %s", got)
+	}
+
+	// С возвратом: упор, затем сам в центр (не сразу — через промежуточные положения).
+	axis(m, mousePath, ev.EvRel, ev.RelY, 2000)
+	wait(has("pad2:ABS_Y=1"), "steer to the stop")
+	wait(func(got string) bool {
+		return strings.HasSuffix(got, "pad2:ABS_Y=0") || strings.Contains(got, "pad2:ABS_Y=0 ")
+	}, "recenter")
+	if n := strings.Count(out.got(), "pad2:ABS_Y="); n < 4 {
+		t.Errorf("recenter is not smooth (%d steps): %s", n, out.got())
+	}
+
+	// Кривая 2: стик наполовину — цель на четверть.
+	axis(m, padPath, ev.EvAbs, ev.AbsX, 192)
+	wait(has("pad2:ABS_X=0.25"), "curve")
+}
+
 // TestBindingOptions проверяет правила настроек привязок (contracts.CompileBinding).
 func TestBindingOptions(t *testing.T) {
 	t.Parallel()
@@ -757,6 +816,14 @@ func TestBindingOptions(t *testing.T) {
 		{project.Binding{From: "{MouseX}", To: "{pad2.RX}", Deadzone: 0.1}, dsl.ErrBindingOption},
 		{project.Binding{From: "{A}", To: "{Space}", Value: 1}, dsl.ErrAxisExpected},
 		{project.Binding{From: "{Nope}", To: "{Space}"}, dsl.ErrUnknownKey},
+		{project.Binding{From: "{MouseX}", To: "{pad2.LX}", Steer: true, RecenterMS: 500}, ""},
+		{project.Binding{From: "{MouseX}", To: "{pad2.LX}", RecenterMS: 500}, dsl.ErrBindingOption},
+		{project.Binding{From: "{MouseX}", To: "{pad2.LX}", Steer: true, RecenterMS: 20000}, dsl.ErrBindingRange},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Steer: true}, dsl.ErrBindingOption},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Curve: 2}, ""},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Curve: 0.1}, dsl.ErrBindingRange},
+		{project.Binding{From: "{LX}", To: "{pad2.LX}", Curve: 9}, dsl.ErrBindingRange},
+		{project.Binding{From: "{MouseX}", To: "{pad2.LX}", Curve: 2}, dsl.ErrBindingOption},
 	} {
 		src, err := m.ParseBindingSource(c.b.From)
 		if err == nil {
