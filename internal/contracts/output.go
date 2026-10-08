@@ -96,6 +96,16 @@ type VirtualDeviceManager interface {
 	// или сенсорного экрана, T12.2): имя в системе — "mKey <name>" (mKey его не читает). close
 	// отпускает всё нажатое и уничтожает копию.
 	Clone(name string, setup evdev.Setup) (dev VirtualDevice, close func() error, err error)
+	// State возвращает, что сейчас нажато и куда наклонены оси у подключённого виртуального
+	// устройства проекта (для проверки вживую в окне, FR-VD-8). Ошибка — ErrUnknownVirtual.
+	State(name string) (VirtualState, error)
+}
+
+// VirtualState — состояние виртуального устройства: нажатые кнопки и положения осей — именами
+// для макросов ("South", "Gas"); оси с центром −1…1, «от нуля» (курки, педали, РУД) 0…1.
+type VirtualState struct {
+	Buttons []string           `json:"buttons"`
+	Axes    map[string]float64 `json:"axes"`
 }
 
 // VirtualTemplateInfo — состав шаблона виртуального устройства: кнопки ("South", "LB", "LT",
