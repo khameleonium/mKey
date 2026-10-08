@@ -127,11 +127,19 @@ func (m *menu) export() error {
 	return nil
 }
 
-// set заменяет пункты и сообщает панели, что меню изменилось.
+// set заменяет пункты и сообщает панели, что меню изменилось. Если пункты выглядят так же,
+// заменяются только обработчики щелчков (номера те же), а панели ничего не сообщается: лишний
+// LayoutUpdated заставляет её перечитать всё меню, а служба значков некоторых окружений при
+// частых перечитываниях падает (SPEC §14, вопрос 5).
 func (m *menu) set(items []MenuItem) {
 	m.mu.Lock()
+	same := m.tree.items != nil && sameItems(m.items, items)
 	m.items = items
 	m.tree, m.next = flatten(items, m.ids, m.next)
+	if same {
+		m.mu.Unlock()
+		return
+	}
 	m.revision++
 	rev := m.revision
 	m.mu.Unlock()

@@ -172,6 +172,28 @@ func TestMenuIDsAfterUpdate(t *testing.T) {
 	}
 }
 
+// TestSetSameMenu: те же пункты — номер ревизии прежний (панели не сообщается), но новые
+// обработчики щелчков действуют.
+func TestSetSameMenu(t *testing.T) {
+	t.Parallel()
+	clicked := make(chan string, 2)
+	m := newMenu(nil, []MenuItem{{Label: "Go", OnClick: func() { clicked <- "old" }}})
+	o := &menuObject{m: m}
+	rev, _, _ := o.GetLayout(0, -1, nil)
+	m.set([]MenuItem{{Label: "Go", OnClick: func() { clicked <- "new" }}})
+	if again, _, _ := o.GetLayout(0, -1, nil); again != rev {
+		t.Fatalf("revision %d → %d for the same menu", rev, again)
+	}
+	_ = o.Event(1, "clicked", dbus.MakeVariant(0), 0)
+	if got := <-clicked; got != "new" {
+		t.Fatalf("clicked %q, want new handler", got)
+	}
+	m.set([]MenuItem{{Label: "Go", Checkable: true, Checked: true}})
+	if again, _, _ := o.GetLayout(0, -1, nil); again == rev {
+		t.Fatal("changed menu kept its revision")
+	}
+}
+
 // TestAboutToShow проверяет обновление меню перед открытием меню или подменю: пункты те же — меню
 // не перестраивается; изменились (запись удалили) — меню заменяется, панель просят перечитать
 // его, а оставшиеся пункты сохраняют номера (уже открытое подменю остаётся верным).
