@@ -66,8 +66,9 @@ nfpms:
     maintainer: "Ilya Ulyanov | khameleonium <siriusx666@gmail.com>"
     description: |-
       Keyboard and mouse macros for Linux
-      Hotkeys, a macro language, recording and replay, virtual gamepads and bindings,
-      a visual event builder and plugins. Works on X11 and Wayland via evdev/uinput.
+      Hotkeys, a macro language, recording and replay, virtual gamepads, a racing wheel
+      and a flight stick with keyboard and mouse bindings, a visual event builder and plugins.
+      Works on X11 and Wayland via evdev/uinput.
     license: MIT
     section: utils
     formats: [deb, rpm, apk, archlinux]

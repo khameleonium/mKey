@@ -5,14 +5,15 @@
 Creator: Ilya Ulyanov | khameleonium
 
 mKey presses keys and buttons for you: on a hotkey, on a timer, on a typed word or on another
-event. It records what you do and replays it. It turns your keyboard into a gamepad that games
-can see. It works in any Linux graphical session — X11 and Wayland — because it talks to input
-devices directly through the kernel.
+event. It records what you do and replays it. It turns your keyboard and mouse into a gamepad,
+a racing wheel or a flight stick that games can see. It works in any Linux graphical session —
+X11 and Wayland — because it talks to input devices directly through the kernel.
 
 ![Event builder](docs/images/editor-en.png)
 
 > Under active development (versions 0.x). Ready: hotkeys and events, the macro language,
-> recording and replay, devices and virtual gamepads, plugins, installation and updates.
+> recording and replay, devices, virtual gamepads, a racing wheel and a flight stick, plugins,
+> installation and updates.
 > The detailed documentation is in Russian.
 
 ## Features
@@ -29,18 +30,23 @@ devices directly through the kernel.
   file — delete what you don't need in any editor.
 - **Any device**: buttons of unknown gamepads and joysticks get names like `{UnKey001}`; rename
   them (`{Wheel.Gas}`) and bind anything to them.
-- **Virtual gamepads** — Xbox 360, DualShock 4, joystick, touchscreen — games see them as real
-  ones. Bindings: key → button or stick, mouse → stick, stick → stick (dead zone, sensitivity),
-  trigger → key. The **"Second gamepad"** wizard makes a gamepad out of your keyboard in a minute.
+- **Virtual devices**: Xbox 360 and DualShock 4 gamepads, a **racing wheel with pedals** (games
+  recognise it as a wheel), a **flight stick** (stick, throttle, 4 hats, 56 buttons), a joystick,
+  a touchscreen — games see them as real ones. Control them with the keyboard, the mouse or another
+  gamepad: the mouse turns the wheel and holds the angle, triggers are gas and brake, keys move the
+  throttle like a lever.
+- **"Virtual devices" page**: every device with its state in plain words ("connected" / "off"),
+  one switch to turn it on, the **"New device"** wizard with ready layouts, a **live test** (see
+  what the game receives), the layout in the project editor and checkmarks in the tray icon menu.
 - **Plugins** in any language add new actions and triggers (HTTP request, webhook…).
 - **Safety**: **Esc + Backspace + Enter** pressed together stops everything at any moment and
   releases all keys.
 - **All settings in one readable file** `~/.config/mkey/config.yaml`, each with an explanation;
   the window edits the same file.
 
-| Second gamepad from the keyboard | Recordings | Plugins |
+| Virtual devices | Recordings | Plugins |
 |---|---|---|
-| ![](docs/images/gamepad-en.png) | ![](docs/images/recordings-en.png) | ![](docs/images/plugins-en.png) |
+| ![](docs/images/virtual-en.png) | ![](docs/images/recordings-en.png) | ![](docs/images/plugins-en.png) |
 
 ## Installation
 
