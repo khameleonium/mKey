@@ -44,8 +44,10 @@ type Config struct {
 type Module struct {
 	// clk — часы для пауз.
 	clk clock.Clock
-	// rnd — генератор для случайных пауз [a..b].
-	rnd *rand.Rand
+	// rnd — генератор для случайных пауз [a..b]; rndMu защищает его: паузы берут одновременно
+	// несколько макросов, а rand.Rand нельзя использовать из нескольких горутин.
+	rndMu sync.Mutex
+	rnd   *rand.Rand
 	// log — логгер модуля; cfg — настройки.
 	log *slog.Logger
 	cfg Config
@@ -627,7 +629,9 @@ func (m *Module) wheel(ctx context.Context, s dsl.Step) error {
 func (m *Module) pause(minMS, maxMS int64) time.Duration {
 	ms := minMS
 	if maxMS > minMS {
+		m.rndMu.Lock()
 		ms += m.rnd.Int64N(maxMS - minMS + 1)
+		m.rndMu.Unlock()
 	}
 	return time.Duration(ms) * time.Millisecond
 }

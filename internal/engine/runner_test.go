@@ -542,3 +542,24 @@ type fakeTr struct{ contracts.Translator }
 
 // T возвращает ключ.
 func (fakeTr) T(key string, _ ...contracts.Arg) string { return key }
+
+// TestPauseConcurrent: случайные паузы [a..b] берут одновременно несколько макросов — общий
+// генератор случайных чисел не должен портиться (проверяется с -race).
+func TestPauseConcurrent(t *testing.T) {
+	t.Parallel()
+	m := newModule(clock.NewFake(time.Unix(0, 0)), rand.New(rand.NewPCG(1, 2)))
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1000 {
+				if d := m.pause(10, 20); d < 10*time.Millisecond || d > 20*time.Millisecond {
+					t.Errorf("pause %v out of range", d)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
