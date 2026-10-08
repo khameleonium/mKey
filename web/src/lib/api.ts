@@ -10,6 +10,7 @@ import type {
   PlaceInfo,
   PluginInfo,
   RecordingInfo,
+  RecordDevice,
   RecordSettings,
   UpdateInfo,
   VirtualDeviceInfo,
@@ -224,6 +225,7 @@ export const api = {
   timing: () => request<Timing>("GET", "/settings/timing"),
   setTiming: (s: Timing) => request<Timing>("PUT", "/settings/timing", s),
   recordSettings: () => request<RecordSettings>("GET", "/settings/recording"),
+  recordDevices: () => request<{ devices: RecordDevice[] }>("GET", "/recordings/devices"),
   setRecordSettings: (s: RecordSettings) =>
     request<RecordSettings>("PUT", "/settings/recording", s),
   interfaceSettings: () => request<InterfaceSettings>("GET", "/settings/interface"),

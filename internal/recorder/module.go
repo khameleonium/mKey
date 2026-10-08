@@ -24,8 +24,11 @@ type Config struct {
 	Dir string `json:"dir"`
 	// Hotkey — сочетание «начать/закончить запись» из любой программы; пусто — выключено.
 	Hotkey string `json:"hotkey"`
-	// Kinds — какие устройства записывать по умолчанию (keyboard, mouse, touchpad, gamepad…).
+	// Kinds — какие классы устройств записывать по умолчанию (keyboard, mouse, touchpad, gamepad…):
+	// для устройств без своего выбора в Devices. Может быть пустым.
 	Kinds []string `json:"kinds"`
+	// Devices — выбор для отдельных устройств: «VID:PID имя» → записывать ли (важнее Kinds).
+	Devices map[string]bool `json:"devices"`
 	// Moves — записывать движения мыши (false — только нажатия и колесо).
 	Moves bool `json:"moves"`
 	// MergeMovesMS — окно склейки движений мыши при записи, мс (0 — каждое движение отдельно).
@@ -47,7 +50,7 @@ const DefaultHotkey = "^{LCtrl}^{RAlt}{Space}"
 // указателя по умолчанию: склейка пар событий мыши 125 Гц увеличила рисунок на 1,5–2,5 %).
 func defaultConfig() Config {
 	return Config{
-		Hotkey: DefaultHotkey, Kinds: []string{"keyboard", "mouse"},
+		Hotkey: DefaultHotkey, Kinds: []string{"keyboard", "mouse"}, Devices: map[string]bool{},
 		Moves: true, MergeMovesMS: 0, CenterPointer: true, CoalesceMS: 0,
 	}
 }

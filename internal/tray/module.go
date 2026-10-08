@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -183,9 +184,16 @@ func (m *Module) watch(ctx context.Context, emer, resumed, changes <-chan contra
 			if menuTopics[e.Topic] {
 				m.refresh()
 			}
-			// Запись без единого действия — предупредить, как бы её ни закончили (сочетание, окно, меню).
-			if info, ok := e.Payload.(contracts.RecordingInfo); ok && e.Topic == contracts.TopicRecordingStopped && info.Events == 0 {
-				m.notifyEmpty(info)
+			// Пустая запись (или запись без выбранных устройств) — предупредить, как бы её ни начали
+			// или закончили (сочетание, окно, меню).
+			if info, ok := e.Payload.(contracts.RecordingInfo); ok {
+				switch {
+				case e.Topic == contracts.TopicRecordingStopped && info.Events == 0:
+					m.notifyEmpty(info)
+				// Запись начата, а ни одно подключённое устройство не выбрано — она будет пустой.
+				case e.Topic == contracts.TopicRecordingStarted && len(info.Devices) == 0:
+					m.notifyNoDevices(info)
+				}
 			}
 		}
 	}
@@ -404,26 +412,72 @@ func (m *Module) recordMenu() []sni.MenuItem {
 	return items
 }
 
-// kindsMenu — подменю «Что записывать»: галочки классов устройств из настроек записи; щелчок
-// включает или выключает класс (настройку сохраняет в config.yaml модуль записи).
+// kindsMenu — подменю «Что записывать»: подключённые устройства по категориям (имя, как его видит
+// система, и VID:PID) с галочками; виртуальные — отдельной категорией, свои устройства mKey —
+// без галочки (mKey их не читает). Внизу — «По умолчанию»: классы устройств для тех, у кого нет
+// своей галочки (в том числе подключённых позже). Всё сохраняет в config.yaml модуль записи.
 func (m *Module) kindsMenu() *sni.MenuItem {
 	if m.recorder == nil {
 		return nil
 	}
-	on := m.recorder.RecordSettings().Kinds
 	sub := sni.MenuItem{Label: m.tr.T("tray.record_kinds")}
+
+	// Устройства по категориям: заголовок категории — неактивной строкой.
+	cat := ""
+	for _, d := range m.recorder.RecordDevices() {
+		if d.Category != cat {
+			if cat != "" {
+				sub.Children = append(sub.Children, sni.MenuItem{Separator: true})
+			}
+			cat = d.Category
+			sub.Children = append(sub.Children, sni.MenuItem{Label: m.tr.T("rec.cat." + cat), Disabled: true})
+		}
+		label := m.tr.T("tray.device", contracts.Arg{Name: "id", Value: d.ID}, contracts.Arg{Name: "name", Value: d.Name})
+		if d.Own {
+			sub.Children = append(sub.Children, sni.MenuItem{Label: label + " " + m.tr.T("tray.device_own"), Disabled: true})
+			continue
+		}
+		key, on := d.Key, d.Selected
+		sub.Children = append(sub.Children, sni.MenuItem{
+			Label: label, Checkable: true, Checked: on,
+			OnClick: func() { m.setDevice(key, !on) },
+		})
+	}
+	if len(sub.Children) == 0 {
+		sub.Children = append(sub.Children, sni.MenuItem{Label: m.tr.T("tray.no_devices"), Disabled: true})
+	}
+
+	// По умолчанию: классы устройств для устройств без своей галочки.
+	defaults := sni.MenuItem{Label: m.tr.T("tray.record_kinds_default")}
+	on := m.recorder.RecordSettings().Kinds
 	for _, k := range evdev.AllKinds {
 		kind := string(k)
 		checked := slices.Contains(on, kind)
-		sub.Children = append(sub.Children, sni.MenuItem{
+		defaults.Children = append(defaults.Children, sni.MenuItem{
 			Label: m.tr.T("device.kind." + kind), Checkable: true, Checked: checked,
 			OnClick: func() { m.toggleKind(kind, !checked) },
 		})
 	}
+	sub.Children = append(sub.Children, sni.MenuItem{Separator: true}, defaults)
 	return &sub
 }
 
-// toggleKind включает или выключает запись устройств класса kind и обновляет меню.
+// setDevice ставит или снимает галочку устройства key (свой выбор важнее классов по умолчанию)
+// и обновляет меню. Снять можно и последнюю галочку: о пустой записи предупредят при её начале.
+func (m *Module) setDevice(key string, on bool) {
+	s := m.recorder.RecordSettings()
+	s.Devices = maps.Clone(s.Devices)
+	if s.Devices == nil {
+		s.Devices = map[string]bool{}
+	}
+	s.Devices[key] = on
+	if err := m.recorder.SetRecordSettings(s); err != nil {
+		m.notify(m.tr.T("tray.error"), err.Error())
+	}
+	m.refresh()
+}
+
+// toggleKind включает или выключает запись по умолчанию устройств класса kind и обновляет меню.
 func (m *Module) toggleKind(kind string, on bool) {
 	s := m.recorder.RecordSettings()
 	s.Kinds = slices.DeleteFunc(slices.Clone(s.Kinds), func(k string) bool { return k == kind })
@@ -431,26 +485,38 @@ func (m *Module) toggleKind(kind string, on bool) {
 		s.Kinds = append(s.Kinds, kind)
 	}
 	if err := m.recorder.SetRecordSettings(s); err != nil {
-		title := m.tr.T("tray.error")
-		if len(s.Kinds) == 0 {
-			title = m.tr.T("tray.record_kinds_empty")
-		}
-		m.notify(title, err.Error())
+		m.notify(m.tr.T("tray.error"), err.Error())
 	}
 	m.refresh()
+}
+
+// selectedNames — имена устройств, которые сейчас записываются («ничего не выбрано», если нет).
+func (m *Module) selectedNames() string {
+	var names []string
+	if m.recorder != nil {
+		for _, d := range m.recorder.RecordDevices() {
+			if d.Selected {
+				names = append(names, d.Name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return m.tr.T("tray.nothing_selected")
+	}
+	return strings.Join(names, ", ")
 }
 
 // notifyEmpty предупреждает, что в записи нет ни одного действия, и называет, какие устройства
 // записываются, — чаще всего нужное устройство (например, геймпад) просто не выбрано.
 func (m *Module) notifyEmpty(info contracts.RecordingInfo) {
-	var names []string
-	if m.recorder != nil {
-		for _, k := range m.recorder.RecordSettings().Kinds {
-			names = append(names, m.tr.T("device.kind."+k))
-		}
-	}
 	m.notify("mKey", m.tr.T("tray.recording_empty",
-		contracts.Arg{Name: "name", Value: info.Name}, contracts.Arg{Name: "kinds", Value: strings.Join(names, ", ")}))
+		contracts.Arg{Name: "name", Value: info.Name}, contracts.Arg{Name: "devices", Value: m.selectedNames()}))
+}
+
+// notifyNoDevices предупреждает при начале записи, что ни одно подключённое устройство не выбрано
+// и запись получится пустой (запись всё равно идёт: человек мог так и задумать).
+func (m *Module) notifyNoDevices(info contracts.RecordingInfo) {
+	m.notify("mKey", m.tr.T("tray.recording_no_devices", contracts.Arg{Name: "name", Value: info.Name}))
 }
 
 // projectTitle — название проекта для меню: имя, иначе ID.

@@ -69,10 +69,18 @@
       const info = data as RecordingInfo | null;
       if (!info || info.events > 0) return;
       void api
-        .recordSettings()
-        .then((s) => s.kinds.map((k) => t("devices.kind." + k)).join(", "))
-        .catch(() => "")
-        .then((kinds) => toast(t("rec.empty", { name: info.name, kinds }), "error"));
+        .recordDevices()
+        .then((r) => r.devices.filter((d) => d.selected).map((d) => d.name))
+        .catch(() => [] as string[])
+        .then((names) =>
+          toast(
+            t("rec.empty", {
+              name: info.name,
+              devices: names.length ? names.join(", ") : t("rec.nothing_selected"),
+            }),
+            "error",
+          ),
+        );
     }),
   );
 

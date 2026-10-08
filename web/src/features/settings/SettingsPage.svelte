@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
   import { api } from "../../lib/api";
-  import { KINDS } from "../../lib/kinds";
+  import RecordDevices from "../../lib/components/RecordDevices.svelte";
   import { comboText } from "../../lib/combo";
   import KeyCapture from "../../lib/components/KeyCapture.svelte";
   import Modal from "../../lib/components/Modal.svelte";
@@ -37,18 +37,20 @@
       .catch((e: unknown) => (recError = errorText(e)));
   });
 
-  /** toggleKind включает или выключает запись устройств вида kind. */
-  function toggleKind(kind: string, on: boolean): void {
-    if (!rec) return;
-    rec.kinds = on ? [...rec.kinds, kind] : rec.kinds.filter((k) => k !== kind);
-  }
-
   /** saveRecord проверяет и сохраняет настройки записи (действуют со следующей записи). */
   async function saveRecord(): Promise<void> {
     if (!rec) return;
     recError = "";
     try {
-      rec = await api.setRecordSettings(rec);
+      // Устройства и классы сохраняет блок выбора сразу — берём их свежими, меняем остальное.
+      const cur = await api.recordSettings();
+      rec = await api.setRecordSettings({
+        ...cur,
+        moves: rec.moves,
+        merge_moves_ms: rec.merge_moves_ms,
+        center_pointer: rec.center_pointer,
+        coalesce_ms: rec.coalesce_ms,
+      });
       toast(t("settings.rec_saved"));
     } catch (e) {
       recError = errorText(e);
@@ -246,21 +248,10 @@
 <div class="card hotkeys">
   <h2>{t("settings.rec")}</h2>
   <p class="muted">{t("settings.rec_hint")}</p>
+  <h3>{t("settings.rec_kinds")}</h3>
+  <RecordDevices />
   {#if rec}
     <div class="grid">
-      <span>{t("settings.rec_kinds")}</span>
-      <span class="kinds">
-        {#each KINDS as k (k)}
-          <label class="check"
-            ><input
-              type="checkbox"
-              checked={rec.kinds.includes(k)}
-              onchange={(e) => toggleKind(k, e.currentTarget.checked)}
-            />
-            {t("devices.kind." + k)}</label
-          >
-        {/each}
-      </span>
       <span>{t("settings.rec_moves")}</span>
       <label class="check"
         ><input type="checkbox" bind:checked={rec.moves} />
@@ -375,11 +366,6 @@
   .hotkeys .grid {
     margin: 0;
     grid-template-columns: max-content minmax(0, 1fr);
-  }
-  .kinds {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 14px;
   }
   .check {
     display: flex;

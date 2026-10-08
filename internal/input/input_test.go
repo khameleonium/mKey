@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -113,6 +114,12 @@ func (f *fakeFS) open(path string) (deviceReader, error) {
 // setup создаёт каталог с файлами event*, фейковую ФС и запущенный модуль.
 func setup(t *testing.T, fs *fakeFS) (*Module, *registry.Manager, string) {
 	t.Helper()
+	return setupWith(t, fs, nil)
+}
+
+// setupWith — setup с настройкой модуля перед запуском (например, своими сведениями sysfs).
+func setupWith(t *testing.T, fs *fakeFS, prepare func(*Module)) (*Module, *registry.Manager, string) {
+	t.Helper()
 
 	// Каталог с пустыми файлами eventN (их имена видит Glob).
 	dir := t.TempDir()
@@ -141,6 +148,9 @@ func setup(t *testing.T, fs *fakeFS) (*Module, *registry.Manager, string) {
 		t.Fatal(err)
 	}
 	mod := newModule(dir, fs.open, clock.NewFake(time.Unix(0, 0)))
+	if prepare != nil {
+		prepare(mod)
+	}
 	mgr, err := registry.NewManager(registry.Options{
 		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Translator: i18n.New(cat, "en"),
@@ -189,9 +199,32 @@ func TestScanAndFilterOwn(t *testing.T) {
 		t.Fatalf("Status = %+v", st)
 	}
 
-	// Сервис опубликован.
+	// Сервис опубликован; своё устройство mKey — в списке своих (для показа), не в Devices.
 	if _, err := contracts.LookupService[contracts.InputSource](mgr.Services()); err != nil {
 		t.Fatal(err)
+	}
+	if own := mod.OwnDevices(); len(own) != 1 || own[0].Info.Name != "mKey Keyboard" || !own[0].Virtual {
+		t.Fatalf("OwnDevices = %+v", own)
+	}
+}
+
+// TestVirtualDevices: устройство, созданное программой (по sysfs — /sys/devices/virtual), помечено
+// Virtual; подключённое — нет.
+func TestVirtualDevices(t *testing.T) {
+	t.Parallel()
+	fs := &fakeFS{devices: map[string]*fakeDevice{
+		"event0": newFakeDevice("", "USB Keyboard", "usb-1/input0"),
+		"event5": newFakeDevice("", "Remote Keyboard", ""),
+	}}
+	mod, _, _ := setupWith(t, fs, func(m *Module) {
+		m.sysDevice = func(path string) (ev.ID, bool) { return ev.ID{}, strings.HasSuffix(path, "event5") }
+	})
+	got := map[string]bool{}
+	for _, d := range mod.Devices() {
+		got[d.Info.Name] = d.Virtual
+	}
+	if len(got) != 2 || got["USB Keyboard"] || !got["Remote Keyboard"] {
+		t.Fatalf("virtual = %v", got)
 	}
 }
 

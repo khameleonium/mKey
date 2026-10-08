@@ -41,8 +41,8 @@ type session struct {
 	// info — сведения о записи; start — время начала (по часам событий ядра).
 	info  contracts.RecordingInfo
 	start time.Time
-	// kinds — какие классы устройств записываются.
-	kinds map[string]bool
+	// pick решает, записывается ли устройство (по настройкам на момент начала записи).
+	pick func(contracts.InputDevice) bool
 	// moves — записывать движения мыши; merge — окно их склейки (0 — не склеивать).
 	moves bool
 	merge time.Duration
@@ -173,13 +173,11 @@ func (s *session) closeFrame(id int) {
 
 // register решает, записывать ли устройство (по его классам), и выдаёт ему номер (-1 — нет).
 func (s *session) register(path string, d contracts.InputDevice) int {
-	match := false
 	kinds := make([]string, len(d.Kinds))
 	for i, k := range d.Kinds {
 		kinds[i] = string(k)
-		match = match || s.kinds[string(k)]
 	}
-	if !match {
+	if !s.pick(d) {
 		s.ids[path] = -1
 		return -1
 	}
@@ -270,26 +268,38 @@ func (m *Module) StartRecording(opts contracts.RecordOptions) (contracts.Recordi
 		return contracts.RecordingInfo{}, err
 	}
 
-	// Сессия: классы устройств, сочетания для вырезания, время начала.
-	kinds := opts.Kinds
-	if len(kinds) == 0 {
-		kinds = cfg.Kinds
+	// Какие устройства записывать: классы, заданные для этой записи (mkey rec --devices), иначе —
+	// настройки записи (выбор отдельных устройств и классы по умолчанию).
+	settings := m.settingsOf(cfg)
+	pick := func(d contracts.InputDevice) bool { sel, _ := selected(settings, d); return sel }
+	if len(opts.Kinds) > 0 {
+		pick = func(d contracts.InputDevice) bool {
+			// Классы для одной записи — как классы по умолчанию: устройства программ не включают.
+			return !d.Virtual && slices.ContainsFunc(d.Kinds, func(k ev.Kind) bool { return slices.Contains(opts.Kinds, string(k)) })
+		}
 	}
+
+	// Сессия: выбор устройств, сочетания для вырезания, время начала.
 	s := &session{
 		start: m.now(), draft: draft, w: mkrec.NewWriter(draft), path: path,
 		moves: cfg.Moves, merge: time.Duration(cfg.MergeMovesMS) * time.Millisecond,
-		kinds: map[string]bool{}, ids: map[string]int{}, open: map[int]*mkrec.Frame{},
+		pick: pick, ids: map[string]int{}, open: map[int]*mkrec.Frame{},
 		down: map[downKey]bool{}, cuts: map[string]*chord{}, done: make(chan struct{}),
 		header: mkrec.Header{Centered: centered},
 	}
 	s.header.Created = s.start
-	for _, k := range kinds {
-		s.kinds[k] = true
-	}
 	if c, err := parseChord(CutCtrlC); err == nil {
 		s.cuts[CutCtrlC] = c
 	}
 	s.info = contracts.RecordingInfo{Name: name, Path: path, Created: s.start, StopHotkey: m.cfg.Hotkey}
+
+	// Какие из подключённых устройств будут записываться (пусто — запись получится пустой: окно,
+	// значок и mkey rec предупреждают об этом по сведениям о начале записи).
+	for _, d := range m.input.Devices() {
+		if pick(d) {
+			s.info.Devices = append(s.info.Devices, d.Info.Name)
+		}
+	}
 	m.sess = s
 	m.log.Info("recording started", "name", name, "pointer_centered", centered)
 	m.bus.Publish(contracts.TopicRecordingStarted, s.info)
@@ -410,6 +420,7 @@ func (s *session) finish(duration time.Duration) (contracts.RecordingInfo, error
 	info := s.info
 	info.DurationMS = duration.Milliseconds()
 	info.Events = s.written
+	info.Devices = nil // при начале здесь были выбранные устройства, теперь — записанные
 	for _, d := range s.header.Devices {
 		info.Devices = append(info.Devices, d.Name)
 	}

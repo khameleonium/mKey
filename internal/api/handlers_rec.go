@@ -25,6 +25,7 @@ func (m *Module) registerRecRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/settings/hotkeys", m.handleHotkeysGet)
 	mux.HandleFunc("PUT /api/v1/settings/hotkeys", m.handleHotkeysPut)
 	mux.HandleFunc("GET /api/v1/settings/recording", m.handleRecordSettingsGet)
+	mux.HandleFunc("GET /api/v1/recordings/devices", m.handleRecordDevices)
 	mux.HandleFunc("PUT /api/v1/settings/recording", m.handleRecordSettingsPut)
 	mux.HandleFunc("GET /api/v1/settings/timing", m.handleTimingGet)
 	mux.HandleFunc("PUT /api/v1/settings/timing", m.handleTimingPut)
@@ -65,6 +66,16 @@ func (m *Module) handleTimingPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tm)
+}
+
+// handleRecordDevices — подключённые устройства для выбора «что записывать»: {devices: [RecordDevice]}
+// по категориям (keyboards, gamepads, touch, other, virtual) с тем, записываются ли они.
+func (m *Module) handleRecordDevices(w http.ResponseWriter, r *http.Request) {
+	if m.svc.recorder == nil {
+		m.unavailable(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"devices": m.svc.recorder.RecordDevices()})
 }
 
 // handleRecordSettingsGet возвращает настройки записи по умолчанию.

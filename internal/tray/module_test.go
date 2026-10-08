@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -258,6 +259,7 @@ type fullServices struct {
 	stopped   int
 	notices   []string
 	kinds     []string
+	devices   map[string]bool
 }
 
 func (f *fullServices) List() []contracts.ProjectState {
@@ -321,16 +323,30 @@ func (f *fullServices) StopRecording(string) (contracts.RecordingInfo, error) {
 func (f *fullServices) RecordSettings() contracts.RecordSettings {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return contracts.RecordSettings{Kinds: slices.Clone(f.kinds)}
+	return contracts.RecordSettings{Kinds: slices.Clone(f.kinds), Devices: maps.Clone(f.devices)}
 }
 func (f *fullServices) SetRecordSettings(s contracts.RecordSettings) error {
-	if len(s.Kinds) == 0 {
+	if slices.Contains(s.Kinds, "кофеварка") {
 		return contracts.ErrBadRecordSettings
 	}
 	f.mu.Lock()
-	f.kinds = slices.Clone(s.Kinds)
+	f.kinds, f.devices = slices.Clone(s.Kinds), maps.Clone(s.Devices)
 	f.mu.Unlock()
 	return nil
+}
+
+// RecordDevices — геймпад (выбран по своей галочке или классу gamepad) и своя клавиатура mKey.
+func (f *fullServices) RecordDevices() []contracts.RecordDevice {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sel, ok := f.devices["2dc8:310a Pad"]
+	if !ok {
+		sel = slices.Contains(f.kinds, "gamepad")
+	}
+	return []contracts.RecordDevice{
+		{Key: "2dc8:310a Pad", ID: "2dc8:310a", Name: "Pad", Category: contracts.RecordCatGamepads, Selected: sel},
+		{Key: "6d6b:0001 mKey Keyboard", ID: "6d6b:0001", Name: "mKey Keyboard", Category: contracts.RecordCatVirtual, Virtual: true, Own: true},
+	}
 }
 func (f *fullServices) Recordings() ([]contracts.RecordingInfo, error) {
 	return []contracts.RecordingInfo{{Name: "game"}, {Name: "broken", Problem: &contracts.RecordingProblem{Code: "key"}}}, nil
@@ -408,32 +424,44 @@ func TestFullMenu(t *testing.T) {
 		return len(full.ran) == 1 && full.stopped == 2 && len(full.notices) == 2
 	})
 
-	// «Что записывать»: галочки по настройкам; щелчок включает геймпад, последний класс не выключить.
+	// «Что записывать»: устройства по категориям (заголовки неактивны), своё устройство mKey —
+	// без галочки, внизу — классы по умолчанию.
 	item.mu.Lock()
 	kinds, _ := find(item.menu, "What to record")
 	item.mu.Unlock()
-	if len(kinds.Children) != 8 || !kinds.Children[0].Checked || kinds.Children[5].Checked || kinds.Children[5].Label != "gamepad" {
-		t.Fatalf("kinds: %+v", kinds.Children)
+	var labels []string
+	for _, c := range kinds.Children {
+		labels = append(labels, map[bool]string{true: "[x] ", false: ""}[c.Checked]+c.Label+map[bool]string{true: " (off)", false: ""}[c.Disabled])
 	}
-	click(t, item, "gamepad")
-	eventually(t, func() bool { return slices.Contains(full.RecordSettings().Kinds, "gamepad") })
-	full.mu.Lock()
-	full.kinds = []string{"mouse"}
-	full.mu.Unlock()
-	m.refresh()
-	click(t, item, "mouse")
+	wantKinds := "Gamepads and joysticks (off)|ID 2dc8:310a Pad||Virtual devices (off)|ID 6d6b:0001 mKey Keyboard — emulated by mKey, not recorded (off)||By default (other and new devices)"
+	if got := strings.Join(labels, "|"); got != wantKinds {
+		t.Fatalf("kinds menu:\n%s\nwant\n%s", got, wantKinds)
+	}
+
+	// Галочка устройства: своё выбор сохраняется; снять последнюю можно — без ошибки.
+	click(t, item, "ID 2dc8:310a Pad")
+	eventually(t, func() bool { full.mu.Lock(); defer full.mu.Unlock(); return full.devices["2dc8:310a Pad"] })
+	click(t, item, "ID 2dc8:310a Pad")
 	eventually(t, func() bool {
 		full.mu.Lock()
 		defer full.mu.Unlock()
-		return len(full.kinds) == 1 && strings.Contains(strings.Join(full.notices, "|"), "invalid recording settings")
+		v, ok := full.devices["2dc8:310a Pad"]
+		return ok && !v
 	})
 
-	// Пустая запись (как бы её ни закончили) — предупреждение, какие устройства записываются.
+	// Классы по умолчанию: включить геймпад; выключить все можно.
+	click(t, item, "gamepad")
+	eventually(t, func() bool { return slices.Contains(full.RecordSettings().Kinds, "gamepad") })
+
+	// Начало записи без выбранных устройств и пустая запись — предупреждения.
+	m.bus.Publish(contracts.TopicRecordingStarted, contracts.RecordingInfo{Name: "none"})
 	m.bus.Publish(contracts.TopicRecordingStopped, contracts.RecordingInfo{Name: "empty"})
 	eventually(t, func() bool {
 		full.mu.Lock()
 		defer full.mu.Unlock()
-		return strings.Contains(strings.Join(full.notices, "|"), `Recording "empty" has no actions. Recorded now: mouse.`)
+		all := strings.Join(full.notices, "|")
+		return strings.Contains(all, `Recording "none" is running, but no connected device is selected`) &&
+			strings.Contains(all, `Recording "empty" has no actions. Recorded: nothing selected.`)
 	})
 
 	// Папка проектов открывается (и создаётся, если её нет).

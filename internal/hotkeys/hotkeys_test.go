@@ -65,8 +65,9 @@ func (f *fakeInput) ResumeGrab() {}
 func (f *fakeInput) EmergencyStop(string) {}
 
 // EmergencyCombo и SetEmergencyCombo не нужны тестам горячих клавиш.
-func (f *fakeInput) EmergencyCombo() string         { return "" }
-func (f *fakeInput) SetEmergencyCombo(string) error { return nil }
+func (f *fakeInput) EmergencyCombo() string              { return "" }
+func (f *fakeInput) SetEmergencyCombo(string) error      { return nil }
+func (f *fakeInput) OwnDevices() []contracts.InputDevice { return nil }
 func (f *fakeInput) SetGrabPolicy(p func(contracts.InputDevice) bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

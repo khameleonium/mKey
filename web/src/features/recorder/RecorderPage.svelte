@@ -13,9 +13,9 @@
   import { navigate } from "../../lib/router.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { onTopic } from "../../lib/stream.svelte";
-  import { KINDS } from "../../lib/kinds";
+  import RecordDevices from "../../lib/components/RecordDevices.svelte";
   import { errorText, toast } from "../../lib/toast.svelte";
-  import type { RecordingInfo, RecordSettings } from "../../lib/types";
+  import type { RecordingInfo } from "../../lib/types";
 
   /** Данные раздела: записи и идущая запись. */
   let list = $state<RecordingInfo[]>([]);
@@ -31,19 +31,10 @@
   let countdown = $state(0);
   /** hotkey — сочетание «начать/закончить запись» ("" — выключено) для подсказки. */
   let hotkey = $state("");
-  /** rec — настройки записи (что записывать); null — ещё не загружены или недоступны. */
-  let rec = $state<RecordSettings | null>(null);
-
-  /** toggleKind включает или выключает запись устройств класса kind (сохраняется сразу). */
-  async function toggleKind(kind: string, on: boolean): Promise<void> {
-    if (!rec) return;
-    const kinds = on ? [...rec.kinds, kind] : rec.kinds.filter((k) => k !== kind);
-    try {
-      rec = await api.setRecordSettings({ ...rec, kinds });
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
-  }
+  /** selected — сколько подключённых устройств будет записываться (из RecordDevices);
+   *  noDevices — открыто предупреждение «ничего не выбрано, запись будет пустой». */
+  let selected = $state(0);
+  let noDevices = $state(false);
 
   /** abort — отмена идущего воспроизведения (закрывает запрос — демон останавливает повтор). */
   let abort: AbortController | null = null;
@@ -63,10 +54,6 @@
   $effect(() => {
     void load();
     api
-      .recordSettings()
-      .then((s) => (rec = s))
-      .catch(() => (rec = null));
-    api
       .hotkeys()
       .then((h) => (hotkey = h.record ?? ""))
       .catch(() => (hotkey = ""));
@@ -76,8 +63,13 @@
     return () => offs.forEach((off) => off());
   });
 
-  /** start начинает запись. */
-  async function start(): Promise<void> {
+  /** start начинает запись; ни одно устройство не выбрано — сначала спрашивает (запись будет пустой). */
+  async function start(force = false): Promise<void> {
+    if (selected === 0 && !force) {
+      noDevices = true;
+      return;
+    }
+    noDevices = false;
     try {
       current = await api.startRecording(name.trim());
       name = "";
@@ -186,24 +178,13 @@
       </p>
       <div class="row">
         <input bind:value={name} placeholder={t("rec.name_placeholder")} />
-        <button class="primary" onclick={start}>⏺ {t("rec.start")}</button>
+        <button class="primary" onclick={() => void start()}>⏺ {t("rec.start")}</button>
       </div>
-      {#if rec}
-        <!-- Что записывать: классы устройств (сохраняются сразу) -->
-        <div class="kinds" role="group" aria-label={t("rec.kinds")}>
-          <span class="muted">{t("rec.kinds")}</span>
-          {#each KINDS as k (k)}
-            <label class="check"
-              ><input
-                type="checkbox"
-                checked={rec.kinds.includes(k)}
-                onchange={(e) => void toggleKind(k, e.currentTarget.checked)}
-              />
-              {t("devices.kind." + k)}</label
-            >
-          {/each}
-        </div>
-      {/if}
+      <!-- Что записывать: устройства по категориям (сохраняется сразу) -->
+      <details class="pick" id="record-devices">
+        <summary>{t("rec.kinds")} {t("rec.selected", { n: selected })}</summary>
+        <RecordDevices onselected={(n) => (selected = n)} />
+      </details>
     </div>
   {/if}
 </div>
@@ -288,6 +269,27 @@
   </Modal>
 {/if}
 
+<!-- Ничего не выбрано: запись будет пустой — выбрать устройства или всё равно записать -->
+{#if noDevices}
+  <Modal title={t("rec.none_title")} onclose={() => (noDevices = false)}>
+    <p>{t("rec.none_text")}</p>
+    {#snippet footer()}
+      <button onclick={() => void start(true)}>{t("rec.none_anyway")}</button>
+      <button
+        class="primary"
+        onclick={() => {
+          noDevices = false;
+          const el = document.getElementById("record-devices") as HTMLDetailsElement | null;
+          if (el) {
+            el.open = true;
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
+        }}>{t("rec.none_choose")}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
+
 <style>
   .rec {
     display: flex;
@@ -299,17 +301,12 @@
   .rec.on {
     border-left: 6px solid var(--danger);
   }
-  .kinds {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 14px;
-    align-items: center;
+  .pick {
     margin-top: 10px;
   }
-  .kinds .check {
-    display: inline-flex;
-    gap: 4px;
-    align-items: center;
+  .pick summary {
+    cursor: pointer;
+    margin-bottom: 6px;
   }
   .rec h2,
   .rec p {

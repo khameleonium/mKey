@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -32,10 +33,9 @@ const maxMergeMS = 1000
 
 // checkSettings проверяет настройки записи. Ошибка — contracts.ErrBadRecordSettings с пояснением.
 func checkSettings(s contracts.RecordSettings) error {
-	// Классы устройств: хотя бы один, все известные.
-	if len(s.Kinds) == 0 {
-		return fmt.Errorf("%w: kinds: choose at least one kind of device", contracts.ErrBadRecordSettings)
-	}
+	// Классы устройств: только известные (пустой список допустим — тогда записываются лишь
+	// устройства, отмеченные по отдельности; ничего не отмечено — запись будет пустой, о чём
+	// предупреждают при её начале).
 	for _, k := range s.Kinds {
 		if !slices.Contains(knownKinds, k) {
 			return fmt.Errorf("%w: kinds: unknown kind %q (known: %v)", contracts.ErrBadRecordSettings, k, knownKinds)
@@ -57,7 +57,7 @@ func checkSettings(s contracts.RecordSettings) error {
 // settingsOf выделяет настройки записи из настроек модуля.
 func (m *Module) settingsOf(c Config) contracts.RecordSettings {
 	return contracts.RecordSettings{
-		Kinds: slices.Clone(c.Kinds), Moves: c.Moves, MergeMovesMS: c.MergeMovesMS,
+		Kinds: slices.Clone(c.Kinds), Devices: maps.Clone(c.Devices), Moves: c.Moves, MergeMovesMS: c.MergeMovesMS,
 		CenterPointer: c.CenterPointer, CoalesceMS: c.CoalesceMS,
 	}
 }
@@ -80,6 +80,7 @@ func (m *Module) SetRecordSettings(s contracts.RecordSettings) error {
 	// Применяем.
 	m.mu.Lock()
 	m.cfg.Kinds, m.cfg.Moves, m.cfg.MergeMovesMS = slices.Clone(s.Kinds), s.Moves, s.MergeMovesMS
+	m.cfg.Devices = maps.Clone(s.Devices)
 	m.cfg.CenterPointer, m.cfg.CoalesceMS = s.CenterPointer, s.CoalesceMS
 	m.mu.Unlock()
 
@@ -88,7 +89,23 @@ func (m *Module) SetRecordSettings(s contracts.RecordSettings) error {
 		return nil
 	}
 	return m.writer.SetModuleValues(ModuleID, []contracts.ConfigValue{
-		{Key: "kinds", Value: s.Kinds}, {Key: "moves", Value: s.Moves}, {Key: "merge_moves_ms", Value: s.MergeMovesMS},
+		{Key: "kinds", Value: nonNil(s.Kinds)}, {Key: "devices", Value: nonNilMap(s.Devices)}, {Key: "moves", Value: s.Moves}, {Key: "merge_moves_ms", Value: s.MergeMovesMS},
 		{Key: "center_pointer", Value: s.CenterPointer}, {Key: "coalesce_ms", Value: s.CoalesceMS},
 	})
+}
+
+// nonNil — пустой список вместо nil: в config.yaml пишется «[]», а не «null».
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
+// nonNilMap — пустая карта вместо nil: в config.yaml пишется «{}», а не «null».
+func nonNilMap(m map[string]bool) map[string]bool {
+	if m == nil {
+		return map[string]bool{}
+	}
+	return m
 }

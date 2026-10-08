@@ -81,6 +81,11 @@ func (f *fakeRecorder) RecordHotkey() string                     { return "^{Ctr
 func (f *fakeRecorder) SetRecordHotkey(string) error             { return nil }
 func (f *fakeRecorder) Playing() int                             { return 0 }
 func (f *fakeRecorder) RecordSettings() contracts.RecordSettings { return f.settings }
+
+// RecordDevices — одно выбранное устройство.
+func (f *fakeRecorder) RecordDevices() []contracts.RecordDevice {
+	return []contracts.RecordDevice{{Key: "2dc8:310a Pad", ID: "2dc8:310a", Name: "Pad", Category: contracts.RecordCatGamepads, Selected: true}}
+}
 func (f *fakeRecorder) SetRecordSettings(s contracts.RecordSettings) error {
 	if len(s.Kinds) == 0 {
 		return contracts.ErrBadRecordSettings
@@ -98,9 +103,12 @@ func TestRecordSettingsAPI(t *testing.T) {
 	m.svc.recorder, m.svc.player = rec, rec
 	h := m.routes(true)
 
-	// Чтение.
+	// Чтение настроек и устройств для выбора.
 	if _, out := call(t, h, "GET", "/api/v1/settings/recording", "", nil); out["moves"] != true {
 		t.Fatalf("get: %v", out)
+	}
+	if _, out := call(t, h, "GET", "/api/v1/recordings/devices", "", nil); out["devices"].([]any)[0].(map[string]any)["category"] != "gamepads" {
+		t.Fatalf("devices: %v", out)
 	}
 
 	// Неверные — 400 с кодом; верные передаются модулю записи.

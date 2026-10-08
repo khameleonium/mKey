@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -91,8 +92,10 @@ type Module struct {
 	devices map[string]*openDevice
 	// denied — пути устройств, к которым нет доступа.
 	denied map[string]bool
-	// own — пути собственных виртуальных устройств mKey (их не читаем).
-	own map[string]bool
+	// own — пути собственных виртуальных устройств mKey (их не читаем); ownInfo — их имена и VID:PID
+	// (для показа человеку, OwnDevices).
+	own     map[string]bool
+	ownInfo map[string]ev.Info
 	// subs — подписчики на события.
 	subs map[*subscriber]struct{}
 	// dropped — число событий, отброшенных из-за медленных подписчиков.
@@ -101,6 +104,8 @@ type Module struct {
 	// sysInfo читает имя и phys устройства из sysfs без открытия файла устройства
 	// (доступно всем пользователям); пустые строки — сведений нет.
 	sysInfo func(path string) (name, phys string)
+	// sysDevice читает из sysfs VID:PID устройства и создано ли оно программой (/sys/devices/virtual).
+	sysDevice func(path string) (id ev.ID, virtual bool)
 	// createClone создаёт passthrough-копию устройства (uinput или фейк в тестах).
 	createClone func(ev.Setup) (cloneWriter, error)
 	// handler — синхронный обработчик событий (модуль hotkeys); nil — нет.
@@ -157,6 +162,7 @@ func New() *Module {
 	m := newModule(DefaultDir, func(path string) (deviceReader, error) { return ev.Open(path) }, clock.Real{})
 	m.createClone = func(s ev.Setup) (cloneWriter, error) { return ev.CreateUInput(m.cfg.UInputPath, s) }
 	m.sysInfo = sysfsInfo
+	m.sysDevice = sysfsDevice
 	return m
 }
 
@@ -173,6 +179,7 @@ func newModule(dir string, open func(string) (deviceReader, error), clk clock.Cl
 		devices: map[string]*openDevice{},
 		denied:  map[string]bool{},
 		own:     map[string]bool{},
+		ownInfo: map[string]ev.Info{},
 		subs:    map[*subscriber]struct{}{},
 	}
 }
@@ -395,6 +402,7 @@ func (m *Module) handleFSEvent(e fsnotify.Event) {
 		m.mu.Lock()
 		delete(m.denied, e.Name)
 		delete(m.own, e.Name)
+		delete(m.ownInfo, e.Name)
 		m.mu.Unlock()
 		m.publishStatus()
 	}
@@ -437,6 +445,7 @@ func (m *Module) tryOpen(path string) (retry bool) {
 		if name, phys := m.sysInfo(path); isOwnDevice(name, phys) {
 			m.mu.Lock()
 			m.own[path] = true
+			m.ownInfo[path] = m.ownDetails(path, name)
 			delete(m.denied, path)
 			m.mu.Unlock()
 			return false
@@ -462,13 +471,18 @@ func (m *Module) tryOpen(path string) (retry bool) {
 		_ = r.Close()
 		m.mu.Lock()
 		m.own[path] = true
+		m.ownInfo[path] = info
 		delete(m.denied, path)
 		m.mu.Unlock()
 		return false
 	}
 
 	// Регистрируем устройство и запускаем горутину чтения.
-	d := &openDevice{reader: r, desc: contracts.InputDevice{Info: info, Kinds: ev.Classify(info.Caps)}, down: map[uint16]bool{}}
+	desc := contracts.InputDevice{Info: info, Kinds: ev.Classify(info.Caps)}
+	if m.sysDevice != nil {
+		_, desc.Virtual = m.sysDevice(path)
+	}
+	d := &openDevice{reader: r, desc: desc, down: map[uint16]bool{}}
 	m.mu.Lock()
 	if m.ctx.Err() != nil {
 		m.mu.Unlock()
@@ -583,6 +597,44 @@ func sysfsInfo(path string) (string, string) {
 	name, _ := os.ReadFile(filepath.Join(dir, "name"))
 	phys, _ := os.ReadFile(filepath.Join(dir, "phys"))
 	return strings.TrimSpace(string(name)), strings.TrimSpace(string(phys))
+}
+
+// sysfsDevice читает VID:PID устройства из /sys/class/input/eventN/device/id и узнаёт, создано ли
+// оно программой: устройства uinput лежат в /sys/devices/virtual, подключённые — у своей шины
+// (USB, Bluetooth, i8042…).
+func sysfsDevice(path string) (ev.ID, bool) {
+	base := filepath.Join("/sys/class/input", filepath.Base(path))
+	hex := func(name string) uint16 {
+		b, _ := os.ReadFile(filepath.Join(base, "device", "id", name))
+		v, _ := strconv.ParseUint(strings.TrimSpace(string(b)), 16, 16)
+		return uint16(v)
+	}
+	id := ev.ID{Bustype: hex("bustype"), Vendor: hex("vendor"), Product: hex("product"), Version: hex("version")}
+	real, err := filepath.EvalSymlinks(base)
+	return id, err == nil && strings.Contains(real, "/devices/virtual/")
+}
+
+// ownDetails собирает сведения о своём устройстве mKey для показа: путь, имя, VID:PID из sysfs.
+func (m *Module) ownDetails(path, name string) ev.Info {
+	info := ev.Info{Path: path, Name: name}
+	if m.sysDevice != nil {
+		info.ID, _ = m.sysDevice(path)
+	}
+	return info
+}
+
+// OwnDevices возвращает собственные виртуальные устройства mKey, которые есть в системе, по пути
+// (contracts.InputSource): их mKey не читает, но показывает в выборе «что записывать».
+func (m *Module) OwnDevices() []contracts.InputDevice {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]contracts.InputDevice, 0, len(m.ownInfo))
+	for path, info := range m.ownInfo {
+		info.Path = path
+		out = append(out, contracts.InputDevice{Info: info, Kinds: ev.Classify(info.Caps), Virtual: true})
+	}
+	slices.SortFunc(out, func(a, b contracts.InputDevice) int { return strings.Compare(a.Info.Path, b.Info.Path) })
+	return out
 }
 
 // publishStatus сообщает на шину текущую доступность устройств.

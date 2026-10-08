@@ -87,21 +87,25 @@ test("devices page works without real devices", async ({ page }) => {
 
 test("recordings: what to record is saved at once", async ({ page }) => {
   await page.getByRole("navigation").getByRole("link", { name: "Recordings" }).click();
-  const kinds = page.getByRole("group", { name: "What to record:" });
-  await kinds.getByLabel("gamepad").check();
-  // Настройка сохраняется сразу — в файле настроек и после перезагрузки окна.
+  // Без настоящих устройств — список пуст, но классы «по умолчанию» есть и сохраняются сразу.
+  await page.getByText(/^What to record/).click();
+  await expect(page.getByText("No devices found.")).toBeVisible();
+  const defaults = page.getByRole("group", { name: "By default" });
+  await defaults.getByLabel("gamepad").check();
   const cfg = path.join(process.env.MKEY_E2E_ROOT ?? "", "config", "mkey", "config.yaml");
   await expect.poll(() => fs.readFileSync(cfg, "utf8")).toMatch(/kinds: \[.*gamepad.*\]/);
-  await page.reload();
-  await expect(
-    page.getByRole("group", { name: "What to record:" }).getByLabel("gamepad"),
-  ).toBeChecked();
+  // Снять все классы можно.
+  for (const k of ["keyboard", "mouse", "gamepad"]) await defaults.getByLabel(k).uncheck();
+  await expect.poll(() => fs.readFileSync(cfg, "utf8")).toMatch(/kinds: \[\]/);
 });
 
-test("an empty recording is reported", async ({ page }) => {
-  // Без настоящих устройств запись всегда пустая — окно предупреждает, что записывается.
+test("starting with nothing selected asks, an empty recording is reported", async ({ page }) => {
   await page.getByRole("navigation").getByRole("link", { name: "Recordings" }).click();
   await page.getByRole("button", { name: /Start recording/ }).click();
+  // Ни одно устройство не выбрано — вопрос; «Всё равно записать» — запись идёт.
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("No device selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Record anyway" }).click();
   await page.getByRole("button", { name: /Stop/ }).first().click();
-  await expect(page.getByText(/has no actions\. Recorded now:/)).toBeVisible();
+  await expect(page.getByText(/has no actions\. Recorded: nothing selected/)).toBeVisible();
 });

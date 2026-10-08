@@ -316,8 +316,10 @@ export interface Timing {
 
 /** RecordSettings — настройки записи по умолчанию (GET/PUT /settings/recording, config.yaml). */
 export interface RecordSettings {
-  /** kinds — какие устройства записывать ("keyboard", "mouse", "gamepad"…). */
+  /** kinds — классы, которые записываются по умолчанию (для устройств без своей галочки). */
   kinds: string[];
+  /** devices — свои галочки устройств: «VID:PID имя» → записывать ли (важнее kinds). */
+  devices?: Record<string, boolean>;
   /** moves — записывать движения мыши. */
   moves: boolean;
   /** merge_moves_ms — склейка движений мыши при записи, мс (0 — каждое движение). */
@@ -443,4 +445,22 @@ export interface ScriptFile {
 export interface ScriptProblem {
   line?: number;
   message: string;
+}
+
+/** Устройство в выборе «что записывать» (GET /recordings/devices). */
+export interface RecordDevice {
+  /** key — «2dc8:310a 8BitDo Ultimate 2C Wireless Controller»; id — VID:PID; name — имя в системе. */
+  key: string;
+  id: string;
+  name: string;
+  path: string;
+  /** category — keyboards, gamepads, touch, other, virtual. */
+  category: string;
+  kinds: string[];
+  /** virtual — создано программой; own — самим mKey (не записывается). */
+  virtual?: boolean;
+  own?: boolean;
+  /** selected — будет ли записываться; explicit — у устройства своя галочка. */
+  selected: boolean;
+  explicit?: boolean;
 }

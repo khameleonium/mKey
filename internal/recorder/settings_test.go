@@ -38,7 +38,6 @@ func TestRecordSettings(t *testing.T) {
 
 	// Неверные настройки отклоняются и не меняют текущие.
 	for _, bad := range []contracts.RecordSettings{
-		{Kinds: nil},
 		{Kinds: []string{"кофеварка"}},
 		{Kinds: []string{"mouse"}, MergeMovesMS: -1},
 		{Kinds: []string{"mouse"}, CoalesceMS: 5000},
@@ -107,7 +106,7 @@ func TestRecordSettingsSaved(t *testing.T) {
 		t.Fatalf("saved %s %v", w.module, w.values)
 	}
 	w.module = ""
-	if err := m.SetRecordSettings(contracts.RecordSettings{}); err == nil || w.module != "" {
+	if err := m.SetRecordSettings(contracts.RecordSettings{Kinds: []string{"кофеварка"}}); err == nil || w.module != "" {
 		t.Fatalf("bad settings saved: %v", err)
 	}
 }

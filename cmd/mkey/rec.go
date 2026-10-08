@@ -191,6 +191,10 @@ func runRec(cmd *cobra.Command, tr *i18n.Translator, name string, countdown int,
 	} else {
 		printf(out, "%s\n", tr.T("cli.rec.started_nohotkey", i18n.A("name", info.Name)))
 	}
+	// Ни одно подключённое устройство не выбрано — запись идёт, но будет пустой.
+	if len(info.Devices) == 0 {
+		printf(out, "%s\n", tr.T("cli.rec.no_devices"))
+	}
 
 	// Ждём конца записи: сочетанием в любой программе (ответ придёт сам) или Ctrl+C здесь.
 	err := c.do(ctx, "POST", "/api/v1/recordings/wait", map[string]string{}, &info)

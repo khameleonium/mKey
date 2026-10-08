@@ -416,9 +416,17 @@ paths:
       responses:
         "200": { description: "{record, emergency}" }
         "400": { $ref: "#/components/responses/Error" }
+  /api/v1/recordings/devices:
+    get:
+      summary: "Устройства для выбора «что записывать»: {devices: [{key, id, name, path, category, kinds, virtual, own, selected, explicit}]}"
+      description: |
+        category — keyboards, gamepads, touch, other, virtual (созданные программами; own — самим mKey,
+        такие не записываются). selected — будет ли записываться: свой выбор (explicit, settings.devices)
+        или по классам settings.kinds.
+      responses: { "200": { description: Устройства } }
   /api/v1/settings/recording:
     get:
-      summary: "Настройки записи по умолчанию: {kinds, moves, merge_moves_ms, center_pointer, coalesce_ms}"
+      summary: "Настройки записи по умолчанию: {kinds, devices, moves, merge_moves_ms, center_pointer, coalesce_ms} (devices — «VID:PID имя» → записывать ли; kinds может быть пустым)"
       responses:
         "200": { description: Настройки записи }
         "503": { $ref: "#/components/responses/Error" }
